@@ -8,22 +8,15 @@ import json
 import os
 import urllib.request
 
-API_KEY = os.environ["ANTHROPIC_API_KEY"]
-MODEL = "claude-sonnet-5"
+import local_llm, sandbox                    # LOCAL: wire adapter + workspace boundary
+MODEL = local_llm.MODEL                      # LOCAL: gemma-4-26B-A4B (MoE) via mlx_lm.server
 SYSTEM = "You are a concise assistant."
 
 
 def call_llm(messages):
     body = {"model": MODEL, "max_tokens": 4096,
             "system": SYSTEM, "messages": messages}
-    req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages",
-        data=json.dumps(body).encode(),
-        headers={"content-type": "application/json",
-                 "x-api-key": API_KEY,
-                 "anthropic-version": "2023-06-01"})
-    with urllib.request.urlopen(req) as resp:
-        return json.loads(resp.read())
+    return local_llm.create(body)            # LOCAL: same body, local MoE brain
 
 
 def main():
@@ -45,3 +38,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    local_llm.report()                          # LOCAL: tokens, cache, speed

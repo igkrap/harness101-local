@@ -1,4 +1,6 @@
-work/
+work/*
+!work/todo-app/
+*.sqlite3
 __pycache__/
 .venv*/
 debug/

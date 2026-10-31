@@ -9,8 +9,8 @@ import os
 import subprocess
 import urllib.request
 
-API_KEY = os.environ["ANTHROPIC_API_KEY"]
-MODEL = "claude-sonnet-5"
+import local_llm, sandbox                    # LOCAL: wire adapter + workspace boundary
+MODEL = local_llm.MODEL                      # LOCAL: gemma-4-26B-A4B (MoE) via mlx_lm.server
 SYSTEM = "You are a concise assistant with access to the local machine."
 
 TOOLS = [                                            # NEW: the menu
@@ -30,25 +30,17 @@ TOOLS = [                                            # NEW: the menu
 def call_llm(messages):
     body = {"model": MODEL, "max_tokens": 4096, "system": SYSTEM,
             "messages": messages, "tools": TOOLS}   # NEW: send the menu
-    req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages",
-        data=json.dumps(body).encode(),
-        headers={"content-type": "application/json",
-                 "x-api-key": API_KEY,
-                 "anthropic-version": "2023-06-01"})
-    with urllib.request.urlopen(req) as resp:
-        return json.loads(resp.read())
+    return local_llm.create(body)            # LOCAL: same body, local MoE brain
 
 
 def execute_tool(name, args):                        # NEW: the dispatch
     """Map the model's JSON request to a real function call."""
     try:
         if name == "read_file":
-            return open(args["path"]).read()
+            return open(sandbox.path(args["path"])).read()
         if name == "run_command":
-            out = subprocess.run(args["command"], shell=True,
-                                 capture_output=True, text=True, timeout=60)
-            return out.stdout + out.stderr
+            out = sandbox.run(args["command"], timeout=60)   # LOCAL: no-network container
+            return out
         return f"ERROR: unknown tool {name}"
     except Exception as e:
         return f"ERROR: {e}"                         # errors go BACK to the model
@@ -85,3 +77,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    local_llm.report()                          # LOCAL: tokens, cache, speed

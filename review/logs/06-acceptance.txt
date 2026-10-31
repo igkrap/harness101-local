@@ -1,0 +1,12 @@
+$ tasks/todo-app/check.sh work/todo-app
+[PASS] 화면 GET /
+[PASS] 빈 목록
+[PASS] 추가 POST
+[PASS] id 오름차순
+[FAIL] 잘못된 제목 422 / 100자 허용  — RemoteDisconnected: Remote end closed connection without response
+[PASS] 완료 토글 PATCH
+[PASS] 삭제 DELETE
+[PASS] 없는 id 404
+[FAIL] 재시작 후 데이터 유지  — AssertionError: restarted server did not respond: OSError: [Errno 98] Address already in use
+결과: 7/9
+[exit 1]

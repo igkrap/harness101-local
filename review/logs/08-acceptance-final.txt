@@ -1,0 +1,12 @@
+$ tasks/todo-app/check.sh work/todo-app
+[PASS] 화면 GET /
+[PASS] 빈 목록
+[PASS] 추가 POST
+[PASS] id 오름차순
+[PASS] 잘못된 제목 422 / 100자 허용
+[PASS] 완료 토글 PATCH
+[PASS] 삭제 DELETE
+[PASS] 없는 id 404
+[PASS] 재시작 후 데이터 유지
+결과: 9/9
+[exit 0]

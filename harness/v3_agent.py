@@ -8,8 +8,8 @@ import os
 import subprocess
 import urllib.request
 
-API_KEY = os.environ["ANTHROPIC_API_KEY"]
-MODEL = "claude-sonnet-5"
+import local_llm, sandbox                    # LOCAL: wire adapter + workspace boundary
+MODEL = local_llm.MODEL                      # LOCAL: gemma-4-26B-A4B (MoE) via mlx_lm.server
 SYSTEM = ("You are a capable engineering agent working on the local machine. "
           "Use your tools to complete the user's task, then summarize what "
           "you did.")
@@ -38,28 +38,20 @@ TOOLS = [
 def call_llm(messages):
     body = {"model": MODEL, "max_tokens": 8192, "system": SYSTEM,
             "messages": messages, "tools": TOOLS}
-    req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages",
-        data=json.dumps(body).encode(),
-        headers={"content-type": "application/json",
-                 "x-api-key": API_KEY,
-                 "anthropic-version": "2023-06-01"})
-    with urllib.request.urlopen(req) as resp:
-        return json.loads(resp.read())
+    return local_llm.create(body)            # LOCAL: same body, local MoE brain
 
 
 def execute_tool(name, args):
     try:
         if name == "read_file":
-            return open(args["path"]).read()
+            return open(sandbox.path(args["path"])).read()
         if name == "write_file":
-            with open(args["path"], "w") as f:
+            with open(sandbox.path(args["path"]), "w") as f:
                 f.write(args["content"])
             return f"wrote {len(args['content'])} bytes to {args['path']}"
         if name == "run_command":
-            out = subprocess.run(args["command"], shell=True,
-                                 capture_output=True, text=True, timeout=120)
-            return (out.stdout + out.stderr) or "(no output)"
+            out = sandbox.run(args["command"], timeout=120)   # LOCAL: no-network container
+            return (out) or "(no output)"
         return f"ERROR: unknown tool {name}"
     except Exception as e:
         return f"ERROR: {e}"
@@ -102,3 +94,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    local_llm.report()                          # LOCAL: tokens, cache, speed

@@ -1,0 +1,1 @@
+독립 인수 검사에서 2개가 실패했어. (1) POST /api/todos 에 {"title": 3} 처럼 문자열이 아닌 title을 보내면 422 대신 연결이 끊긴다. (2) 서버를 종료하고 같은 포트로 바로 다시 띄우면 OSError: [Errno 98] Address already in use 로 실패한다. 둘 다 고치고, 두 경우를 test.py에 추가해서 직접 확인해.

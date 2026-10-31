@@ -1,0 +1,18 @@
+$ git diff --stat -- harness/ && git status --short harness/ && wc -l harness/local_llm.py harness/sandbox.py
+ harness/harness.py      | 77 +++++++++++++++++++++++++++++++++++--------------
+ harness/v1_chat.py      | 14 +++------
+ harness/v2_tools.py     | 21 +++++---------
+ harness/v3_agent.py     | 23 +++++----------
+ harness/v4_subagents.py | 23 +++++----------
+ 5 files changed, 82 insertions(+), 76 deletions(-)
+ M harness/harness.py
+ M harness/v1_chat.py
+ M harness/v2_tools.py
+ M harness/v3_agent.py
+ M harness/v4_subagents.py
+?? harness/local_llm.py
+?? harness/sandbox.py
+     135 harness/local_llm.py
+      42 harness/sandbox.py
+     177 total
+[exit 0]

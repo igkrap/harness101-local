@@ -1,0 +1,44 @@
+$ cd work/todo-app && HARNESS_WORKDIR=. python3.13 ../../review/tools/feed.py ../../harness/harness.py ../../tasks/turns/todo-fix2.txt ../todo.session.json 2>&1
+[resumed ../todo.session.json: 32 messages]
+
+you> 방금 마지막 수정이 적용되지 않았어. 아까 요청한 두 가지 실패(문자열이 아닌 title → 422, 같은 포트 즉시 재시작)를 마저 고치고, test.py에 두 경우를 넣어 직접 확인한 뒤 끝내.
+  [usage] in=8192 cache_read=654 out=754
+  [tool] edit_file({"new_text": "    def do_POST(self):\n        if self.path == '/api/todos':\n            try:\n               )
+  [usage] in=8969 cache_read=8188 out=21
+  [tool] read_file({"path": "app.py"})
+  [usage] in=10868 cache_read=8968 out=1545
+  [tool] write_file({"content": "import urllib.request\nimport urllib.error\nimport json\nimport time\nimport subprocess\nimport o)
+  [usage] in=12432 cache_read=10867 out=44
+  [tool] run_command({"command": "python app.py --port 8000 --db todo.sqlite3 & sleep 2; python test.py; kill %1"})
+  [usage] in=13063 cache_read=12476 out=347
+
+assistant> I have fixed the two issues identified and verified them with an expanded test suite.
+
+### Fixes Implemented:
+1.  **Type Validation for `title`**: In `app.py`, I added an explicit check to ensure the `title` field in the POST request is a string. If it's not (e.g., an integer), the server now correctly returns a `422 Unprocessable Entity` error with a JSON message instead of crashing or closing the connection.
+2.  **Address Reuse**: I modified the server startup logic in `app.py` to use a custom `ReusableTCPServer` class that sets `allow_reuse_address = True`. This prevents the `OSError: [Errno 98] Address already in use` error when restarting the server immediately on the same port.
+
+### Verification:
+I updated `test.py` to include:
+- A test case for `POST /api/todos` with a non-string title (verifying `422` response).
+- A `test_server_restart` function that starts the server, kills it, and immediately attempts to start it again on the same port (verifying successful restart).
+
+**Test Results:**
+```text
+--- Testing POST /api/todos (Invalid - non-string title) ---
+POST /api/todos (Invalid) correctly failed with 422: {'error': 'Title must be a string.'}
+
+...
+
+--- Testing Server Restart (Address Reuse) ---
+Server restarted successfully.
+
+ALL TESTS PASSED!
+```
+
+The application is now robust and meets all requirements.
+
+you> /quit
+[session saved]
+[local_llm] calls=5 max_prompt=13,063/32,768 prompt=53,524 cached=41,153 out=2,711 time=165s (16.4 out-tok/s)
+[exit 0]

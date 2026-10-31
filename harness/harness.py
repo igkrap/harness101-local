@@ -24,10 +24,10 @@ import threading
 import time
 import urllib.request
 
-API_KEY = os.environ["ANTHROPIC_API_KEY"]
-MODEL = "claude-sonnet-5"
+import local_llm, sandbox                    # LOCAL: wire adapter + workspace boundary
+MODEL = local_llm.MODEL                      # LOCAL: gemma-4-26B-A4B (MoE) via mlx_lm.server
 MAX_ROUNDS = 50
-MAX_RESULT_CHARS = 30_000          # ch 6: truncate tool results at the source
+MAX_RESULT_CHARS = 8_000           # ch 6: truncate tool results at the source (LOCAL: 32k window)
 MEMORY_FILE = "AGENT.md"           # ch 6: project memory, injected at start
 
 SYSTEM = (
@@ -103,13 +103,7 @@ def call_llm(messages, tools, system):
         os.makedirs("debug", exist_ok=True)
         with open(f"debug/req_{time.time_ns()}.json", "w") as f:
             json.dump(body, f, indent=2)
-    req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages",
-        data=json.dumps(body).encode(),
-        headers={"content-type": "application/json", "x-api-key": API_KEY,
-                 "anthropic-version": "2023-06-01"})
-    with urllib.request.urlopen(req) as resp:
-        reply = json.loads(resp.read())
+    reply = local_llm.create(body)           # LOCAL: same body, local MoE brain
     u = reply.get("usage", {})                                     # ch 12
     print(f"  [usage] in={u.get('input_tokens')} "
           f"cache_read={u.get('cache_read_input_tokens')} "
@@ -132,8 +126,7 @@ TASKS = {}                         # id -> {proc, output, status, command}
 
 def start_background(command):
     tid = f"b{len(TASKS) + 1}"
-    proc = subprocess.Popen(command, shell=True, text=True,
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    proc = sandbox.popen(command)                     # LOCAL: no-network container
     TASKS[tid] = {"proc": proc, "output": [], "status": "running",
                   "command": command}
     def pump():
@@ -160,7 +153,8 @@ def gate(name, args):
             if path not in READ_STATE:
                 return ("BLOCKED: you have not read this file. "
                         "Read it before editing.")
-            if os.path.exists(path) and os.path.getmtime(path) > READ_STATE[path]:
+            real = sandbox.path(path)                     # LOCAL: workspace-relative
+            if real.exists() and real.stat().st_mtime > READ_STATE[path]:
                 return ("BLOCKED: file changed on disk since you read it. "
                         "Re-read it first.")
     if name == "run_command":
@@ -170,6 +164,8 @@ def gate(name, args):
                     "background='true' and you'll be notified.")
         risky = ("rm ", "sudo", "--force", "push", "curl", "wget", "> /")
         if any(r in cmd for r in risky):                    # ask the human
+            if not sys.stdin.isatty():                    # LOCAL: unattended run = deny
+                return "DENIED: no human available to approve risky commands. Adapt."
             ans = input(f"\n  [approve?] run_command: {cmd}\n  (y/N) > ")
             if ans.strip().lower() != "y":
                 return "DENIED by user. Ask them how to proceed, or adapt."
@@ -189,33 +185,32 @@ def execute_tool(name, args, allow_agent):
         return err
     try:
         if name == "read_file":
-            lines = open(args["path"]).read().splitlines(keepends=True)
+            lines = open(sandbox.path(args["path"])).read().splitlines(keepends=True)
             off, lim = int(args.get("offset", 1)), int(args.get("limit", 0))
             picked = lines[off - 1: off - 1 + lim] if lim else lines
             READ_STATE[args["path"]] = time.time()          # ch 13 tracker
             return truncate("".join(picked)) or "(empty file)"
         if name == "write_file":
-            with open(args["path"], "w") as f:
+            with open(sandbox.path(args["path"]), "w") as f:
                 f.write(args["content"])
             READ_STATE[args["path"]] = time.time()
             return f"wrote {len(args['content'])} bytes to {args['path']}"
         if name == "edit_file":
-            text = open(args["path"]).read()
+            text = open(sandbox.path(args["path"])).read()
             n = text.count(args["old_text"])
             if n != 1:                                      # ch 14: loud edits
                 return (f"ERROR: old_text found {n} times in {args['path']} "
                         f"(need exactly 1). Re-read the file and retry with "
                         f"a longer, unique snippet.")
-            with open(args["path"], "w") as f:
+            with open(sandbox.path(args["path"]), "w") as f:
                 f.write(text.replace(args["old_text"], args["new_text"]))
             READ_STATE[args["path"]] = time.time()
             return f"edited {args['path']}"
         if name == "run_command":
             if args.get("background") == "true":            # ch 9
                 return start_background(args["command"])
-            out = subprocess.run(args["command"], shell=True, text=True,
-                                 capture_output=True, timeout=300)
-            return truncate(out.stdout + out.stderr) or "(no output)"
+            out = sandbox.run(args["command"], timeout=300)   # LOCAL: no-network container
+            return truncate(out) or "(no output)"
         if name == "task_output":
             t = TASKS.get(args["task_id"])
             if not t:
@@ -225,17 +220,52 @@ def execute_tool(name, args, allow_agent):
             remind("Your current todo list:\n" + args["todos"])
             return "todo list updated"
         if name == "ask_user":                              # ch 3 HITL
+            if not sys.stdin.isatty():                    # LOCAL: unattended run
+                return "No human is available. Make a reasonable choice and state it."
             return input(f"\n  [agent asks] {args['question']}\n  > ")
+        if name == "unparsed_tool_call":                    # LOCAL patch: wire dropped the call
+            return ("ERROR: your previous tool call could not be parsed and was not run. "
+                    "Nothing changed. Retry with smaller arguments, e.g. several short "
+                    "edit_file calls instead of one huge one.")
         if name == "agent" and allow_agent:                 # ch 7
             return run_subagent(args["task"])
         return f"ERROR: unknown tool {name}"
     except Exception as e:
         return f"ERROR: {e}"                                # ch 4: errors are fuel
 
+# ------------------------------------- LOCAL patch, ch 6: compaction
+COMPACT_AT = 0.7                   # compact when the array passes 70% of budget
+KEEP_RECENT = 6                    # never touch the last few messages
+STUB = 400                         # what an old tool result / file body shrinks to
+
+def _shrink(text):
+    if not isinstance(text, str) or len(text) <= STUB:
+        return text
+    return text[:STUB] + f"\n...[compacted {len(text) - STUB} chars; re-read the file if needed]"
+
+def compact(messages, system, tools):
+    """Shrink old tool results and old file bodies in tool calls, in place.
+    Every tool_use/tool_result pair stays; only bulky strings get stubbed.
+    Cost (ch 5): rewriting old messages breaks the cached prefix once."""
+    used = local_llm.estimate(messages, system, tools)
+    if used < COMPACT_AT * local_llm.CONTEXT_TOKENS:
+        return
+    for m in messages[:-KEEP_RECENT]:
+        if not isinstance(m["content"], list):
+            continue
+        for b in m["content"]:
+            if b.get("type") == "tool_result":
+                b["content"] = _shrink(b["content"])
+            elif b.get("type") == "tool_use":
+                b["input"] = {k: _shrink(v) for k, v in b["input"].items()}
+    after = local_llm.estimate(messages, system, tools)
+    print(f"  [compact] ~{used:,} -> ~{after:,} tokens (budget {local_llm.CONTEXT_TOKENS:,})")
+
 # ------------------------------------------------------- ch 4: the loop
 def run_loop(messages, tools, system, quiet=False, allow_agent=False):
     final_text = ""
     for _ in range(MAX_ROUNDS):
+        compact(messages, system, tools)                    # LOCAL patch, ch 6
         reply = call_llm(messages, tools, system)
         messages.append({"role": "assistant", "content": reply["content"]})
         for b in reply["content"]:
@@ -290,9 +320,12 @@ def main():
         content = drain_reminders_into([])                  # pending notices
         content.append({"type": "text", "text": user_text})
         messages.append({"role": "user", "content": content})
-        run_loop(messages, MAIN_TOOLS, SYSTEM, allow_agent=True)
-        json.dump(messages, open(session_file, "w"), indent=1)  # sessions
+        try:
+            run_loop(messages, MAIN_TOOLS, SYSTEM, allow_agent=True)
+        finally:                                            # LOCAL patch: save even on a crash
+            json.dump(messages, open(session_file, "w"), indent=1)  # sessions
     print("[session saved]")
+    local_llm.report()                                      # LOCAL: tokens, cache, speed
 
 if __name__ == "__main__":
     main()
