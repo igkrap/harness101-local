@@ -41,5 +41,29 @@ class ProjectGitTests(unittest.TestCase):
         self.assertEqual(len(log(self.root)), 3)
 
 
+    def test_history_lists_every_commit_and_undo_restores_the_file(self):
+        project_git.ensure_repo(self.root)
+        (self.root / 'frontend/src/a.ts').write_text('changed')
+        sha = project_git.commit_now(self.root, '안내 문구 수정')
+        commits = project_git.history(self.root)
+        self.assertEqual([c['subject'] for c in commits], ['안내 문구 수정', '프로젝트 기준점'])
+        self.assertEqual([c['kind'] for c in commits][1], 'platform')
+        self.assertEqual(project_git.commit_files(self.root, sha)[0]['path'], 'frontend/src/a.ts')
+        self.assertEqual(project_git.commit_file(self.root, sha, 'frontend/src/a.ts')['before'], 'a')
+        project_git.revert(self.root, sha)
+        self.assertEqual((self.root / 'frontend/src/a.ts').read_text(), 'a')
+        self.assertEqual(project_git.history(self.root)[0]['subject'], '취소: 안내 문구 수정')
+
+    def test_undo_refuses_with_unrecorded_edits_and_bad_paths(self):
+        project_git.ensure_repo(self.root)
+        sha = project_git.head(self.root)
+        (self.root / 'frontend/src/a.ts').write_text('dirty')
+        with self.assertRaises(RuntimeError):
+            project_git.revert(self.root, sha)
+        with self.assertRaises(ValueError):
+            project_git.commit_file(self.root, sha, '../secret')
+        with self.assertRaises(ValueError):
+            project_git.switch(self.root, '-bad name')
+
 if __name__ == '__main__':
     unittest.main()

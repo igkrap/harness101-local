@@ -7,6 +7,7 @@ import { RunRecordRow } from "./RunRecordRow";
 import { LatestResult } from "./LatestResult";
 import "./actions.css";
 import Preview from "./Preview";
+import HistoryPage from "./HistoryPage";
 import { Selector } from "@astryxdesign/core/Selector";
 import ProjectManager, { ProjectPicker } from "./ProjectManager";
 import ModelManager, {type ModelConfig} from "./ModelManager";
@@ -186,6 +187,7 @@ function Mark({ kind }: { kind: string }) {
     preview: "M3 4h18v15H3z M3 8h18",
     models: "M4 6h16 M4 12h16 M4 18h16 M8 3v6 M16 9v6 M10 15v6",
     chat: "M3 4h18v13H8l-5 4V4z M7 9h10 M7 13h7",
+    history: "M3 12a9 9 0 1 0 3-6.7 M3 4v5h5 M12 7v5l3 2",
     brand: "m12 2 10 6-10 6L2 8z M2 12l10 6 10-6 M2 16l10 6 10-6",
   };
   return (
@@ -508,6 +510,7 @@ export default function App() {
     ["chat", "채팅"],
     ["projects", "프로젝트"],
     ["models", "모델 설정"],
+    ["history", "변경 이력"],
     ["source", "프로젝트 소스"],
     ["preview", "미리보기"],
   ];
@@ -722,6 +725,7 @@ export default function App() {
           {chatOpened && <div style={{display:page === "chat" ? "block" : "none",minWidth:0}}><ChatPanel token={data?.token||""} model={effectiveModel} online={!!data?.model.online} modelBusy={(!!data?.workspace_busy&&!data?.chat_active)||!!data?.active}/></div>}
           {sourceOpened && <VStack style={{display:page === "source" ? "flex" : "none",minWidth:0}}><Suspense fallback={<Text color="secondary">소스 화면 불러오는 중</Text>}><SourceBrowser/></Suspense></VStack>}
           {page === "preview" && <Preview token={data?.token||""}/>}
+          {page === "history" && <HistoryPage token={data?.token||""} busy={runningNow} onOpenJob={id => { setSelected(id); setSelectedRecord(null); setRunTab("logs"); navigate("run"); }}/>}
         </VStack>
       </VStack>
     </HStack>

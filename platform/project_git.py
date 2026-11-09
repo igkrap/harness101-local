@@ -22,14 +22,14 @@ MODEL_AUTHOR = ('Local model', 'local-model@localhost')
 PLATFORM_AUTHOR = ('Platform', 'platform@localhost')
 
 
-def _git(project, *args, author=None, check=True):
+def _git(project, *args, author=None, check=True, raw=False):
     cmd = ['git']
     if author:
         cmd += ['-c', f'user.name={author[0]}', '-c', f'user.email={author[1]}']
     result = subprocess.run(cmd + list(args), cwd=project, capture_output=True, text=True, timeout=120)
     if check and result.returncode != 0:
         raise RuntimeError(f'git {args[0]} 실패: ' + (result.stderr or result.stdout)[-400:])
-    return result.stdout.strip()
+    return result.stdout if raw else result.stdout.strip()
 
 
 def ensure_repo(project):
@@ -82,3 +82,180 @@ def after_run(project, job):
     if queue.get('id'):
         body += f"\n작업 큐: {queue['id']} ({queue.get('index', 0) + 1}/{queue.get('total', '?')}) {queue.get('goal', '')[:200]}"
     return commit(project, title + '\n\n' + body, author=(f"{MODEL_AUTHOR[0]} ({job.get('model', '')})".strip(), MODEL_AUTHOR[1]))
+
+
+# ---- version control as a platform feature (the 형상 관리 page) ----
+
+import re
+
+_SEP, _END = '\x1f', '\x1e'
+BRANCH_NAME = re.compile(r'[A-Za-z0-9가-힣][A-Za-z0-9가-힣._/-]{0,60}')
+SHA = re.compile(r'[0-9a-f]{7,40}')
+MAX_TEXT = 400_000
+
+
+def _require_repo(project):
+    if not (Path(project) / '.git').exists():
+        raise ValueError('이 프로젝트에는 아직 형상 관리 저장소가 없습니다. 첫 작업을 실행하면 자동으로 만들어집니다.')
+
+
+def _sha(project, sha):
+    if not isinstance(sha, str) or not SHA.fullmatch(sha):
+        raise ValueError('커밋 ID가 올바르지 않습니다.')
+    full = _git(project, 'rev-parse', '--verify', '--quiet', sha + '^{commit}', check=False)
+    if not full:
+        raise ValueError('커밋을 찾을 수 없습니다.')
+    return full
+
+
+def _require_clean(project, action):
+    if _git(project, 'status', '--porcelain'):
+        raise RuntimeError(f'커밋하지 않은 변경이 있어 {action}할 수 없습니다. 먼저 커밋하세요.')
+
+
+def _kind(author):
+    return 'model' if author.startswith(MODEL_AUTHOR[0]) else 'platform' if author == PLATFORM_AUTHOR[0] else 'person'
+
+
+def status(project):
+    _require_repo(project)
+    branch = _git(project, 'branch', '--show-current')
+    branches = [b for b in _git(project, 'branch', '--format=%(refname:short)').splitlines() if b]
+    dirty = []
+    for line in _git(project, 'status', '--porcelain', '-uall').splitlines():
+        code, path = line[:2], line[3:].split(' -> ')[-1].strip('"')
+        dirty.append({'path': path, 'status': 'added' if '?' in code or 'A' in code else 'deleted' if 'D' in code else 'modified'})
+    remote = _git(project, 'remote', 'get-url', 'origin', check=False)
+    ahead = None
+    if remote and branch:
+        counts = _git(project, 'rev-list', '--count', f'origin/{branch}..HEAD', check=False)
+        ahead = int(counts) if counts.isdigit() else None
+    return {'branch': branch, 'branches': branches, 'head': head(project), 'dirty': dirty, 'remote': remote or '', 'ahead': ahead}
+
+
+def history(project, limit=60, ref=None):
+    _require_repo(project)
+    limit = max(1, min(int(limit or 60), 200))
+    fmt = _SEP.join(['%H', '%h', '%an', '%aI', '%s', '%b', '%D']) + _END
+    args = ['log', f'--format={fmt}', '-n', str(limit)]
+    if ref:
+        args.append(_sha(project, ref) + '^')
+    out = _git(project, *args, check=False, raw=True)  # str.strip() would eat the \x1e/\x1f separators
+    commits = []
+    for record in out.split(_END):
+        parts = record.strip('\n').split(_SEP)
+        if len(parts) != 7:
+            continue
+        sha, short, author, date, subject, body, refs = parts
+        job = re.search(r'작업 ID: ([0-9a-f]{32})', body)
+        tags = [r.strip()[5:] for r in refs.split(',') if r.strip().startswith('tag: ')]
+        commits.append({'sha': sha, 'short': short, 'author': author, 'kind': _kind(author), 'date': date,
+                        'subject': subject, 'body': body.strip()[:2000], 'job_id': job.group(1) if job else None, 'tags': tags})
+    return commits
+
+
+def _numstat(project, *args):
+    stats = {}
+    for line in _git(project, *args, '--numstat', check=False).splitlines():
+        parts = line.split('\t')
+        if len(parts) == 3:
+            stats[parts[2]] = (int(parts[0]) if parts[0].isdigit() else 0, int(parts[1]) if parts[1].isdigit() else 0)
+    return stats
+
+
+def commit_files(project, sha):
+    _require_repo(project)
+    sha = _sha(project, sha)
+    names = _git(project, 'show', '--format=', '--name-status', '--root', sha).splitlines()
+    stats = _numstat(project, 'show', '--format=', '--root', sha)
+    files = []
+    for line in names:
+        parts = line.split('\t')
+        if len(parts) < 2:
+            continue
+        path = parts[-1]
+        added, removed = stats.get(path, (0, 0))
+        files.append({'path': path, 'status': {'A': 'added', 'D': 'deleted'}.get(parts[0][0], 'modified'), 'added': added, 'removed': removed})
+    return files
+
+
+def _blob(project, rev, path):
+    result = subprocess.run(['git', 'show', f'{rev}:{path}'], cwd=project, capture_output=True, timeout=60)
+    return result.stdout[:MAX_TEXT].decode('utf-8', 'replace') if result.returncode == 0 else ''
+
+
+def _safe_rel(path):
+    if not isinstance(path, str) or not path or path.startswith('/') or '..' in Path(path).parts or '.git' in Path(path).parts:
+        raise ValueError('파일 경로가 올바르지 않습니다.')
+    return path
+
+
+def commit_file(project, sha, path):
+    sha, path = _sha(project, sha), _safe_rel(path)
+    parent = _git(project, 'rev-parse', '--verify', '--quiet', sha + '^', check=False)
+    return {'path': path, 'before': _blob(project, parent, path) if parent else '', 'after': _blob(project, sha, path)}
+
+
+def working_files(project):
+    _require_repo(project)
+    stats = _numstat(project, 'diff', 'HEAD')
+    files = []
+    for item in status(project)['dirty']:
+        added, removed = stats.get(item['path'], (0, 0))
+        if item['status'] == 'added' and not added:
+            try:
+                added = len((Path(project) / item['path']).read_text(encoding='utf-8', errors='replace').splitlines())
+            except OSError:
+                pass
+        files.append({**item, 'added': added, 'removed': removed})
+    return files
+
+
+def working_file(project, path):
+    path = _safe_rel(path)
+    target = Path(project) / path
+    after = target.read_bytes()[:MAX_TEXT].decode('utf-8', 'replace') if target.is_file() else ''
+    return {'path': path, 'before': _blob(project, 'HEAD', path), 'after': after}
+
+
+def commit_now(project, message):
+    _require_repo(project)
+    message = (message or '').strip()
+    if not 1 <= len(message) <= 2000:
+        raise ValueError('커밋 메시지를 입력하세요.')
+    sha = commit(project, message)
+    if not sha:
+        raise ValueError('커밋할 변경이 없습니다.')
+    return sha
+
+
+def revert(project, sha):
+    _require_repo(project)
+    sha = _sha(project, sha)
+    _require_clean(project, '되돌리기')
+    result = subprocess.run(['git', 'revert', '--no-commit', sha], cwd=project, capture_output=True, text=True, timeout=120)
+    if result.returncode != 0:
+        subprocess.run(['git', 'revert', '--abort'], cwd=project, capture_output=True)
+        raise RuntimeError('이후 변경과 겹치는 부분이 있어 자동으로 취소할 수 없습니다. AI에게 "그 변경을 되돌려줘"라고 요청해 보세요.')
+    subject = _git(project, 'log', '-1', '--format=%s', sha)
+    _git(project, 'commit', '-q', '-m', f'취소: {subject}\n\n취소한 기록: {sha}')
+    return head(project)
+
+
+def switch(project, name, create=False):
+    _require_repo(project)
+    if not isinstance(name, str) or not BRANCH_NAME.fullmatch(name) or '..' in name or name.endswith(('/', '.lock')):
+        raise ValueError('브랜치 이름이 올바르지 않습니다.')
+    _require_clean(project, '브랜치를 바꿀')
+    _git(project, 'switch', *(['-c'] if create else []), name)
+    return status(project)
+
+
+def push(project):
+    st = status(project)
+    if not st['remote']:
+        raise ValueError('원격 저장소(origin)가 설정되어 있지 않습니다.')
+    result = subprocess.run(['git', 'push', '-u', 'origin', st['branch']], cwd=project, capture_output=True, text=True, timeout=300)
+    if result.returncode != 0:
+        raise RuntimeError('push 실패: ' + (result.stderr or result.stdout)[-400:])
+    return status(project)

@@ -331,6 +331,13 @@ class Platform:
                 titles.append(match.group(1))
         return titles
 
+    def require_idle(self, action):
+        """Project files must not change under a running model job or queue."""
+        running = any(p.poll() is None for p in self.processes.values())
+        queue = self.queues.active() if getattr(self, 'queues', None) else None
+        if running or queue:
+            raise RuntimeError(f'AI 작업이 진행 중이라 {action}을 할 수 없습니다. 작업이 끝난 뒤 다시 시도하세요.')
+
     def deploy_backend(self, label='manual', log=None):
         """Put verified backend sources live on 8083 (build, DB backup, rehearsal on a copy, swap with rollback kept)."""
         from backend_deploy import deploy
@@ -587,6 +594,17 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(self.server.platform.previews.status(app.metadata));return
             if parsed.path=='/api/failure':self.send_json(app.failure(query.get('job',[None])[0]));return
             if parsed.path=='/api/jobs':self.send_json(app.job_page(query.get('before',[None])[0],query.get('limit',[20])[0],query.get('kind',[None])[0]));return
+            if parsed.path.startswith('/api/history'):
+                import project_git as vcs
+                if parsed.path=='/api/history':
+                    self.send_json({'status':vcs.status(app.project),'commits':vcs.history(app.project,query.get('limit',[60])[0])});return
+                if parsed.path=='/api/history/working':
+                    path=query.get('path',[None])[0]
+                    self.send_json(vcs.working_file(app.project,path) if path else {'files':vcs.working_files(app.project)});return
+                match=re.fullmatch(r'/api/history/([0-9a-f]{7,40})',parsed.path)
+                if match:
+                    path=query.get('path',[None])[0]
+                    self.send_json(vcs.commit_file(app.project,match.group(1),path) if path else {'files':vcs.commit_files(app.project,match.group(1))});return
             if parsed.path=='/api/source/tree':self.send_json({'files':app.tree()});return
             if parsed.path=='/api/source':self.send_json(app.source(query.get('path',[''])[0]));return
             match=re.fullmatch(r'/api/jobs/([a-f0-9]{32})/strategy',parsed.path)
@@ -673,6 +691,14 @@ class Handler(BaseHTTPRequestHandler):
                     self.send_response(200);self.send_header('Content-Type','application/x-ndjson; charset=utf-8');self.send_header('Cache-Control','no-store');self.send_header('X-Content-Type-Options','nosniff');self.send_header('Connection','close');self.end_headers();self.close_connection=True
                 def emit(data):self.wfile.write(data);self.wfile.flush()
                 chat_stream(hub,app,body,start,emit);return
+            if parsed.path.startswith('/api/history/'):
+                import project_git as vcs
+                app.require_idle('변경 이력을 바꾸는 작업')
+                action=parsed.path.rsplit('/',1)[1]
+                if action=='record':self.send_json({'sha':vcs.commit_now(app.project,body.get('message'))});return
+                if action=='undo':self.send_json({'sha':vcs.revert(app.project,body.get('sha'))});return
+                if action=='branch':self.send_json(vcs.switch(app.project,body.get('name'),bool(body.get('create'))));return
+                if action=='push':self.send_json(vcs.push(app.project));return
             if parsed.path=='/api/queues':self.send_json(app.queues.create(body),201);return
             match=re.fullmatch(r'/api/queues/([a-f0-9]{32})/(stop|resume)',parsed.path)
             if match:self.send_json(app.queues.stop(match.group(1)) if match.group(2)=='stop' else app.queues.resume(match.group(1)));return
