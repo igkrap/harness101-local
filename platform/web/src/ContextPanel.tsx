@@ -7,8 +7,9 @@ import { Collapsible } from '@astryxdesign/core/Collapsible';
 import { apiFetch } from './api';
 import './context.css';
 type Budget={estimated_input_tokens:number;reserved_output_tokens:number;budget_tokens:number;remaining_tokens:number;pressure:number;system_tokens_estimate:number;tools_tokens_estimate:number;message_count:number;tool_result_count:number;estimated:boolean};
+type Managed={usage?:{input_tokens:number;reserve_tokens:number;max_context_tokens:number;ratio:number;calibrated:boolean};thresholds?:{soft:number;hard:number};stats?:{compactions:number;prunes:number;failures:number;recoveries:number;fallbacks:number;restores:number};last_compaction?:null|{time:string;version:number;before_tokens:number;after_tokens:number;source:string;level:string;repaired?:string[]};checkpoint_version?:number;last_failure?:string|null;chars_per_token?:number|null};
 type Usage={prompt_tokens?:number;completion_tokens?:number;prompt_tokens_details?:{cached_tokens?:number}};
-type Report={job:{id:string;status:string};current:null|{seq:number;time:string;model:string;estimated_input_tokens?:number;context:Budget|null};confirmed:null|{seq:number;time:string;usage:Usage|null;finish_reason?:string};waiting:boolean;compaction:null|{time:string;reason:string;before:Budget;after:Budget;removed_messages:number;retained_paths:string[];model_calls:number};files:string[];counts:{requests:number;compactions:number}};
+type Report={management?:Managed|null;job:{id:string;status:string};current:null|{seq:number;time:string;model:string;estimated_input_tokens?:number;context:Budget|null};confirmed:null|{seq:number;time:string;usage:Usage|null;finish_reason?:string};waiting:boolean;compaction:null|{time:string;reason:string;before:Budget;after:Budget;removed_messages:number;retained_paths:string[];model_calls:number};files:string[];counts:{requests:number;compactions:number}};
 const number=(n:number|undefined)=>typeof n==='number'?n.toLocaleString():'기록 없음';
 export function ContextBar({budget,compact=false}:{budget:Budget;compact?:boolean}){
  const capacity=Math.max(1,budget.budget_tokens),total=budget.estimated_input_tokens+budget.reserved_output_tokens;
@@ -29,7 +30,19 @@ export function ContextPanel({jobId,status,compact=false,onOpen}:{jobId:string;s
    </VStack></Card>
    <Card padding={4}><VStack gap={2}><Text weight="bold">{data.waiting?'직전 응답의 확정 사용량':'최근 응답의 확정 사용량'}</Text>{usage?<><Text>입력 {number(usage.prompt_tokens)} · 출력 {number(usage.completion_tokens)} 토큰</Text>{data.confirmed?.finish_reason==='length'&&<Text role="status">출력 한도에 도달해 응답이 잘렸습니다.</Text>}{typeof usage.prompt_tokens_details?.cached_tokens==='number'&&<Text color="secondary">서버 프롬프트 캐시 적중 {number(usage.prompt_tokens_details.cached_tokens)} 토큰. 문맥 압축과는 별도입니다.</Text>}</>:<Text color="secondary">서버가 반환한 사용량 기록이 없습니다.</Text>}</VStack></Card>
    <Card padding={4}><VStack gap={2}><Text weight="bold">최근 문맥 재구성</Text><Text color="secondary">현재 목표·규칙·작업 소스·마지막 오류를 유지하고 오래된 실행 기록을 정리합니다.</Text>{cut?<><Text>입력 추정 약 {number(cut.before?.estimated_input_tokens)} → {number(cut.after?.estimated_input_tokens)} 토큰</Text><Text>메시지 {number(cut.removed_messages)}개 정리 · 모델 호출 {number(cut.model_calls)}회</Text><Text color="secondary" style={{overflowWrap:'anywhere'}}>사유: {cut.reason}</Text><Text color="secondary">{new Date(cut.time).toLocaleString('ko-KR')}</Text></>:<Text color="secondary">기록된 문맥 재구성이 없습니다.</Text>}</VStack></Card>
+   {data.management&&<ManagedCard m={data.management}/>}
    {!!data.files.length&&<Card padding={4}><VStack gap={2}><Text weight="bold">최근 자동 분석 파일</Text>{data.files.map(file=><Text key={file} style={{overflowWrap:'anywhere'}}>{file}</Text>)}</VStack></Card>}
   </>}
  </VStack>;
+}
+
+function ManagedCard({m}:{m:Managed}){
+ const u=m.usage,st=m.stats,last=m.last_compaction,pct=(x?:number)=>typeof x==='number'?Math.round(x*100)+'%':'-';
+ return <Card padding={4}><VStack gap={2}><Text weight="bold">자동 컨텍스트 관리</Text>
+  {u&&<Text>현재 {number(u.input_tokens)} + 출력 예약 {number(u.reserve_tokens)} / {number(u.max_context_tokens)} 토큰 ({pct(u.ratio)}){u.calibrated?' · 실제 토큰 수로 보정됨':' · 추정치'}</Text>}
+  <Text color="secondary">자동 압축 기준 {pct(m.thresholds?.soft)} · 긴급 압축 {pct(m.thresholds?.hard)} · 체크포인트 v{m.checkpoint_version??0}</Text>
+  {st&&<Text color="secondary">압축 {st.compactions}회 · 규칙 정리 {st.prunes}회 · 실패 {st.failures}회 (복구 {st.recoveries}, 대체 {st.fallbacks}) · 재시작 복원 {st.restores}회</Text>}
+  {last?<Text>최근 압축 {new Date(last.time).toLocaleTimeString('ko-KR')} · {number(last.before_tokens)} → {number(last.after_tokens)} 토큰 · {last.source==='llm'?'AI 요약':'규칙 기반 대체'}{last.repaired?.length?` · 보정: ${last.repaired.join(', ')}`:''}</Text>:<Text color="secondary">아직 압축하지 않았습니다.</Text>}
+  {m.last_failure&&<Text role="alert">최근 압축 실패: {m.last_failure}</Text>}
+ </VStack></Card>;
 }

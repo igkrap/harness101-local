@@ -632,7 +632,10 @@ class Handler(BaseHTTPRequestHandler):
                     if job not in app.jobs: raise ValueError('실행 기록이 없습니다.')
                     app.history.sync(app.jobs[job])
                     from context_report import context_report
-                    self.send_json(context_report(app.history,app.jobs[job]))
+                    report=context_report(app.history,app.jobs[job])
+                    try: report['management']=json.loads((app.state/job/'context'/'state.json').read_text(encoding='utf-8'))
+                    except (OSError,ValueError): report['management']=None
+                    self.send_json(report)
                 return
             match=re.fullmatch(r'/api/jobs/([a-f0-9]{32})/(events|log)',parsed.path)
             if match:

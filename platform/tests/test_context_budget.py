@@ -31,3 +31,22 @@ class ContextBudgetTests(unittest.TestCase):
    def ask(self,messages,tools):self.calls+=1;return {'message_count':len(messages)}
   r=extend_context(Base)();r.calls=0;r.h=SimpleNamespace(log_event=Mock());r.read={'frontend/src/A.tsx'};r.messages=[{'role':'system','content':'rules'},{'role':'user','content':'goal'},{'role':'assistant','content':'x'*85000}]
   result=r.ask(r.messages,[]);self.assertEqual(result['message_count'],2);self.assertEqual(r.calls,1);event,data=r.h.log_event.call_args.args;self.assertEqual(event,'autonomy.compact');self.assertEqual(data['model_calls'],0);self.assertEqual(data['removed_messages'],1);self.assertIn('frontend/src/A.tsx',data['retained_paths']);self.assertLess(data['after']['estimated_input_tokens'],data['before']['estimated_input_tokens'])
+
+
+_saved_context_flag = None
+
+
+def setUpModule():
+    """These cases cover the legacy compaction path; context_manager is tested separately."""
+    global _saved_context_flag
+    import os
+    _saved_context_flag = os.environ.get('HARNESS_CONTEXT_MANAGEMENT')
+    os.environ['HARNESS_CONTEXT_MANAGEMENT'] = '0'
+
+
+def tearDownModule():
+    import os
+    if _saved_context_flag is None:
+        os.environ.pop('HARNESS_CONTEXT_MANAGEMENT', None)
+    else:
+        os.environ['HARNESS_CONTEXT_MANAGEMENT'] = _saved_context_flag

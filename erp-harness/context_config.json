@@ -1,0 +1,40 @@
+{
+  "context_management": {
+    "enabled": true,
+    "max_context_tokens": 40960,
+
+    "soft_compact_threshold": 0.68,
+    "hard_compact_threshold": 0.78,
+    "prune_only_target": 0.55,
+
+    "min_output_reserve_tokens": 8192,
+
+    "summary_target_tokens": 1500,
+    "summary_max_tokens": 2500,
+    "summary_output_tokens": 3072,
+
+    "recent_messages_target_tokens": 5000,
+    "prune_keep_recent_rounds": 3,
+    "prune_min_result_chars": 1500,
+
+    "preserve_system_instructions": true,
+    "preserve_project_instructions": true,
+    "preserve_tool_call_integrity": true,
+
+    "incremental_compaction": true,
+    "archive_raw_history": true,
+    "validate_before_commit": true,
+    "restore_on_failure": true,
+
+    "max_compactions_per_call": 1,
+    "max_failed_compactions": 3,
+    "llm_attempts": 2,
+
+    "token_safety_margin": 1.08,
+    "default_chars_per_token": 3.0,
+
+    "keep_checkpoint_versions": 0,
+    "archive_max_mb": 200,
+    "archive_delete_enabled": false
+  }
+}

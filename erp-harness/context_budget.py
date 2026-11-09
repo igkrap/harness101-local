@@ -4,6 +4,9 @@ import os
 
 FOCUSED_PRESSURE = 0.95
 CAPACITY = int(os.environ.get('LOCAL_LLM_CONTEXT', '32768'))
+# Set by context_manager once real prompt token counts are observed (chars per token,
+# already conservative). None keeps the original chars/3 overestimate.
+CALIBRATED_CHARS_PER_TOKEN = None
 
 
 def focused_signature(runner, messages, tools, reserved, capacity):
@@ -33,7 +36,8 @@ def measure(messages, tools=None, reserved=4096, capacity=32768):
     messages = [{k: v for k, v in m.items() if k not in ('reasoning', 'reasoning_content')} for m in messages]
     msg_json = json.dumps(messages, ensure_ascii=False)
     tool_json = json.dumps(tools, ensure_ascii=False) if tools else ""
-    input_tokens = math.ceil((len(msg_json) + len(tool_json)) / 3)
+    per_token = CALIBRATED_CHARS_PER_TOKEN or 3
+    input_tokens = math.ceil((len(msg_json) + len(tool_json)) / per_token)
     
     # system_tokens_estimate logic: looking for system role in messages
     sys_msgs = [m for m in messages if m.get("role") == "system"]
@@ -53,7 +57,7 @@ def measure(messages, tools=None, reserved=4096, capacity=32768):
         "tools_tokens_estimate": tools_tokens_estimate,
         "message_count": len(messages),
         "tool_result_count": len(tool_results),
-        "method": "char_count_div3",
+        "method": "calibrated_chars" if CALIBRATED_CHARS_PER_TOKEN else "char_count_div3",
         "estimated": True
     }
 
@@ -97,6 +101,17 @@ class ContextBudgetMixin:
         self.h._context_state = after
 
     def ask(self, messages, tools):
+        from context_manager import manager
+        managed = manager(self)
+        if managed is not None:
+            # Threshold-based prune/compact/rebuild with checkpoints (context_manager.py).
+            if messages is self.messages and len(messages) > 2:
+                messages = managed.prepare(messages, tools)
+                usage = managed.budget.usage(messages, tools)
+                self.h._context_state = usage
+                if usage['input_tokens'] + int(os.environ.get('LOCAL_LLM_MAX_TOKENS', 4096)) > usage['max_context_tokens']:
+                    raise RuntimeError('Context exceeds input plus reserved-output budget')
+            return super().ask(messages, tools)
         from focused_context import enabled
         focused = enabled(self)
         if messages is self.messages and (len(messages) > 2 or focused):

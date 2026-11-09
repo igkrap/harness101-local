@@ -106,3 +106,22 @@ class RetentionTests(unittest.TestCase):
 
 
 if __name__=='__main__':unittest.main()
+
+
+_saved_context_flag = None
+
+
+def setUpModule():
+    """These cases cover the legacy compaction path; context_manager is tested separately."""
+    global _saved_context_flag
+    import os
+    _saved_context_flag = os.environ.get('HARNESS_CONTEXT_MANAGEMENT')
+    os.environ['HARNESS_CONTEXT_MANAGEMENT'] = '0'
+
+
+def tearDownModule():
+    import os
+    if _saved_context_flag is None:
+        os.environ.pop('HARNESS_CONTEXT_MANAGEMENT', None)
+    else:
+        os.environ['HARNESS_CONTEXT_MANAGEMENT'] = _saved_context_flag
