@@ -325,6 +325,10 @@ class Runner:
                     except OSError:
                         pass
                 msg = __import__('call_budget').ask_with_recovery(self)
+            if isinstance(msg, dict) and not msg.get('role'):
+                # Synthetic replies from repair helpers carry only content/tool_calls; the chat
+                # template rejects a message without a role ("Unexpected message role").
+                msg = {'role': 'assistant', **msg}
             self.messages.append(msg)
             prior_reads = set(self.read)
             prior_progress = self.progress

@@ -48,6 +48,8 @@ class LocalLLMClient:
         clean_messages = []
         for m in messages:
             cm = {k: v for k, v in m.items() if k not in ("reasoning", "reasoning_content")}
+            if not cm.get("role"):
+                cm["role"] = "assistant"  # helper-made replies without a role break the chat template
             clean_messages.append(cm)
 
         from context_budget import measure
