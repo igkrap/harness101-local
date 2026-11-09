@@ -103,6 +103,21 @@ class LocalLLMClient:
             reply = complete(req, __import__("runtime_policy").generation_settings()["timeout"])
             self.last_finish_reason = (reply.get("choices") or [{}])[0].get("finish_reason")
             return reply
+        except urllib.error.HTTPError as e:
+            # mlx_lm.server answers 404 with {"error": ...} when generation itself raises (e.g. the
+            # chat template rejects the messages); keep that reason and the request for diagnosis.
+            try:
+                detail = e.read().decode('utf-8', 'replace')[:600]
+            except Exception:
+                detail = ''
+            job = os.environ.get('HARNESS_JOB_DIR')
+            if job:
+                try:
+                    from pathlib import Path as _P
+                    _P(job, 'failed-model-request.json').write_text(json.dumps(payload, ensure_ascii=False, indent=1), encoding='utf-8')
+                except OSError:
+                    pass
+            raise HarnessError(f"LLM connection failed: {e}" + (f" — server said: {detail}" if detail else ""))
         except urllib.error.URLError as e:
             raise HarnessError(f"LLM connection failed: {e}")
 

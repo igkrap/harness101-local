@@ -65,9 +65,14 @@ def complete(request: urllib.request.Request, timeout: float) -> dict:
                     time.sleep(backoff[retries])
                     retries += 1
                     continue
-                # Construct compatible HTTPError
+                # Construct compatible HTTPError, keeping the server's error text readable
+                import io
+                try:
+                    error_body = response.read(4096)
+                except Exception:
+                    error_body = b''
                 raise urllib.error.HTTPError(
-                    request.full_url, status, response.reason, response.headers, None
+                    request.full_url, status, response.reason, response.headers, io.BytesIO(error_body)
                 )
 
             sock.settimeout(timeout)
