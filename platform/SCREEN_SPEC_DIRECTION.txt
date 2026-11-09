@@ -1,0 +1,96 @@
+CURRENT DIRECTION — COMPONENT COMPOSITION, 2026-11-04
+
+Latest user request: focus on breaking UI into reusable components and arranging them,
+rather than developing database-defined screens. This overrides the DB-first direction below.
+The primary screen authoring path is ordinary typed React composition in source files.
+No DB screen document, release, generated controller or LLM call is required for this path.
+
+COMPOSITION RESPONSIBILITIES
+1. Controls: inputs, buttons, field validation and feedback.
+2. Independent regions: query conditions, result grids, editors and common actions.
+3. Layout: panels, horizontal/vertical splits and tabs accepting arbitrary React children.
+4. Optional recipes: query-only, query with bottom editor, multiple grids/editors, free layout.
+Recipes are examples or convenient compositions of those same pieces, not fixed screen types.
+BusinessWorkspace is one optional recipe; a custom screen can compose the pieces directly.
+The screen owns query state, selected rows, requests, field conversion and save scope.
+Login, sidebar and MDI remain shared shell services, independent of the business layout.
+
+IMPLEMENTATION PRIORITY
+Keep existing pieces reusable; add a missing piece when a concrete screen needs it.
+Provide short JSX examples with explicit data/event connections and searchable component
+descriptors. Do not add another screen-definition language or a general layout engine.
+Maintain compact titles, top-right common actions, basic/detail query visibility and retained
+drafts in collapsible/resizable bottom editor tabs where that recipe is used.
+The current library already supplies Fields, QuerySections, QueryPanel, RecordGrid,
+RecordEditor, ScreenActions, Panel, SplitPane, TabbedPanel and BusinessWorkspace.
+Charts and specialized controls remain future additions, not implemented capabilities.
+See local-only/frontend/src/framework/API.txt for contracts and composition examples.
+
+FIRST COMPONENT-COMPOSITION EXAMPLES IMPLEMENTED
+The app's 컴포넌트 예제 menu now has source-based query-only (ZCP0001), master/detail grids
+with horizontal/vertical switching (ZCP0002), and query/grid with bottom basic/additional
+editor tabs (ZCP0003). These are temporary example identities, not business allocations.
+Each screen directly composes existing parts. Shared fixtures are in frontend/src/examples/
+composition/data.ts. No new layout engine or framework core change was required.
+Example saves are in-memory only; real business handlers/API integration remain screen-owned.
+The two editor tabs have explicit, separate save scopes and retain each other's drafts.
+Run node platform/tests/browser_component_composition.cjs for the authenticated browser check.
+It empties the optional DB screen catalog and blocks business writes to demonstrate that
+these source compositions work without DB screen definitions or business fixture mutations.
+
+AI ROLE
+The framework supports screens independently of AI. If Gemma is used later, evaluate its
+ability to find components, arrange them and connect business state/events in small changes.
+New components may be frontier-authored as authorized. Do not claim Gemma autonomy from
+framework tests. No new model run is requested by this change of focus.
+
+OPTIONAL DB PROTOTYPE — IMPLEMENTED HISTORY, NOT THE CURRENT DEVELOPMENT PRIORITY
+The prototype remains available; it is a consumer of the component library, not a prerequisite
+for composing screens. Its source, deployed example and data are retained.
+Versioned PostgreSQL entity, operation and screen documents are pinned into immutable
+releases. An active binding selects a release by screen code. The shared Spring executor
+validates parameters and permissions and executes prepared queries/writes; the shared React
+DefinedScreen composes the existing query/grid/bottom-editor components from the same release.
+No Java controller or React component is created for an individual database-defined screen.
+
+Screen identity: module A-Z + classification AA-ZZ + four digits, e.g. ABC0001.
+ZDE0001 is an explicitly temporary demonstration code, not a real business classification.
+
+DEFINITION RESPONSIBILITIES
+1. Entity/field dictionary: field meaning, types, physical columns and constraints.
+2. Operation contracts: query/create/update inputs and results, requiredness, conditions,
+   writable fields, server defaults, validation, permission and transaction boundary.
+3. Screen bindings: title, columns, basic/detail conditions, editor tabs and presentation.
+Input-required and basic/detail visibility are independent. Server-owned ID/createdAt are
+excluded from write input. Operation definitions, rather than entity schemas alone, determine
+which inputs are accepted. The framework executes declared rules; it does not invent them.
+
+SUPPORTED BOUNDARY
+This initial runtime supports one entity, query-edit layout, text/email/integer inputs,
+parameterized eq/contains/gte conditions and single-record create/update operations.
+The example uses workspace:admin and a newly provisioned spec_ table. Complex joins,
+aggregations, multi-editor transactions, lookup controls and a definition-editing GUI are not
+implemented. They can be added as explicit registered capabilities instead of guessed logic.
+Other screen layouts remain optional compositions in the component library.
+
+CONSISTENCY
+Document revisions are append-only through the publishing tool. Hashes detect changed
+pinned documents. An activation references an existing release and checks table columns.
+Writes carry X-Screen-Revision; stale definitions receive409 and retain their draft.
+Metadata changes appear when the screen/app is reopened or refreshed; no source rebuild is
+needed. Existing source-based screens and MDI coexist with database-defined screens.
+
+COMMANDS (from project root)
+python3 platform/spec_workshop_cli.py seed-demo
+python3 platform/spec_workshop_cli.py show --code ZDE0001 --revision 1
+python3 platform/spec_workshop_cli.py publish --file path/to/bundle.json --revision 2
+python3 platform/spec_workshop_cli.py activate --code ZDE0001 --revision 2
+Use --provision only when intentionally creating a missing, new spec_ entity table.
+python3 platform/spec_workshop_cli.py verify-framework
+
+VERIFICATION
+The independent verifier provisions an isolated database/backend and checks real API and
+browser behavior. It then changes only DB title/query visibility/tab label, activates revision2
+and verifies changed UI with unchanged sources. It also checks stale-write rejection and
+immutable revisions. All fixture data is isolated from the existing local business database.
+Earlier unsuccessful Gemma code-generation experiments remain separate historical evidence.

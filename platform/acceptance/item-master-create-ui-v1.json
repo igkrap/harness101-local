@@ -1,0 +1,19 @@
+{
+  "id": "item-master-create-ui-v1",
+  "task": "기존 ItemMaster 품목 화면의 신규 등록을 POST /api/items에 연결해줘. 신규로 입력을 비우고 추가로 저장하며 품번·품명은 필수로 해줘. 규격·비고는 API의 specification·remark에 맞춰 보내고, 서버가 중복 등으로 거절하면 이유를 화면에 보여줘. 중복 요청도 서버의 4xx 응답을 받아 표시해줘. 저장한 다섯 값이 목록에 보이고 새로고침 후 다시 조회해도 남아 있어야 해. 기존 조회·배치는 유지하고 백엔드 변경과 수정·삭제는 다음에 할게.",
+  "project": "local-only",
+  "script": "platform/tests/browser_item_create_ui.cjs",
+  "script_sha256": "8304308e50746b05393cbe05db9d8f87da5201bb508143c2b9c4793ca4c4d867",
+  "cases": [
+    "query-grid-bottom-editor-layout",
+    "five-item-columns-and-edit-inputs",
+    "editor-collapse-resize-no-runtime-errors",
+    "api-query-matches-isolated-sql",
+    "query-button-renders-five-fields",
+    "read-only-query-and-cleanup",
+    "ui-new-reset-and-required-validation",
+    "ui-create-browser-post-sql-and-grid",
+    "ui-create-reload-query-persistence",
+    "ui-create-server-rejection-and-owned-cleanup"
+  ]
+}

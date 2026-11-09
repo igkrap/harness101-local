@@ -1,0 +1,30 @@
+{
+  "id": "item-master-toolbar-save-create-v1",
+  "project": "local-only",
+  "script": "platform/tests/browser_item_toolbar_save_create.cjs",
+  "script_sha256": "856dc60f9ea448b11a879f7372bde6ad6821918c1118f8fc981206a303db6206",
+  "task": "품목 등록 화면 우측 상단 저장 버튼을 연결해줘. 신규 초안을 채워 상단 저장을 누르면 실제 DB에 등록되고 그리드에 표시되게 해줘. 기존 기능은 유지해.",
+  "cases": [
+    "query-grid-bottom-editor-layout",
+    "five-item-columns-and-edit-inputs",
+    "editor-collapse-resize-no-runtime-errors",
+    "api-query-matches-isolated-sql",
+    "query-button-renders-five-fields",
+    "read-only-query-and-cleanup",
+    "ui-new-reset-and-required-validation",
+    "ui-create-browser-post-sql-and-grid",
+    "ui-create-reload-query-persistence",
+    "ui-create-server-rejection-and-owned-cleanup",
+    "select-existing-row-and-edit-five-fields",
+    "actual-put-same-id-sql-and-grid",
+    "repeat-save-reload-query-persistence",
+    "required-server-duplicate-preserves-rows-and-owned-cleanup",
+    "delete-selection-cancel-preserves-data",
+    "browser-delete-target-only-and-editor-clear",
+    "delete-reload-query-persistence",
+    "delete-ui-owned-resources-cleanup",
+    "common-header-query-current-conditions-and-cleanup",
+    "common-header-new-repeated-reset-reveal-no-write-and-cleanup",
+    "common-header-save-new-post-sql-grid-and-cleanup"
+  ]
+}

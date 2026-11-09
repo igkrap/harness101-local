@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "acceptance_id": "item-master-api-create-v1",
+  "script_sha256": "c11473388cf77a75301af716fb552abf108e2161aa0b603aa4dfe8a59430f6ed",
+  "database_scope": "fresh-owned",
+  "job_created_migration_edits": true,
+  "fixture_owner": "checker",
+  "discovery_round_limit": 8
+}

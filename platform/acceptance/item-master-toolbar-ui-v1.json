@@ -1,0 +1,31 @@
+{
+  "id": "item-master-toolbar-ui-v1",
+  "project": "local-only",
+  "script": "platform/tests/browser_item_toolbar_ui.cjs",
+  "script_sha256": "202e5d0e775f7c9e6f275874b31380b0d935065ec87586deebba1604fe87b806",
+  "task": "기존 ItemMaster 품목 화면의 우측 상단 공통 조회·신규·삭제·저장 버튼을 완성해줘. 조회는 현재 입력한 조건으로 실행하고, 신규는 선택 유무와 관계없이 다섯 편집값을 항상 초기화해줘. 저장은 현재 초안을 등록·수정하고, 새로 등록한 품목을 다시 저장하면 같은 id를 수정해야 해. 편집 패널이 접혀 있어도 신규·저장을 누르면 펼쳐 동작해야 해. 기존 조회·등록·수정·삭제 확인·취소와 배치는 유지하고 백엔드·공통 컴포넌트는 변경하지 마.",
+  "cases": [
+    "query-grid-bottom-editor-layout",
+    "five-item-columns-and-edit-inputs",
+    "editor-collapse-resize-no-runtime-errors",
+    "api-query-matches-isolated-sql",
+    "query-button-renders-five-fields",
+    "read-only-query-and-cleanup",
+    "ui-new-reset-and-required-validation",
+    "ui-create-browser-post-sql-and-grid",
+    "ui-create-reload-query-persistence",
+    "ui-create-server-rejection-and-owned-cleanup",
+    "select-existing-row-and-edit-five-fields",
+    "actual-put-same-id-sql-and-grid",
+    "repeat-save-reload-query-persistence",
+    "required-server-duplicate-preserves-rows-and-owned-cleanup",
+    "delete-selection-cancel-preserves-data",
+    "browser-delete-target-only-and-editor-clear",
+    "delete-reload-query-persistence",
+    "delete-ui-owned-resources-cleanup",
+    "common-header-query-and-always-reset-new",
+    "header-save-create-and-repeat-update",
+    "collapsed-header-save-and-required-validation",
+    "toolbar-reload-and-owned-resources-cleanup"
+  ]
+}

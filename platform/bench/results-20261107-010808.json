@@ -1,0 +1,64 @@
+[
+ {
+  "id": "T3",
+  "level": "중간·검증",
+  "goal": "품목 등록 화면 편집에서 '규격'을 필수 입력으로 바꿔줘",
+  "queue": "85a2f7cdb5c54b9ca621251424a312ed",
+  "job": "bb2434204d764e05b6f51f6020c21f10",
+  "status": "succeeded",
+  "items": 1,
+  "wall_minutes": 11.0,
+  "plan_seconds": 110.3,
+  "model_calls": 4,
+  "accepted_edits": 1,
+  "verifications": 1,
+  "criteria": [
+   [
+    "C1",
+    "passed"
+   ],
+   [
+    "system:mutation",
+    "passed"
+   ]
+  ],
+  "reason": "C1:passed",
+  "framework_changed": false,
+  "restored_after_success": [
+   "frontend/src/screens/ItemMaster.tsx"
+  ]
+ },
+ {
+  "id": "T4",
+  "level": "중간~어려움·새 동작",
+  "goal": "품목 등록 화면 조회 조건에 '조건 초기화' 버튼을 추가해서 누르면 조회 조건 입력값이 모두 비워지게 해줘",
+  "queue": "d45864305463410288f7e4376a7485d6",
+  "job": "740d6ef0e0a147ac8ce1adb296a550fa",
+  "status": "succeeded",
+  "items": 1,
+  "wall_minutes": 16.5,
+  "plan_seconds": 448.3,
+  "model_calls": 6,
+  "accepted_edits": 1,
+  "verifications": 1,
+  "criteria": [
+   [
+    "C1",
+    "passed"
+   ],
+   [
+    "C2",
+    "passed"
+   ],
+   [
+    "system:mutation",
+    "passed"
+   ]
+  ],
+  "reason": "C1:passed; C2:passed",
+  "framework_changed": false,
+  "restored_after_success": [
+   "frontend/src/screens/ItemMaster.tsx"
+  ]
+ }
+]

@@ -1,0 +1,31 @@
+{
+  "id": "item-master-toolbar-save-update-v1",
+  "project": "local-only",
+  "script": "platform/tests/browser_item_toolbar_save_update.cjs",
+  "script_sha256": "81bd70120df71d3ab81966baac67a92d667d447f476d3ceaff5ec954e9e53622",
+  "task": "상단 저장으로 신규 등록한 품목을 수정해 다시 저장하면 새 품목이 생기지 않고 같은 ID가 수정되게 해줘. 기존 기능은 유지해.",
+  "cases": [
+    "query-grid-bottom-editor-layout",
+    "five-item-columns-and-edit-inputs",
+    "editor-collapse-resize-no-runtime-errors",
+    "api-query-matches-isolated-sql",
+    "query-button-renders-five-fields",
+    "read-only-query-and-cleanup",
+    "ui-new-reset-and-required-validation",
+    "ui-create-browser-post-sql-and-grid",
+    "ui-create-reload-query-persistence",
+    "ui-create-server-rejection-and-owned-cleanup",
+    "select-existing-row-and-edit-five-fields",
+    "actual-put-same-id-sql-and-grid",
+    "repeat-save-reload-query-persistence",
+    "required-server-duplicate-preserves-rows-and-owned-cleanup",
+    "delete-selection-cancel-preserves-data",
+    "browser-delete-target-only-and-editor-clear",
+    "delete-reload-query-persistence",
+    "delete-ui-owned-resources-cleanup",
+    "common-header-query-current-conditions-and-cleanup",
+    "common-header-new-repeated-reset-reveal-no-write-and-cleanup",
+    "common-header-save-new-post-sql-grid-and-cleanup",
+    "common-header-save-created-item-updates-same-id-and-cleanup"
+  ]
+}

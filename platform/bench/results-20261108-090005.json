@@ -1,0 +1,31 @@
+[
+ {
+  "id": "T2",
+  "level": "쉬움~중간·필드",
+  "goal": "품목 등록 화면 조회 조건에 '규격' 입력을 추가해줘",
+  "queue": "68c30ca0f38d4f6a88a607dd71cc89d7",
+  "job": "fe571124d7bc435b933e8a1eb969f053",
+  "status": "succeeded",
+  "items": 1,
+  "wall_minutes": 10.8,
+  "plan_seconds": 94.8,
+  "model_calls": 4,
+  "accepted_edits": 1,
+  "verifications": 1,
+  "criteria": [
+   [
+    "C1",
+    "passed"
+   ],
+   [
+    "system:mutation",
+    "passed"
+   ]
+  ],
+  "reason": "C1:passed",
+  "framework_changed": false,
+  "restored_after_success": [
+   "frontend/src/screens/ItemMaster.tsx"
+  ]
+ }
+]

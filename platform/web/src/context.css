@@ -1,0 +1,8 @@
+.context-bar{display:flex;width:100%;height:14px;overflow:hidden;border-radius:999px;background:var(--color-background-muted);box-shadow:inset 0 0 0 1px var(--color-border)}
+.context-bar.is-compact{height:7px}
+.context-bar>span{display:block;flex-shrink:0;height:100%;transition:width .15s ease}
+.context-bar-input,.context-key-input{background:light-dark(#2563eb,#7caaff)}
+.context-bar-reserve,.context-key-reserve{background:light-dark(#a5b4fc,#686ca7)}
+.context-bar[data-pressure=high] .context-bar-input{background:light-dark(#c2410c,#ffad75)}
+.context-key{display:inline-block;width:9px;height:9px;margin-right:6px;border-radius:2px}
+@media(prefers-reduced-motion:reduce){.context-bar>span{transition:none}}

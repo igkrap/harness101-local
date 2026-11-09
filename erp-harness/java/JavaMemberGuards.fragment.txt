@@ -1,0 +1,32 @@
+private static ClassTree findTargetClass(CompilationUnitTree unit, String name) {
+    return unit.getTypeDecls().stream()
+            .filter(tree -> tree.getKind() == Tree.Kind.CLASS)
+            .filter(tree -> tree.getIdentifier().contentEquals(name))
+            .findFirst()
+            .map(tree -> (ClassTree) tree)
+            .orElseThrow(() -> new RuntimeException("Target class not found: " + name));
+}
+
+private static List<MethodTree> methodsOnly(CompilationUnitTree unit, ClassTree probe) {
+    if (unit.getTypeDecls().size() != 1) {
+        throw new RuntimeException("Unit must contain exactly one type declaration");
+    }
+    if (unit.getPackageDeclaration() != null) {
+        throw new RuntimeException("Package declaration is not allowed");
+    }
+    if (probe.getMembers().isEmpty()) {
+        throw new RuntimeException("Class members must not be empty");
+    }
+
+    List<MethodTree> methods = new ArrayList<>();
+    for (Tree member : probe.getMembers()) {
+        if (!(member instanceof MethodTree method)) {
+            throw new RuntimeException("Only method declarations are allowed");
+        }
+        if (method.getReturnType() == null || method.getName().contentEquals("<init>")) {
+            throw new RuntimeException("Only method declarations are allowed");
+        }
+        methods.add(method);
+    }
+    return methods;
+}

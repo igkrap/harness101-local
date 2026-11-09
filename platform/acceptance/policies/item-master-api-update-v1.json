@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "acceptance_id": "item-master-api-update-v1",
+  "script_sha256": "d34c18a2fde51fc1d569236a7a52e19ee4f4c1e583b3beaa9ae4e160d8c66078",
+  "database_scope": "fresh-owned",
+  "job_created_migration_edits": true,
+  "fixture_owner": "checker",
+  "discovery_round_limit": 8
+}

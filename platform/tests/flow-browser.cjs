@@ -1,0 +1,73 @@
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const assert = require('assert/strict');
+const cfg = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.local/share/mlx-server/browser-check/runtime.json')));
+const { chromium } = require(cfg.playwrightModule);
+const evidence = path.resolve(__dirname, '../state/evidence');
+
+(async () => {
+  const browser = await chromium.launch({executablePath:cfg.executablePath,headless:true});
+  const page = await browser.newPage({viewport:{width:1536,height:1100}});
+  const errors = [];
+  page.on('pageerror',e=>errors.push(e.message));
+  await page.goto('http://127.0.0.1:5293');
+  const template = await (await page.request.get('http://127.0.0.1:5293/api/state')).json();
+  assert.equal(await page.getByRole('region',{name:'실행 흐름'}).count(),0);
+  const live='overview omits flow';
+  const job = {id:'flow-fixture',kind:'agent',goal:'실패 후 재시도 표시 검증',checks:['backend'],rounds:16,status:'running',started_at:new Date().toISOString(),finished_at:null,exit_code:null};
+  const make = (...rows) => rows.map(([type,data={}],i)=>({seq:i+1,time:new Date().toISOString(),type,data}));
+  let events = make(['run.started'],['check.started',{mode:'backend'}],['check.finished',{success:true}],['autonomy.plan'],['model.request'],['tool.started',{name:'edit_file',path:'app.py'}],['tool.finished',{success:true,changed:true,path:'app.py'}],['check.started',{mode:'backend'}],['check.finished',{success:false}],['autonomy.rollback',{paths:['app.py'],reason:'fixture assertion failed'}],['autonomy.retry',{reason:'failed patch'}],['model.request',{estimated_input_tokens:1234}]);
+  let selectedEvents = [];
+  let kind='agent', status='running';
+  let historical = { ...job,id:'history-fixture',status:'succeeded',goal:'이전 작업',finished_at:new Date().toISOString() };
+  await page.route('**/api/**',async route=>{
+    assert.equal(route.request().method(),'GET','flow display must not mutate or start a job');
+    const url = new URL(route.request().url());
+    if(url.pathname==='/api/state') {
+      const current={...job,kind,status};
+      await route.fulfill({json:{...template,agent_jobs:undefined,agent_jobs_next:undefined,agent_jobs_total:undefined,active:['running','stopping'].includes(status)?current:null,phase:'model',jobs:[current,historical],latest_agent:kind==='agent'?current:null,events,jobs_next:null,jobs_total:2,external:[],maintenance:false}});
+    } else if(url.pathname.endsWith('/events')) await route.fulfill({json:{events:url.pathname.includes('history-fixture')?selectedEvents:events}});
+    else if(url.pathname.endsWith('/log')) await route.fulfill({json:{text:''}});
+    else await route.fulfill({json:{}});
+  });
+  await page.reload();
+  await page.getByRole('navigation',{name:'Side navigation'}).getByRole('button',{name:'작업 실행',exact:true}).click();
+  await page.getByRole('tab',{name:'실행 흐름',exact:true}).click();
+  const flow = page.getByRole('region',{name:'실행 흐름'});
+  await flow.locator('[data-node="model"][data-current="true"]').waitFor();
+  await flow.getByRole('status').locator('.status-badge').getByText('진행 중',{exact:true}).waitFor();
+  assert.equal(await flow.locator('[data-edge="check:rollback"][data-visited="true"]').count(),1);
+  await flow.getByRole('button',{name:'복원: 기록 있음',exact:true}).focus();
+  await page.keyboard.press('Enter');
+  await flow.getByText('fixture assertion failed',{exact:false}).waitFor();
+  await flow.getByRole('button',{name:'선택 해제',exact:true}).click();
+  assert.equal(await flow.getByRole('region',{name:'단계 상세'}).count(),0);
+  await flow.getByRole('button',{name:'모델 호출: 진행 중',exact:true}).click();
+  await flow.getByText('입력 추정 1,234 토큰',{exact:true}).waitFor();
+  await flow.screenshot({path:path.join(evidence,'flow-retry.png')});
+  // A new poll advances the marker; the diagram is not a static illustration.
+  events=make(['run.started'],['autonomy.plan'],['model.request'],['tool.started'],['check.started',{mode:'frontend'}]);
+  await flow.locator('[data-node="check"][data-current="true"]').waitFor();
+  status='stopped';
+  await flow.locator('[data-node="finish"][data-state="중지"]').waitFor();
+  assert.equal(await flow.locator('[data-node="model"][data-current="true"]').count(),0);
+  kind='checks';status='succeeded';events=make(['run.started'],['check.started',{mode:'backend'}],['check.finished',{mode:'backend',success:true}],['run.finished',{success:true}]);
+  await flow.waitFor({state:'hidden'});
+  assert.equal(await flow.count(),0);
+  // History uses its own event stream rather than the current job's marker.
+  selectedEvents=make(['run.started'],['check.started',{mode:'backend'}],['check.finished',{success:false}],['autonomy.plan'],['model.request'],['tool.started'],['check.started'],['check.finished',{success:true}],['autonomy.accepted'],['run.finished',{success:true}]);
+  const nav=page.getByRole('navigation',{name:'Side navigation'});
+  await nav.getByRole('button',{name:'작업 실행',exact:true}).click();
+  await page.getByRole('button',{name:'이전 작업',exact:true}).click();await page.getByRole('tab',{name:'실행 흐름',exact:true}).click();
+  await page.getByRole('heading',{name:'이전 작업',exact:true}).waitFor();
+  await flow.locator('[data-node="accept"][data-state="기록 있음"]').waitFor();
+  await page.setViewportSize({width:820,height:1000});
+  await flow.scrollIntoViewIfNeeded();
+  assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  await flow.screenshot({path:path.join(evidence,'flow-narrow.png')});
+  assert.deepEqual(errors,[]);
+  const result={live,checks:['live event display','rollback path','keyboard details','follow current phase','poll advances marker','stopped process has no running node','checks-only has no flow','history selection uses own events','narrow layout without page overflow','no JS errors'],errors};
+  fs.writeFileSync(path.join(evidence,'flow-browser.json'),JSON.stringify(result,null,2));
+  console.log(JSON.stringify(result,null,2));await browser.close();
+})().catch(e=>{console.error(e);process.exit(1)});

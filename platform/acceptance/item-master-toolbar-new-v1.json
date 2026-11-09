@@ -1,0 +1,29 @@
+{
+  "id": "item-master-toolbar-new-v1",
+  "project": "local-only",
+  "script": "platform/tests/browser_item_toolbar_new.cjs",
+  "script_sha256": "cac93044dab2532cb45adc415674937e49839b3416a26a48533de4526402f6ff",
+  "task": "기존 품목 등록 화면 우측 상단에 공통 신규 버튼을 연결해줘. 선택된 품목이 있거나 이미 신규 상태여도 누를 때마다 편집 필드 다섯 개를 비우고, 접힌 편집 패널을 펼쳐줘. 기존 조회·등록·수정·삭제는 유지해.",
+  "cases": [
+    "query-grid-bottom-editor-layout",
+    "five-item-columns-and-edit-inputs",
+    "editor-collapse-resize-no-runtime-errors",
+    "api-query-matches-isolated-sql",
+    "query-button-renders-five-fields",
+    "read-only-query-and-cleanup",
+    "ui-new-reset-and-required-validation",
+    "ui-create-browser-post-sql-and-grid",
+    "ui-create-reload-query-persistence",
+    "ui-create-server-rejection-and-owned-cleanup",
+    "select-existing-row-and-edit-five-fields",
+    "actual-put-same-id-sql-and-grid",
+    "repeat-save-reload-query-persistence",
+    "required-server-duplicate-preserves-rows-and-owned-cleanup",
+    "delete-selection-cancel-preserves-data",
+    "browser-delete-target-only-and-editor-clear",
+    "delete-reload-query-persistence",
+    "delete-ui-owned-resources-cleanup",
+    "common-header-query-current-conditions-and-cleanup",
+    "common-header-new-repeated-reset-reveal-no-write-and-cleanup"
+  ]
+}

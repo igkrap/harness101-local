@@ -1,0 +1,217 @@
+[
+ {
+  "id": "T1",
+  "level": "쉬움·문구",
+  "goal": "품목 등록 화면 결과 그리드의 '비고' 열 제목을 '메모'로 바꿔줘",
+  "queue": "0033ac7502c644eaadaf1f709f06f6cf",
+  "job": "ee10ee34a9fe42a69ea051c332938005",
+  "status": "succeeded",
+  "items": 1,
+  "wall_minutes": 9.8,
+  "plan_seconds": 101.0,
+  "model_calls": 3,
+  "accepted_edits": 1,
+  "verifications": 1,
+  "criteria": [
+   [
+    "C1",
+    "passed"
+   ],
+   [
+    "C2",
+    "passed"
+   ],
+   [
+    "system:mutation",
+    "passed"
+   ]
+  ],
+  "reason": "C1:passed; C2:passed",
+  "framework_changed": false,
+  "restored_after_success": [
+   "frontend/src/screens/ItemMaster.tsx"
+  ]
+ },
+ {
+  "id": "T2",
+  "level": "쉬움~중간·필드",
+  "goal": "품목 등록 화면 조회 조건에 '규격' 입력을 추가해줘",
+  "queue": "46ee0702d1b147ccbf62ee3b22ae150d",
+  "job": "0d815d93c3dd4f5ea7d54651066fef66",
+  "status": "failed",
+  "items": 1,
+  "wall_minutes": 10.5,
+  "plan_seconds": 201.7,
+  "model_calls": 4,
+  "accepted_edits": 0,
+  "verifications": 0,
+  "criteria": [],
+  "reason": "Requirement contract unavailable; completion blocked: Requirement review rejected: [{\"criterion_id\": \"C2\", \"reason\": \"요구사항에 '규격' 필드의 특정 위치(품번, 품명 옆)에 대한 명시적 제약이 없으므로, C2의 레이아웃 검증은 무근拠한 추가 요구사항으로 판단됩니다. C1만으로도 '규격' 입력 필드 추가라는 원본 요구사항을 충실히 검증하므로 C2는 삭제해야 합니다.\"}]",
+  "framework_changed": false
+ },
+ {
+  "id": "T3",
+  "level": "중간·검증",
+  "goal": "품목 등록 화면 편집에서 '규격'을 필수 입력으로 바꿔줘",
+  "queue": "c72bdd983a3745b78aaa62d0b8ac46a1",
+  "job": "59840966e54a442381fc880c6b184a20",
+  "status": "failed",
+  "items": 1,
+  "wall_minutes": 8.8,
+  "plan_seconds": 98.1,
+  "model_calls": 3,
+  "accepted_edits": 0,
+  "verifications": 0,
+  "criteria": [],
+  "reason": "Requirement contract unavailable; completion blocked: Requirement review rejected: [{\"criterion_id\": \"C2\", \"reason\": \"요구사항은 '규격'을 필수 입력으로 변경하는 UI 검증입니다. C2는 규격을 채운 정상 저장 시나리오에서 `expect_visible`과 `expect_hidden`을 동시에 사용하여 논리적으로 모순되며, API 호출 확인이라는 설명과 실제 검증 스텝(에러 메시지 확인)이 불일치합니다. 정상 저장 시에는 에러 메시지가 표시되",
+  "framework_changed": false
+ },
+ {
+  "id": "T4",
+  "level": "중간~어려움·새 동작",
+  "goal": "품목 등록 화면 조회 조건에 '조건 초기화' 버튼을 추가해서 누르면 조회 조건 입력값이 모두 비워지게 해줘",
+  "queue": "1eb44b937ccd4b23ac300d3c5ef3b0e0",
+  "job": "50b32c49a0574eb5a568ed7b51dc6c81",
+  "status": "failed",
+  "items": 1,
+  "wall_minutes": 56.0,
+  "plan_seconds": 375.0,
+  "model_calls": 40,
+  "accepted_edits": 1,
+  "verifications": 1,
+  "criteria": [
+   [
+    "C1",
+    "failed"
+   ],
+   [
+    "C2",
+    "failed"
+   ],
+   [
+    "system:mutation",
+    "passed"
+   ]
+  ],
+  "reason": "C1:failed; C2:failed",
+  "framework_changed": true
+ },
+ {
+  "id": "T1",
+  "level": "쉬움·문구",
+  "goal": "품목 등록 화면 결과 그리드의 '비고' 열 제목을 '메모'로 바꿔줘",
+  "queue": "83952d4ae1ca4d03868ad5d90c6b876a",
+  "job": "179c7e383fae42ebaf84d65271553d1f",
+  "status": "succeeded",
+  "items": 1,
+  "wall_minutes": 9.5,
+  "plan_seconds": 99.8,
+  "model_calls": 3,
+  "accepted_edits": 1,
+  "verifications": 1,
+  "criteria": [
+   [
+    "C1",
+    "passed"
+   ],
+   [
+    "C2",
+    "passed"
+   ],
+   [
+    "system:mutation",
+    "passed"
+   ]
+  ],
+  "reason": "C1:passed; C2:passed",
+  "framework_changed": false,
+  "restored_after_success": [
+   "frontend/src/screens/ItemMaster.tsx"
+  ]
+ },
+ {
+  "id": "T2",
+  "level": "쉬움~중간·필드",
+  "goal": "품목 등록 화면 조회 조건에 '규격' 입력을 추가해줘",
+  "queue": "933ded9203c14edca772a7642544f265",
+  "job": "991b3752c3f34d80b3c7bb3dbf4975dd",
+  "status": "failed",
+  "items": 1,
+  "wall_minutes": 94.3,
+  "plan_seconds": 94.9,
+  "model_calls": 40,
+  "accepted_edits": 1,
+  "verifications": 1,
+  "criteria": [
+   [
+    "C1",
+    "failed"
+   ],
+   [
+    "system:mutation",
+    "passed"
+   ]
+  ],
+  "reason": "C1:failed",
+  "framework_changed": false
+ },
+ {
+  "id": "T3",
+  "level": "중간·검증",
+  "goal": "품목 등록 화면 편집에서 '규격'을 필수 입력으로 바꿔줘",
+  "queue": "cad7a626e2634afcba5e56ff2159d09f",
+  "job": "621a0e226ccc42b4a6cfdc0a4b343bac",
+  "status": "failed",
+  "items": 1,
+  "wall_minutes": 156.6,
+  "plan_seconds": 95.7,
+  "model_calls": 40,
+  "accepted_edits": 1,
+  "verifications": 1,
+  "criteria": [
+   [
+    "C1",
+    "failed"
+   ],
+   [
+    "system:mutation",
+    "passed"
+   ]
+  ],
+  "reason": "C1:failed",
+  "framework_changed": false
+ },
+ {
+  "id": "T4",
+  "level": "중간~어려움·새 동작",
+  "goal": "품목 등록 화면 조회 조건에 '조건 초기화' 버튼을 추가해서 누르면 조회 조건 입력값이 모두 비워지게 해줘",
+  "queue": "3da6210a403f482490394f81a7271f86",
+  "job": "3f2a6e7482ed4c7ca642cd0298b65f5a",
+  "status": "succeeded",
+  "items": 1,
+  "wall_minutes": 11.0,
+  "plan_seconds": 123.9,
+  "model_calls": 4,
+  "accepted_edits": 1,
+  "verifications": 1,
+  "criteria": [
+   [
+    "C1",
+    "passed"
+   ],
+   [
+    "C2",
+    "passed"
+   ],
+   [
+    "system:mutation",
+    "passed"
+   ]
+  ],
+  "reason": "C1:passed; C2:passed",
+  "framework_changed": false,
+  "restored_after_success": [
+   "frontend/src/screens/ItemMaster.tsx"
+  ]
+ }
+]

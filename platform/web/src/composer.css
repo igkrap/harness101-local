@@ -1,0 +1,41 @@
+.composer { border: 1px solid var(--color-border); border-radius: 14px; background: var(--color-background-card, var(--color-background-surface)); }
+.composer-toggle { width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border: 0; background: transparent; font: inherit; font-weight: 600; font-size: 1.02em; color: var(--color-text-primary); cursor: pointer; border-radius: 14px; }
+.composer-toggle:hover { background: light-dark(#f8fafc, #23262d); }
+.composer-chev { transition: transform .15s; color: var(--color-text-secondary); }
+.composer-chev.open { transform: rotate(180deg); }
+.composer-body { padding: 0 18px 16px; display: flex; flex-direction: column; gap: 10px; }
+.composer-box { border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-background-surface); transition: border-color .15s, box-shadow .15s; }
+.composer-box:focus-within { border-color: light-dark(#2563eb, #80aaff); box-shadow: 0 0 0 3px light-dark(rgba(37,99,235,.12), rgba(128,170,255,.18)); }
+.composer-box textarea { display: block; width: 100%; box-sizing: border-box; border: 0; outline: 0; resize: none; background: transparent; padding: 14px 16px 6px; font: inherit; font-size: 15px; line-height: 1.6; color: var(--color-text-primary); }
+.composer-bar { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 10px 10px; flex-wrap: wrap; }
+.composer-left, .composer-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.composer-seg { display: inline-flex; padding: 2px; border-radius: 9px; background: light-dark(#f1f5f9, #2a2e36); }
+.composer-seg button { border: 0; background: transparent; padding: 5px 11px; border-radius: 7px; font: inherit; font-size: 13px; color: var(--color-text-secondary); cursor: pointer; }
+.composer-seg button.on { background: var(--color-background-surface); color: var(--color-text-primary); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.composer-model { max-width: 240px; padding: 6px 8px; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-background-surface); color: var(--color-text-primary); font: inherit; font-size: 13px; }
+.composer-ghost { border: 1px solid transparent; background: transparent; padding: 5px 10px; border-radius: 8px; font: inherit; font-size: 13px; color: var(--color-text-secondary); cursor: pointer; }
+.composer-ghost:hover, .composer-ghost.on { background: light-dark(#f1f5f9, #2a2e36); color: var(--color-text-primary); }
+.composer-hint { font-size: 12px; color: var(--color-text-secondary); }
+.composer-run, .composer-stop { border: 0; border-radius: 9px; padding: 8px 16px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.composer-run { background: light-dark(#111827, #f3f4f6); color: light-dark(#fff, #111827); }
+.composer-run:hover:not(:disabled) { filter: brightness(1.15); }
+.composer-run:disabled { opacity: .35; cursor: not-allowed; }
+.composer-stop { background: light-dark(#fdecea, #3b1e1e); color: light-dark(#b42318, #ffb4ab); }
+.composer-advanced { display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: center; padding: 12px 14px; border-radius: 10px; background: light-dark(#f8fafc, #23262d); }
+.composer-field { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.composer-label { font-size: 13px; font-weight: 600; color: var(--color-text-secondary); }
+.composer-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.composer-chips button { border: 1px solid var(--color-border); background: var(--color-background-surface); padding: 4px 11px; border-radius: 999px; font: inherit; font-size: 13px; color: var(--color-text-secondary); cursor: pointer; }
+.composer-chips button.on { border-color: light-dark(#2563eb, #80aaff); color: light-dark(#1d4ed8, #a9c5ff); background: light-dark(#eff6ff, #1e2a40); font-weight: 600; }
+.composer-switch { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--color-text-secondary); cursor: pointer; }
+.composer-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.composer-track { width: 32px; height: 18px; border-radius: 999px; background: light-dark(#cbd5e1, #4b5563); position: relative; transition: background .15s; flex: none; }
+.composer-track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.composer-switch input:checked + .composer-track { background: light-dark(#2563eb, #80aaff); }
+.composer-switch input:checked + .composer-track::after { transform: translateX(14px); }
+.composer-switch input:focus-visible + .composer-track { outline: 2px solid light-dark(#2563eb, #80aaff); outline-offset: 2px; }
+.composer-foot { font-size: 13px; color: var(--color-text-secondary); padding: 0 2px; }
+.composer-blocked { color: light-dark(#a16207, #facc15); }
+.composer-examples { display: flex; gap: 8px; flex-wrap: wrap; }
+.composer-examples button { border: 1px dashed var(--color-border); background: transparent; padding: 6px 12px; border-radius: 9px; font: inherit; font-size: 13px; color: var(--color-text-secondary); cursor: pointer; text-align: left; }
+.composer-examples button:hover { border-style: solid; color: var(--color-text-primary); background: var(--color-background-surface); }

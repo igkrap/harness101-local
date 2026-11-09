@@ -1,0 +1,12 @@
+{
+  "id": "item-master-layout-v1",
+  "task": "품목 등록 화면부터 구성해줘. 위에는 조회조건, 가운데는 결과 그리드, 아래에는 접고 늘릴 수 있는 편집 패널. 품번·품명·규격·단위·비고를 배치하고 기존 공통 컴포넌트를 사용해줘. 조회와 저장 연결은 다음에 할게.\n화면 파일은 ItemMaster.tsx, 화면 코드는 MST0001이야.",
+  "project": "local-only",
+  "script": "platform/tests/browser_gemma_item_layout.cjs",
+  "script_sha256": "967dea6e5ccf35b79d1d5524046e585b666adf435b0eeb78ab9cbc5420e8b6f0",
+  "cases": [
+    "query-grid-bottom-editor-layout",
+    "five-item-columns-and-edit-inputs",
+    "editor-collapse-resize-no-runtime-errors"
+  ]
+}

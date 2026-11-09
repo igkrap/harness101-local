@@ -1,0 +1,15 @@
+{
+  "id": "item-master-query-v1",
+  "task": "지금 만든 ItemMaster 품목 화면의 조회를 실제 DB와 연결해줘. 조회 버튼을 누르면 품번·품명을 부분일치 AND 조건으로 검색해서 그리드에 보여줘. 현재 화면 코드 MST0001, 이름 품목 등록, 배치와 편집 패널은 유지하고 등록·수정·삭제 연결은 다음에 할게.\nAPI는 GET /api/items?itemCode=&itemName= 이고 두 조건은 선택사항이야. JSON 배열의 필드는 id(숫자, DB 자동생성), itemCode, itemName, specification, unit, remark야. DB는 items(id,item_code,item_name,specification,unit,remark)로 새 Flyway migration에서 만들고 테스트 데이터는 넣지 마. 화면 내부 spec/memo는 응답 필드와 매핑해도 돼.",
+  "project": "local-only",
+  "script": "platform/tests/browser_item_query.cjs",
+  "script_sha256": "2b24fad9528612b54c9d6ce65229ee25cd55abdb77095980c95b7d864697ef97",
+  "cases": [
+    "query-grid-bottom-editor-layout",
+    "five-item-columns-and-edit-inputs",
+    "editor-collapse-resize-no-runtime-errors",
+    "api-query-matches-isolated-sql",
+    "query-button-renders-five-fields",
+    "read-only-query-and-cleanup"
+  ]
+}

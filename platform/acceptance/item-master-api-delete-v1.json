@@ -1,0 +1,25 @@
+{
+  "id": "item-master-api-delete-v1",
+  "project": "local-only",
+  "script": "platform/tests/browser_item_api_delete.cjs",
+  "script_sha256": "a7a4dea0189e44504b45311dbcb86ad47332d48f0b3cea91da986488a439ed2b",
+  "task": "기존 ItemController.java에 DELETE /api/items/{id}를 추가해줘. 존재하는 해당 품목 한 행만 DB에서 삭제하고 204를 반환해줘. 없는 id는 404로 처리하고 다른 데이터는 유지해줘. 기존 조회·등록·수정 API, 로그인 세션·CSRF·migration·화면은 그대로 두고 화면 삭제 연결은 다음에 할게.",
+  "cases": [
+    "fresh-items-and-generated-fixture",
+    "optional-query-api-matches-sql",
+    "partial-and-query-api-matches-sql",
+    "read-only-query-and-cleanup",
+    "post-create-trim-and-required-validation",
+    "post-optional-and-database-unique",
+    "post-session-csrf-and-relogin-persistence",
+    "post-owned-resources-cleanup",
+    "put-update-id-repeat-and-query-sql",
+    "put-required-duplicate-and-not-found-preserve-data",
+    "put-session-csrf-and-relogin-persistence",
+    "put-owned-resources-cleanup",
+    "delete-target-only-and-query-sql",
+    "delete-missing-id-preserves-data",
+    "delete-session-csrf-and-relogin-persistence",
+    "delete-owned-resources-cleanup"
+  ]
+}

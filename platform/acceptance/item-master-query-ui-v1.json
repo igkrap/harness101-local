@@ -1,0 +1,15 @@
+{
+  "id": "item-master-query-ui-v1",
+  "task": "기존 ItemMaster 품목 화면의 조회 버튼을 완성된 GET /api/items?itemCode=&itemName= API에 연결해줘. 품번·품명 두 조건은 선택사항이고 부분일치 AND 검색이야. 조회 결과 JSON 배열의 id(숫자), itemCode, itemName, specification, unit, remark를 받아 그리드의 품번·품명·규격·단위·비고 다섯 열에 보여줘. 화면 내부 spec/memo로 매핑해도 돼. 화면 코드 MST0001, 이름 품목 등록, 현재 배치와 편집 패널은 유지해줘. 백엔드와 DB는 그대로 두고 등록·수정·삭제 연결은 다음에 할게.",
+  "project": "local-only",
+  "script": "platform/tests/browser_item_query.cjs",
+  "script_sha256": "2b24fad9528612b54c9d6ce65229ee25cd55abdb77095980c95b7d864697ef97",
+  "cases": [
+    "query-grid-bottom-editor-layout",
+    "five-item-columns-and-edit-inputs",
+    "editor-collapse-resize-no-runtime-errors",
+    "api-query-matches-isolated-sql",
+    "query-button-renders-five-fields",
+    "read-only-query-and-cleanup"
+  ]
+}

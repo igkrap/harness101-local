@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "acceptance_id": "item-master-api-delete-v1",
+  "script_sha256": "a7a4dea0189e44504b45311dbcb86ad47332d48f0b3cea91da986488a439ed2b",
+  "database_scope": "fresh-owned",
+  "job_created_migration_edits": true,
+  "fixture_owner": "checker",
+  "discovery_round_limit": 8
+}

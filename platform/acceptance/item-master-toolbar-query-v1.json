@@ -1,0 +1,28 @@
+{
+  "id": "item-master-toolbar-query-v1",
+  "project": "local-only",
+  "script": "platform/tests/browser_item_toolbar_query.cjs",
+  "script_sha256": "80e5554fe9c102af7d657741a808cf81be804e316dae3fb03da646781fb0f9c3",
+  "task": "기존 품목 등록 화면 우측 상단에 공통 조회 버튼을 연결해줘. 현재 조회조건 입력값으로 조회하고 결과 그리드를 갱신해. 기존 등록·수정·삭제 기능과 공통 컴포넌트는 유지해.",
+  "cases": [
+    "query-grid-bottom-editor-layout",
+    "five-item-columns-and-edit-inputs",
+    "editor-collapse-resize-no-runtime-errors",
+    "api-query-matches-isolated-sql",
+    "query-button-renders-five-fields",
+    "read-only-query-and-cleanup",
+    "ui-new-reset-and-required-validation",
+    "ui-create-browser-post-sql-and-grid",
+    "ui-create-reload-query-persistence",
+    "ui-create-server-rejection-and-owned-cleanup",
+    "select-existing-row-and-edit-five-fields",
+    "actual-put-same-id-sql-and-grid",
+    "repeat-save-reload-query-persistence",
+    "required-server-duplicate-preserves-rows-and-owned-cleanup",
+    "delete-selection-cancel-preserves-data",
+    "browser-delete-target-only-and-editor-clear",
+    "delete-reload-query-persistence",
+    "delete-ui-owned-resources-cleanup",
+    "common-header-query-current-conditions-and-cleanup"
+  ]
+}

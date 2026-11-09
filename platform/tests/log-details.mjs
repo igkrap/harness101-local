@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import {detailText,readActivity} from '../web/src/logDetails.ts';
+import {compactEvents} from '../web/src/logEntries.ts';
+const event=(seq,type,data={})=>({seq,type,data,time:new Date().toISOString()});
+const raw=event(2,'model.response',{text:'',tool_calls:[{id:'call-123',function:{name:'read_file',arguments:'{"path":"frontend/src/screens/Inventory.tsx"}'}}],usage:{prompt_tokens:8000,completion_tokens:23}});
+assert.match(detailText(raw),/read_file/);assert.match(detailText(raw),/Inventory.tsx/);assert.match(detailText(raw),/별도 설명이 없습니다/);assert.match(detailText(raw),/8000/);
+const malformed=event(3,'model.response',{tool_calls:[{function:{name:'apply_edits',arguments:'{"unfinished'}}]});assert.match(detailText(malformed),/unfinished/);
+const result=event(5,'tool.finished',{text:'{"path":"x.tsx"}',stdout:'{"content":"<Table />"}',changed:false,truncated:true});assert.match(detailText(result),/입력/);assert.match(detailText(result),/반환 결과/);assert.match(detailText(result),/Table/);assert.match(detailText(result),/일부 생략/);
+const old=event(5,'tool.finished',{name:'read_file',path:'x.tsx',success:true});assert.match(detailText(old),/저장되어 있지 않습니다/);
+const reads=Array.from({length:8},(_,i)=>event(i+1,'tool.finished',{name:'read_file',path:i%2?'a.tsx':'b.tsx',success:true}));assert.equal(readActivity(reads).reads,8);assert.equal(readActivity(reads).repeated.length,2);
+assert.equal(readActivity([...reads,event(9,'autonomy.accepted'),event(10,'tool.finished',{name:'read_file',path:'a.tsx',success:true})]).reads,1);
+const retry=event(11,'autonomy.retry',{reason:'context reset after repeated reads or long history',round:97});assert.match(detailText(retry),/97/);assert(compactEvents([retry]).some(e=>e.seq===11));
+assert(!detailText(raw).includes('코드를 검토하려고'));
+console.log('LOG_DETAILS_OK: exact calls and arguments, historical missing result, truncation, repeated reads reset after commit, context reset visible');

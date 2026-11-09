@@ -1,0 +1,18 @@
+{
+  "id": "equipment-loans-v1",
+  "task": "새 프론트 전용 메모리 예제 화면을 현재 컴포넌트 카탈로그에서 검색하여 기존 부품을 조합해 구현하세요. 이 과제의 저장은 화면 메모리만 변경하며 실제 API/DB를 호출하지 않습니다. 기존 공통 지침의 실제 API 저장 규칙보다 이 과제의 메모리 저장 지시가 우선합니다.\n새 파일 frontend/src/screens/EquipmentLoans.tsx에 default 화면 컴포넌트와 meta={code:'ZGM0001',title:'장비 대여 관리',group:'Gemma 시험',permissions:['workspace:admin']}를 내보내세요. 기존 소스는 수정하지 않되 frontend/src/workspace.json은 새 화면을 기본 활성 탭으로 열기 위해 변경할 수 있습니다. 하네스·프레임워크·검사·기존 예제를 수정하지 마세요.\n초기 데이터는 {id:1,equipment:'노트북',borrower:'김하나',quantity:2}, {id:2,equipment:'모니터',borrower:'이두리',quantity:1} 두 건입니다. 결과 그리드는 장비명·대여자·수량 열과 행별 선택 버튼을 보여주며 두 행 중 어느 것을 선택해도 편집 입력 전체에 그 값이 들어가야 합니다.\n작은 화면 제목과 우측 상단 공통 조회·신규·저장 버튼을 두세요. 조회조건은 기본 장비명과 접었다 펼치는 상세 대여자 조건입니다. 조회 버튼을 누를 때 두 조건으로 부분일치 필터링하고, 조회 입력과 편집 입력은 독립적으로 유지하세요.\n목록 아래 맨 하단에 접기와 높이 조절이 가능한 편집 탭을 두세요. 기본정보 탭에는 장비명·대여자·수량 편집 폼, 안내 탭에는 '저장은 현재 화면에만 반영됩니다.' 문구를 배치하세요. 탭 전환·접기·조회로 미저장 편집 값이 사라지지 않아야 합니다.\n신규 버튼은 선택을 해제하고 편집값을 초기화합니다. 장비명·대여자는 필수이고 수량은 1 이상 정수입니다. 저장은 새 ID로 추가하거나 선택 ID의 행을 수정하고 그리드에 반영합니다. 신규 저장 후 다시 저장하면 중복 생성하지 않고 같은 행을 수정해야 합니다.\n상단 저장은 안내 탭이나 접힌 편집 상태에서도 기본정보 폼을 드러내고 검증한 뒤 저장해야 합니다. 기존 부품의 공개 계약을 읽고 사용하며 최종 빌드와 화면 동작을 검사하세요.",
+  "project": "local-only",
+  "script": "platform/tests/browser_gemma_composition_trial.cjs",
+  "script_sha256": "bbbd73eac071c2da7ce36cf131cc18209ceb086b9101eda1313b1954447f7d6a",
+  "cases": [
+    "source-screen-menu-compact-title-common-toolbar",
+    "two-row-selection-loads-all-fields",
+    "query-submit-filters-with-independent-editor-draft",
+    "query-conditions-and-combination-collapsed-retention",
+    "tab-draft-retention-collapsed-save-reveals-and-updates",
+    "required-text-and-positive-integer-validation",
+    "new-clears-creates-and-repeat-save-updates",
+    "bottom-editor-pointer-keyboard-resize-collapse-height",
+    "two-widths-no-runtime-errors-no-business-writes-no-db-definition"
+  ]
+}

@@ -1,0 +1,53 @@
+[
+ {
+  "id": "T3",
+  "level": "중간·검증",
+  "goal": "품목 등록 화면 편집에서 '규격'을 필수 입력으로 바꿔줘",
+  "queue": "4899dfbf5d0944928ffafbe425877934",
+  "job": "2ac6952eb1bf44ef95eda763ae7989e9",
+  "status": "failed",
+  "items": 1,
+  "wall_minutes": 6.0,
+  "plan_seconds": 96.0,
+  "model_calls": 2,
+  "accepted_edits": 0,
+  "verifications": 0,
+  "criteria": [],
+  "reason": "Requirement contract unavailable; completion blocked: expect_text requires value",
+  "framework_changed": false
+ },
+ {
+  "id": "T3",
+  "level": "중간·검증",
+  "goal": "품목 등록 화면 편집에서 '규격'을 필수 입력으로 바꿔줘",
+  "queue": "341488faa2dc441087a21dccb1e4ab1c",
+  "job": "616f70a19471467aa7a4b33e45437a63",
+  "status": "failed",
+  "items": 1,
+  "wall_minutes": 7.8,
+  "plan_seconds": 94.6,
+  "model_calls": 4,
+  "accepted_edits": 0,
+  "verifications": 0,
+  "criteria": [],
+  "reason": "Requirement contract unavailable; completion blocked: Requirement review rejected: [{\"criterion_id\": \"C2\", \"reason\": \"요구사항은 '규격'을 필수 입력으로만 변경하라고 했지, 탭 위치를 이동하라고 한 것이 아닙니다. C2는 규격 필드가 기본정보 탭에 보이지 않는지 확인하므로, 위치 변경이라는 무관한 요구사항을 검증하고 있습니다. C1도 추가정보 탭으로 이동하는 단계를 포함하므로, 원본 요구사항(필수만 변경)과 불일치합니다.\"}]",
+  "framework_changed": false
+ },
+ {
+  "id": "T3",
+  "level": "중간·검증",
+  "goal": "품목 등록 화면 편집에서 '규격'을 필수 입력으로 바꿔줘",
+  "queue": "07118eabf39d462e891beeaef5307fd9",
+  "job": "d8adb46108de423bb2dad40b56092ecd",
+  "status": "failed",
+  "items": 1,
+  "wall_minutes": 6.3,
+  "plan_seconds": 96.0,
+  "model_calls": 2,
+  "accepted_edits": 0,
+  "verifications": 0,
+  "criteria": [],
+  "reason": "Requirement contract unavailable; completion blocked: expect_text requires value",
+  "framework_changed": false
+ }
+]

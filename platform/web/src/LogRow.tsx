@@ -1,0 +1,27 @@
+import { useEffect, useRef, useState } from 'react';
+import { Button } from '@astryxdesign/core/Button';
+import type { FlowEvent } from './flowState';
+import { apiFetch } from './api';
+import { StatusBadge } from './StatusBadge';
+import { detailText } from './logDetails';
+const tools:Record<string,string>={read_file:'파일 읽기',list_files:'파일 목록',search_code:'코드 검색',write_file:'파일 저장',edit_file:'코드 수정',delete_file:'파일 삭제',inspect_code:'코드 구조·정의 조회',astryx_docs:'컴포넌트 문서',apply_edits:'코드 수정',apply_ast_edits:'AST 수정',repair_ast_candidate:'수정안 고치기',discard_ast_candidate:'수정안 폐기',apply_insertions:'코드 추가',inspect_layout:'화면 배치 측정',verify_requirements:'완료 조건 검사'};
+const actions:Record<string,string>={outline:'구조',symbol:'심볼 본문',definition:'정의',references:'참조',hover:'타입',diagnostics:'진단'};
+const checks:Record<string,string>={frontend:'Lint · 프론트 빌드',framework:'화면 동작 확인',backend:'백엔드 테스트',harness:'하네스 테스트'};
+function firstError(text:string){const lines=text.split('\n').map(s=>s.trim()).filter(Boolean);return lines.find(s=>/error TS\d+|\[ERROR\]|AssertionError|Exception:|^Error:/.test(s))||lines[0]||'';}
+export function LogRow({event:e,jobId,running=false}:{event:FlowEvent;jobId:string;running?:boolean}){
+  const failed=e.data.success===false||!!e.data.error,warning=e.type==='autonomy.rollback'||e.type==='autonomy.strategy'||e.type==='autonomy.proposal_rejected';
+  const pending=['model.request','tool.started','check.started'].includes(e.type);
+  const stageTitles:Record<string,string>={'autonomy.stage_started':'단계 시작','autonomy.stage_verified':'단계 조건 검사','autonomy.stage_failed':'단계 실패','autonomy.handoff':'검증 결과 인계','autonomy.integration_failed':'전체 검증 실패 · 담당 단계 재개','autonomy.stage_stalled':'같은 코드 반복 조회 차단'};
+  const title=stageTitles[e.type]|| (e.type==='requirement.contract_rejected'?'완료 조건 수정 필요':e.type==='requirement.review'?'완료 조건 검토':e.type==='requirement.contract'?'완료 조건 고정':e.type==='verification.finished'?'요청 달성 여부 검사':e.type.startsWith('check.')?checks[String(e.data.mode)]||'검사':e.type.startsWith('tool.')?e.data.name==='inspect_code'?`코드 조회 · ${actions[String(e.data.action)]||'상세'}`:e.data.name==='search_code'?`코드 검색 · ${e.data.search_mode==='hybrid'?'의미':'문자열'}`:tools[String(e.data.name)]||String(e.data.name):e.type==='model.request'?(running?'모델 응답 대기':'모델 호출'):e.type.startsWith('model.')?'모델 응답':e.type==='autonomy.rollback'?'수정 복원':e.type==='autonomy.blocked'?'도구 실행 보류':e.type==='autonomy.strategy'?'실행 방법 변경':e.type==='autonomy.retry'?'문맥 다시 구성':e.type==='autonomy.accepted'?'변경 반영':e.type==='autonomy.step_finished'?'단계 완료':e.type==='autonomy.analysis'?'자동 코드 분석':e.type==='autonomy.compact'?'문맥 재구성':e.type==='autonomy.proposal_rejected'?'수정안 적용 전 검증 실패':'실행 오류');
+  const expandable=e.type.startsWith('requirement.')||e.type==='verification.finished'||e.type.startsWith('model.')||e.type.startsWith('tool.')||e.type.startsWith('autonomy.')||!!(e.data.has_output||e.data.stdout||e.data.stderr||e.data.has_text||e.data.text||e.data.error||e.data.reason);
+  const [open,setOpen]=useState(failed),[body,setBody]=useState(''),[error,setError]=useState('');
+  const loaded=useRef(false);
+  useEffect(()=>{if(!open||!expandable||loaded.current)return;const c=new AbortController();apiFetch(`/api/jobs/${jobId}/events?at=${e.seq}`,{signal:c.signal}).then(async r=>{const d=await r.json();if(!r.ok)throw Error(d.error);if(c.signal.aborted)return;setBody(detailText(d.event));loaded.current=true;}).catch(err=>{if(!c.signal.aborted)setError(String(err));});return()=>c.abort();},[jobId,e.seq,open,expandable]);
+  const header=<span className="log-line"><span className="log-time">#{e.seq}</span><span className={`log-indicator ${failed?'failed':warning?'warning':pending&&running?'pending':pending?'':'passed'}`} aria-hidden="true">{failed?'×':warning?'↶':pending?(running?'◌':'−'):'✓'}</span><span className="log-title">{title}</span>{(failed||pending)&&<StatusBadge value={failed?'failed':running?e.type==='model.request'?'waiting':'pending':'stopped'} label={!failed&&!running?'종료':!failed&&e.type==='model.request'?'응답 대기':undefined}/>}<span className="log-time">{new Date(e.time).toLocaleTimeString('ko-KR',{hour12:false})}</span>{pending&&running&&<span className="log-time">{Math.max(0,Math.floor((Date.now()-Date.parse(e.time))/1000))}초 경과{typeof e.data.timeout_seconds==='number'?` / 응답 대기 설정 ${e.data.timeout_seconds}초`:''}</span>}{typeof e.data.duration_ms==='number'&&<span className="log-time">{(e.data.duration_ms/1000).toFixed(1)}초</span>}{expandable&&<span className="log-chevron" aria-hidden="true">{open?'⌄':'›'}</span>}</span>;
+  return <div className={`log-entry ${failed?'is-failed':''}`} data-event-seq={e.seq}>
+    {expandable?<Button label={`${title} 상세`} className="log-toggle" variant="ghost" width="100%" aria-expanded={open} onClick={()=>setOpen(v=>!v)} style={{height:'auto',justifyContent:'flex-start',textAlign:'left'}}>{header}</Button>:header}
+    {!!(e.data.path||e.data.query)&&<div className="log-path">{String(e.data.path||e.data.query)}</div>}
+    {!!(e.data.error||e.data.reason)&&!open&&<div className="log-error">{firstError(String(e.data.error||e.data.reason))}</div>}
+    {open&&expandable&&<pre className="log-output">{(body||error||'불러오는 중').split('\n').map((line,i)=><span className="log-code-line" key={i}><span className="log-number" aria-hidden="true">{i+1}</span><span>{line||' '}</span></span>)}</pre>}
+  </div>;
+}

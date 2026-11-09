@@ -1,0 +1,29 @@
+{
+  "id": "item-master-toolbar-core-v1",
+  "project": "local-only",
+  "script": "platform/tests/browser_item_toolbar_core.cjs",
+  "script_sha256": "574fc2d3fd29def9bb7c66d9beb30d19edf9a9e38e88763380dc1e5ac6464683",
+  "task": "기존 ItemMaster 품목 화면 우측 상단에 공통 조회·신규·삭제·저장 버튼을 연결해줘. 조회는 현재 조건으로 실행해. 신규는 선택 상태든 이미 신규 상태든 편집 필드 다섯 개를 매번 지우고 접힌 편집 패널을 펼쳐. 상단 저장으로 신규 초안을 실제 등록할 수 있게 해줘. 기존 수정·삭제·배치와 백엔드·공통 컴포넌트는 유지해.",
+  "cases": [
+    "query-grid-bottom-editor-layout",
+    "five-item-columns-and-edit-inputs",
+    "editor-collapse-resize-no-runtime-errors",
+    "api-query-matches-isolated-sql",
+    "query-button-renders-five-fields",
+    "read-only-query-and-cleanup",
+    "ui-new-reset-and-required-validation",
+    "ui-create-browser-post-sql-and-grid",
+    "ui-create-reload-query-persistence",
+    "ui-create-server-rejection-and-owned-cleanup",
+    "select-existing-row-and-edit-five-fields",
+    "actual-put-same-id-sql-and-grid",
+    "repeat-save-reload-query-persistence",
+    "required-server-duplicate-preserves-rows-and-owned-cleanup",
+    "delete-selection-cancel-preserves-data",
+    "browser-delete-target-only-and-editor-clear",
+    "delete-reload-query-persistence",
+    "delete-ui-owned-resources-cleanup",
+    "common-header-query-and-always-reset-new",
+    "common-header-first-save-post-and-cleanup"
+  ]
+}

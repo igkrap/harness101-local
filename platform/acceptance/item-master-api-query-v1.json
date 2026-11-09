@@ -1,0 +1,13 @@
+{
+  "id": "item-master-api-query-v1",
+  "task": "품목 조회 API부터 만들어줘. 기존 로그인·세션을 사용하고 화면 연결은 다음에 할게.\nGET /api/items?itemCode=&itemName=에서 두 조건은 선택사항이고 품번·품명을 부분일치 AND로 검색해 JSON 배열을 반환해줘. 필드는 id(숫자, DB 자동생성), itemCode, itemName, specification, unit, remark야. DB는 items(id,item_code,item_name,specification,unit,remark)로 새 Flyway migration에서 만들고 테스트 데이터는 넣지 마. 등록·수정·삭제는 다음 단계야.",
+  "project": "local-only",
+  "script": "platform/tests/browser_item_api_query.cjs",
+  "script_sha256": "7291dc55c4e02372e81cb0f85bc2acbcfd9dcb33a6c1a544d3a738bc620322a4",
+  "cases": [
+    "fresh-items-and-generated-fixture",
+    "optional-query-api-matches-sql",
+    "partial-and-query-api-matches-sql",
+    "read-only-query-and-cleanup"
+  ]
+}

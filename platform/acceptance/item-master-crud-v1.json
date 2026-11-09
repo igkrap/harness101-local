@@ -1,0 +1,21 @@
+{
+  "id": "item-master-crud-v1",
+  "task": "품목 관리 새 화면과 Spring 백엔드, PostgreSQL DB CRUD를 기존 공통 컴포넌트를 찾아 조합하여 구현하세요. 화면 메모리나 모의 응답이 아니라 실제 API와 DB에 저장해야 합니다.\n화면은 frontend/src/screens/ItemMaster.tsx에 만들고 export const meta={code:'MST0001',title:'품목 관리',group:'기준정보',permissions:['workspace:admin']}와 default 컴포넌트를 내보내세요. 상단은 작은 제목과 우측 공통 조회·신규·삭제·저장 버튼, 그 아래 조회 패널, 중단 결과 그리드, 하단에는 접기·높이 조절이 가능한 기본정보 편집 탭을 배치하세요. 조회조건은 기본 품번, 접었다 펼치는 상세 품명이고 조회 버튼을 눌러야 두 조건의 AND 부분일치로 검색합니다. 그리드는 품번·품명·규격·단위·비고 및 행별 선택 버튼을 보여줍니다.\n품목 필드는 품번(itemCode), 품명(itemName), 규격(specification), 단위(unit), 비고(remark)입니다. 품번·품명은 필수이며 공백만 입력하면 화면과 서버 양쪽에서 거부하세요. 저장할 때 품번·품명 앞뒤 공백을 제거하고 품번은 DB에서도 고유해야 합니다. 중복 품번의 신규·수정은 4xx 오류와 사용자 오류 표시로 처리하고 기존 데이터를 바꾸지 마세요. 규격·단위·비고는 선택 문자열입니다.\n행을 선택하면 편집 입력 전체에 해당 값이 들어갑니다. 신규는 선택을 해제하고 입력을 초기화하며, 저장은 신규 생성 또는 선택 항목 수정 후 그리드에 반영합니다. 신규 저장 후 다시 저장하면 같은 ID를 수정해야 합니다. 조회·편집 입력은 독립적이고 조회·탭·접기로 미저장 편집 값이 사라지지 않아야 합니다. 접힌 상태의 저장은 편집 영역을 펼쳐 검증합니다. 삭제는 사용자 확인 후 선택 항목을 실제 삭제하고, 취소하면 그대로 유지합니다. 새로고침 후에도 생성·수정 결과와 삭제 상태가 DB에 유지되어야 합니다.\n새 백엔드 소스는 backend/src/main/java/com/example/localinventory/items/ 아래에 작성하세요. 인증된 /api/items의 GET(선택 query itemCode,itemName), POST, /api/items/{id}의 PUT·DELETE를 제공하고 JSON 응답 필드는 id,itemCode,itemName,specification,unit,remark로 맞추세요. 목록은 배열, 생성·수정은 저장된 객체를 반환합니다. 새 migration backend/src/main/resources/db/migration/V6__create_items.sql로 items 테이블(id,item_code,item_name,specification,unit,remark)을 만드세요. items 테이블에 초기 업무 데이터는 넣지 마세요. 검사가 독립 시험 데이터를 생성합니다. 기존 Spring 로그인/세션/CSRF를 유지하고 프론트 요청은 기존 apiFetch를 사용하세요.\n변경은 위 새 화면·새 items Java 파일·새 V6 migration과 frontend/src/workspace.json의 기본 활성 탭 설정만 허용합니다. 기존 화면·프레임워크·백엔드·기존 migration·검사·하네스·설정은 변경하지 마세요. 필요한 공개 계약과 현재 파일은 도구로 읽고, 서로 의존하는 변경은 검사를 통과할 수 있는 도구 배치로 작성하세요. frontend/backend/framework 검사와 고정된 실제 CRUD 브라우저 검사를 모두 통과해야 완료입니다. 검사기는 별도 시험 DB와 현재 백엔드를 기동하므로 기존 실행 중인 서버의 기능 유무로 구현을 생략하지 마세요.",
+  "project": "local-only",
+  "script": "platform/tests/browser_gemma_item_crud.cjs",
+  "script_sha256": "1f4b6ec014a5af889502abda60b03d262372064ebcc83851266113158202d628",
+  "cases": [
+    "source-menu-layout-toolbar",
+    "api-required-trim-and-duplicate",
+    "ui-new-create-and-db-persistence",
+    "row-selection-loads-all-fields",
+    "query-submit-and-independent-draft",
+    "query-and-collapsed-condition-retention",
+    "ui-update-repeat-save-and-db",
+    "ui-required-validation-and-duplicate-rejection",
+    "bottom-editor-resize-collapse",
+    "delete-cancel-confirm-and-db",
+    "reload-persist-updates-delete",
+    "responsive-no-runtime-errors-real-api-only"
+  ]
+}

@@ -5,3 +5,28 @@ __pycache__/
 .venv*/
 debug/
 *.session.json
+fullstack/backend/target/
+fullstack/frontend/node_modules/
+fullstack/frontend/dist/
+fullstack/frontend/*.tsbuildinfo
+local-only/harness/state/
+local-only/.zvec-grep/
+platform/state/auth/
+
+# generated / runtime (platform + local-only)
+node_modules/
+dist/
+target/
+*.tsbuildinfo
+platform/state/
+local-only/harness/state/
+local-only/harness_evidence.log
+*.env
+server.env
+local-only-evidence/
+local-only/.zvec-grep/
+
+# example projects the platform manages (each keeps its own git history)
+local-only/
+fullstack/
+erp-harness/state/

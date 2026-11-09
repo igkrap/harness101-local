@@ -1,0 +1,21 @@
+{
+  "id": "item-master-api-update-v1",
+  "task": "기존 ItemController.java에 품목 수정 API PUT /api/items/{id}를 추가해줘. POST와 같은 itemCode,itemName,specification,unit,remark를 받아 해당 행만 수정하고 같은 숫자 id의 저장 객체를 200으로 반환해줘. 품번·품명은 앞뒤 공백을 제거하고 누락·null·빈값·공백만인 값은 4xx로 거부해줘. 선택값은 생략·빈값을 허용해줘. 다른 행과 품번이 중복되면 사유가 있는 4xx, 없는 id는 404로 처리하고 기존 데이터를 보존해줘. 반복 저장해도 행이 늘면 안 돼. 기존 GET·POST·로그인 세션·CSRF·migration·화면은 유지하고 화면 수정 연결·삭제는 다음에 할게.",
+  "project": "local-only",
+  "script": "platform/tests/browser_item_api_update.cjs",
+  "script_sha256": "d34c18a2fde51fc1d569236a7a52e19ee4f4c1e583b3beaa9ae4e160d8c66078",
+  "cases": [
+    "fresh-items-and-generated-fixture",
+    "optional-query-api-matches-sql",
+    "partial-and-query-api-matches-sql",
+    "read-only-query-and-cleanup",
+    "post-create-trim-and-required-validation",
+    "post-optional-and-database-unique",
+    "post-session-csrf-and-relogin-persistence",
+    "post-owned-resources-cleanup",
+    "put-update-id-repeat-and-query-sql",
+    "put-required-duplicate-and-not-found-preserve-data",
+    "put-session-csrf-and-relogin-persistence",
+    "put-owned-resources-cleanup"
+  ]
+}

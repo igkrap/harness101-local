@@ -1,0 +1,17 @@
+{
+  "id": "item-master-api-create-v1",
+  "task": "기존 품목 API에 신규 등록만 추가해줘. POST /api/items는 itemCode,itemName,specification,unit,remark를 받아 DB가 생성한 숫자 id를 포함한 저장 객체를 반환해줘. 품번·품명은 앞뒤 공백을 제거하고 누락·null·빈 문자열·공백만인 값은 4xx로 거부해줘. 규격·단위·비고는 생략하거나 빈 문자열이어도 돼. DB의 item_code에 유일 제약을 추가하고 중복은 오류 사유가 있는 4xx로 거부하며 기존 데이터를 보존해줘. 적용된 migration은 고치지 말고 새 migration을 추가해줘. 기존 GET·로그인 세션·CSRF는 유지하고 화면 연결·수정·삭제는 다음에 할게.",
+  "project": "local-only",
+  "script": "platform/tests/browser_item_api_create.cjs",
+  "script_sha256": "c11473388cf77a75301af716fb552abf108e2161aa0b603aa4dfe8a59430f6ed",
+  "cases": [
+    "fresh-items-and-generated-fixture",
+    "optional-query-api-matches-sql",
+    "partial-and-query-api-matches-sql",
+    "read-only-query-and-cleanup",
+    "post-create-trim-and-required-validation",
+    "post-optional-and-database-unique",
+    "post-session-csrf-and-relogin-persistence",
+    "post-owned-resources-cleanup"
+  ]
+}
