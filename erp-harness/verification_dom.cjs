@@ -137,6 +137,20 @@ async function run(page, check) {
       return { status: 'passed', reason: '', evidence: { selector: check.selector, count: await all.count() } };
     }
 
+    // The browser tab title (<title> in <head>) is never rendered on the page; check document.title.
+    const pageTitle = /^\s*(head\s*>\s*)?title\s*$/i.test(String(check.selector || ''));
+    if (pageTitle && (check.op === 'visible' || check.op === 'text')) {
+      const deadline = Date.now() + 5000;
+      let title = await page.title();
+      while (Date.now() < deadline && !(check.op === 'text' ? title.includes(check.contains) : title.trim())) {
+        await page.waitForTimeout(100);
+        title = await page.title();
+      }
+      if (check.op === 'text' && !title.includes(check.contains)) throw new Error(`page title is "${title}", expected it to contain "${check.contains}"`);
+      if (check.op === 'visible' && !title.trim()) throw new Error('page title is empty');
+      return { status: 'passed', reason: '', evidence: { page_title: title } };
+    }
+
     if (check.op === 'visible') {
       const loc = await resolveLocator(check.selector);
       const box = await loc.boundingBox();

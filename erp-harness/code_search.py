@@ -111,6 +111,10 @@ def search_code(root: Path, args: Dict[str, Any]) -> Dict[str, Any]:
     if not valid_roots:
         return {"success": False, "error": "No allowed source roots found"}
     target_dirs = valid_roots
+    # Top-level frontend files (index.html: page title, root markup) live outside src.
+    page = root_res / 'frontend/index.html'
+    if mode == 'exact' and scope in ('all', 'frontend') and page.is_file() and not page.is_symlink():
+        target_dirs = target_dirs + ['frontend/index.html']
 
     # 5. Execution Logic
     try:
