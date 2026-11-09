@@ -130,15 +130,17 @@ async function run(page, check) {
       return { status: 'passed', reason: '', evidence: { elements: items.slice(0, 120), tabs: tabs.filter(t => t.fields.length) } };
     }
 
-    if (check.op === 'absent') {
-      // Removed or no longer shown. The gate only accepts this op when the selector matched before the change.
-      const all = page.locator(check.selector);
-      await all.first().waitFor({ state: 'hidden', timeout: 5000 });
-      return { status: 'passed', reason: '', evidence: { selector: check.selector, count: await all.count() } };
-    }
-
     // The browser tab title (<title> in <head>) is never rendered on the page; check document.title.
-    const pageTitle = /^\s*(head\s*>\s*)?title\s*$/i.test(String(check.selector || ''));
+    const titleMatch = String(check.selector || '').match(/^\s*(?:head\s*>\s*)?title(?::has-text\((['"])(.*)\1\))?\s*$/i);
+    const pageTitle = !!titleMatch;
+    if (pageTitle && titleMatch[2] !== undefined && check.op !== 'text') check = { ...check, contains: titleMatch[2], op: check.op === 'absent' ? 'title_absent' : 'text' };
+    if (check.op === 'title_absent') {
+      const deadline = Date.now() + 5000;
+      let title = await page.title();
+      while (Date.now() < deadline && title.includes(check.contains)) { await page.waitForTimeout(100); title = await page.title(); }
+      if (title.includes(check.contains)) throw new Error(`page title is still "${title}"`);
+      return { status: 'passed', reason: '', evidence: { page_title: title } };
+    }
     if (pageTitle && (check.op === 'visible' || check.op === 'text')) {
       const deadline = Date.now() + 5000;
       let title = await page.title();
@@ -149,6 +151,13 @@ async function run(page, check) {
       if (check.op === 'text' && !title.includes(check.contains)) throw new Error(`page title is "${title}", expected it to contain "${check.contains}"`);
       if (check.op === 'visible' && !title.trim()) throw new Error('page title is empty');
       return { status: 'passed', reason: '', evidence: { page_title: title } };
+    }
+
+    if (check.op === 'absent') {
+      // Removed or no longer shown. The gate only accepts this op when the selector matched before the change.
+      const all = page.locator(check.selector);
+      await all.first().waitFor({ state: 'hidden', timeout: 5000 });
+      return { status: 'passed', reason: '', evidence: { selector: check.selector, count: await all.count() } };
     }
 
     if (check.op === 'visible') {

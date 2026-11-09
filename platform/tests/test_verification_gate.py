@@ -154,6 +154,18 @@ class VerificationTests(unittest.TestCase):
         self.assertIn('Manual',rejected[0]['error'])
         self.assertFalse(rejected[0]['success'])
 
+    def test_manual_criterion_beside_executable_ones_is_dropped(self):
+        mixed=copy.deepcopy(self.raw)
+        extra=copy.deepcopy(mixed['criteria'][0])
+        extra.update(id='C9',check={'op':'manual','reason':'framework code should own it'})
+        mixed['criteria'].append(extra)
+        self.runner.ask.side_effect=[{'content':json.dumps(mixed)}]
+        self.gate.prepare()
+        self.assertEqual(self.runner.ask.call_count,1)
+        self.assertNotIn('manual',self.gate.frozen_contract)
+        dropped=[c.args[1] for c in self.runner.h.log_event.call_args_list if c.args[0]=='requirement.manual_dropped']
+        self.assertEqual(dropped,[{'removed':['C9']}])
+
     def test_unexecutable_manual_contract_never_enters_edit_loop(self):
         manual=copy.deepcopy(self.raw)
         manual['criteria'][0]['check']={'op':'manual','reason':'needs human approval'}

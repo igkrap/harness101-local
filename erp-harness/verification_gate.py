@@ -125,7 +125,7 @@ class Gate:
         (ctx_str, _) = self.runner.current_context()
         from active_preview_context import active_screen_context
         ctx_str = active_screen_context(self.runner) + ctx_str
-        prompt = requirement_contract.prompt(get_task) + '\nThis autonomous run has no manual approval step. Use executable visible/text/layout/scenario/api checks for concrete requirements. Explanatory headings can map to an objective overall layout check. Manual checks cannot be completed by code edits. Browser checks run with writes blocked (POST/PUT/PATCH/DELETE are aborted), so never require a successful save/delete; check validation, visibility and values instead. Be concise: at most 2 criteria per requirement and at most 6 criteria in total, descriptions under 80 characters, compact JSON without comments or extra keys.\n' + ctx_str[:14000]
+        prompt = requirement_contract.prompt(get_task) + '\nThis autonomous run has no manual approval step. Use executable visible/text/layout/scenario/api checks for concrete requirements. Explanatory headings can map to an objective overall layout check. Manual checks cannot be completed by code edits. The browser tab title is checked with {"op":"text","selector":"title","contains":"..."}. Browser checks run with writes blocked (POST/PUT/PATCH/DELETE are aborted), so never require a successful save/delete; check validation, visibility and values instead. Be concise: at most 2 criteria per requirement and at most 6 criteria in total, descriptions under 80 characters, compact JSON without comments or extra keys.\n' + ctx_str[:14000]
         approach = os.environ.get('HARNESS_TASK_APPROACH', '').strip()
         if approach:
             # The planned direction names the fields/paths the author will build; checks must use the same ones.
@@ -163,6 +163,13 @@ class Gate:
             try:
                 parsed = requirement_contract.parse(get_task, response['content'])
                 manual_ids = [c['id'] for c in parsed['criteria'] if c.get('check', {}).get('op') == 'manual']
+                if manual_ids and len(manual_ids) < len(parsed['criteria']):
+                    # Wording like "프레임워크에서 살펴야함" says where to change, not something a check can observe.
+                    # Keep the executable criteria; the reviewer below still judges whether the request is covered.
+                    kept = dict(parsed, criteria=[c for c in parsed['criteria'] if c['id'] not in manual_ids])
+                    parsed = requirement_contract.validate(get_task, kept)
+                    self.runner.h.log_event('requirement.manual_dropped', {'removed': manual_ids})
+                    manual_ids = []
                 if manual_ids:
                     raise ValueError(f'Manual criteria cannot be executed automatically. Replace these with measurable DSL checks; do not drop request clauses or invent human approval. IDs: {manual_ids}')
 
