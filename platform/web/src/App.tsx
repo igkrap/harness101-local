@@ -8,6 +8,7 @@ import { LatestResult } from "./LatestResult";
 import "./actions.css";
 import Preview from "./Preview";
 import HistoryPage from "./HistoryPage";
+import HomePage from "./HomePage";
 import { Selector } from "@astryxdesign/core/Selector";
 import ProjectManager, { ProjectPicker } from "./ProjectManager";
 import ModelManager, {type ModelConfig} from "./ModelManager";
@@ -188,6 +189,8 @@ function Mark({ kind }: { kind: string }) {
     models: "M4 6h16 M4 12h16 M4 18h16 M8 3v6 M16 9v6 M10 15v6",
     chat: "M3 4h18v13H8l-5 4V4z M7 9h10 M7 13h7",
     history: "M3 12a9 9 0 1 0 3-6.7 M3 4v5h5 M12 7v5l3 2",
+    home: "M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z M18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z",
+    projects: "M3 6h7l2 2h9v11H3z",
     brand: "m12 2 10 6-10 6L2 8z M2 12l10 6 10-6 M2 16l10 6 10-6",
   };
   return (
@@ -357,7 +360,8 @@ async function read<T>(url: string, signal?: AbortSignal): Promise<T> {
 export default function App() {
   const [data, setData] = useState<Snapshot | null>(null),
     [offline, setOffline] = useState(""),
-    [page, setPage] = useState("overview"),
+    [page, setPage] = useState("home"),
+    [focusKey, setFocusKey] = useState(0),
     [collapsed, setCollapsed] = useState(()=>window.matchMedia('(max-width: 1000px)').matches),
     [tabs, setTabs] = useState(["overview"]);
   const [composerOpen,setComposerOpen]=useState(true),[runTab,setRunTab]=useState("logs");
@@ -449,7 +453,6 @@ export default function App() {
   const navigate = (key: string) => {
     setPage(key);
     if(key === "source") setSourceOpened(true);
-    setTabs((prev) => (prev.includes(key) ? prev : [...prev, key]));
   };
   const close = (key: string) => {
     const next = tabs.filter((t) => t !== key);
@@ -484,7 +487,7 @@ export default function App() {
   const start = async () => {
     if (useQueue) {
       const queue = await post("/api/queues", { goal, rounds, thinking, model: effectiveModel });
-      if (queue) { setComposerOpen(false); navigate("run"); }
+      if (queue) setGoal("");
       return;
     }
     const job = await post("/api/jobs", {
@@ -498,22 +501,17 @@ export default function App() {
     if (job) {
       setSelected(job.id);
       setSelectedRecord(job);
-      setComposerOpen(false);setRunTab("logs");
-      navigate("run");
+      setGoal("");
     }
   };
   const stop = () =>
     data?.active && post(`/api/jobs/${data.active.id}/stop`, {});
-  const navigation = [
-    ["overview", "개요"],
-    ["run", "작업 실행"],
-    ["chat", "채팅"],
-    ["projects", "프로젝트"],
-    ["models", "모델 설정"],
-    ["history", "변경 이력"],
-    ["source", "프로젝트 소스"],
-    ["preview", "미리보기"],
+  const navGroups: [string, string[][]][] = [
+    ["업무", [["home", "만들기"], ["preview", "앱 보기"], ["history", "변경 이력"]]],
+    ["설정", [["projects", "프로젝트"], ["models", "AI 모델"]]],
+    ["개발자 도구", [["run", "실행 기록"], ["overview", "통계"], ["source", "프로젝트 소스"], ["chat", "채팅"]]],
   ];
+  const navigation = navGroups.flatMap(([, items]) => items);
   const disabled =
     busy || !!offline || !data || !!data.maintenance || !!data.active || !!data.workspace_busy || !!data.external.length || ["planning","running","stopping"].includes(data.queue?.status||"");
   const queueLive = ["planning","running","stopping"].includes(data?.queue?.status||"");
@@ -542,7 +540,7 @@ export default function App() {
         header={
           <SideNavHeading
             heading="Local Workshop"
-            subheading="로컬 개발 플랫폼"
+            subheading="말로 만드는 업무 앱"
             icon={<Mark kind="brand" />}
           />
         }
@@ -552,17 +550,13 @@ export default function App() {
           hasButton: true,
         }}
       >
-        <SideNavSection title="워크스페이스">
-          {navigation.map(([key, label]) => (
-            <SideNavItem
-              key={key}
-              label={label}
-              icon={<Mark kind={key} />}
-              isSelected={page === key}
-              onClick={() => navigate(key)}
-            />
-          ))}
-        </SideNavSection>
+        {navGroups.map(([title, items]) => (
+          <SideNavSection key={title || "main"} title={title || "업무"}>
+            {items.map(([key, label]) => (
+              <SideNavItem key={key} label={label} icon={<Mark kind={key} />} isSelected={page === key} onClick={() => navigate(key)} />
+            ))}
+          </SideNavSection>
+        ))}
       </SideNav>
       <VStack gap={0} style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
         <HStack
@@ -587,47 +581,11 @@ export default function App() {
                   : "var(--color-text-warning)",
               }}
             >
-              ● 모델 서버 {data?.model.online ? "연결됨" : "연결 확인 중"}
+              ● AI {data?.model.online ? "준비됨" : "연결 확인 중"}
             </Text>
             {data?.active&&<Button label="실행 중지" variant="ghost" size="sm" isDisabled={busy||data.active.status==="stopping"} onClick={stop}/>}
-            <Button label="새 작업" onClick={() => {setComposerOpen(true);navigate("run");composerRef.current?.scrollIntoView({block:"start"});composerRef.current?.querySelector<HTMLTextAreaElement>('textarea')?.focus({preventScroll:true});}} size="sm" />
+            {page !== "home" && <Button label="새 요청" onClick={() => { navigate("home"); setFocusKey(n => n + 1); }} size="sm" />}
           </HStack>
-        </HStack>
-        <HStack
-          gap={0}
-          style={{
-            borderBottom: "1px solid var(--color-border)",
-            overflowX: "auto",
-            flexShrink: 0,
-          }}
-        >
-          <TabList value={page} onChange={setPage}>
-            {tabs.map((key) => (
-              <HStack key={key} gap={0} vAlign="center">
-                <Tab
-                  value={key}
-                  label={navigation.find((n) => n[0] === key)?.[1] || key}
-                />
-                <Button
-                  label={`${navigation.find((n) => n[0] === key)?.[1]} 탭 닫기`}
-                  isIconOnly
-                  icon={
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 16 16"
-                      aria-hidden="true"
-                    >
-                      <path d="m4 4 8 8m0-8-8 8" stroke="currentColor" />
-                    </svg>
-                  }
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => close(key)}
-                />
-              </HStack>
-            ))}
-          </TabList>
         </HStack>
         <VStack
           className="workspace-content"
@@ -656,7 +614,14 @@ export default function App() {
               </HStack>
             </Card>
           )}
-          {!page && <Text>왼쪽 메뉴에서 화면을 여세요.</Text>}
+          {page === "home" && <HomePage token={data?.token||""} goal={goal} setGoal={setGoal} busy={busy}
+            canStart={!disabled&&!!goal.trim()&&(useQueue||!!checks.length)&&!!data?.model.online&&!!effectiveModel} blockedReason={blockedReason} onStart={start}
+            screens={data?.screens||[]} models={modelChoices} model={effectiveModel} setModel={value=>{setModel(value);localStorage.setItem("model:"+projectId,value);}}
+            useQueue={useQueue} setUseQueue={next=>{setUseQueue(next);localStorage.setItem('use-queue',next?'1':'0');}} thinking={thinking} setThinking={setThinking}
+            queue={data?.queue} active={data?.active||null} phase={data?.phase||"idle"} events={data?.events||[]} eventsJob={data?.jobs[0]?.id}
+            onStopQueue={id=>void post(`/api/queues/${id}/stop`, {})} onResumeQueue={id=>void post(`/api/queues/${id}/resume`, {})} onStopJob={()=>void stop()}
+            onOpenApp={()=>navigate("preview")} onOpenHistory={()=>navigate("history")} focusKey={focusKey}
+            onDetail={id=>{setSelected(id);setSelectedRecord(null);setRunTab("logs");navigate("run");}}/>}
           {page === "overview" && (
             <>
               <OverviewStats jobs={data?.agent_jobs||[]} total={data?.agent_jobs_total} queue={data?.queue} online={!!data?.model.online}
