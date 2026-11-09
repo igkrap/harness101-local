@@ -126,6 +126,13 @@ class Gate:
         from active_preview_context import active_screen_context
         ctx_str = active_screen_context(self.runner) + ctx_str
         prompt = requirement_contract.prompt(get_task) + '\nThis autonomous run has no manual approval step. Use executable visible/text/layout/scenario/api checks for concrete requirements. Explanatory headings can map to an objective overall layout check. Manual checks cannot be completed by code edits. Browser checks run with writes blocked (POST/PUT/PATCH/DELETE are aborted), so never require a successful save/delete; check validation, visibility and values instead. Be concise: at most 2 criteria per requirement and at most 6 criteria in total, descriptions under 80 characters, compact JSON without comments or extra keys.\n' + ctx_str[:14000]
+        approach = os.environ.get('HARNESS_TASK_APPROACH', '').strip()
+        if approach:
+            # The planned direction names the fields/paths the author will build; checks must use the same ones.
+            prompt += '\nPLANNED DIRECTION (the author builds this; use the same fields, names and paths in request bodies and selectors): ' + approach[:1200]
+        if 'backend' in (getattr(self.runner, 'modes', ()) or ()):
+            prompt += ('\nAPI JSON uses camelCase field names like the existing APIs (e.g. {"itemCode": "A1", "name": "볼트"}); '
+                       'snake_case names such as dept_code are database columns and never appear in request bodies or json_path.')
         from component_catalog import context_for_task
         prompt += context_for_task(self.runner)
         from task_sources import task_screen_title

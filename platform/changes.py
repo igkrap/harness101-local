@@ -66,7 +66,10 @@ class Changes:
         try:
             snapshot = self.source(rel)
             self.written = getattr(self, 'written', {})
-            self.written[rel] = hashlib.sha256(json.dumps(snapshot, sort_keys=True).encode()).hexdigest()
+            digest = hashlib.sha256(json.dumps(snapshot, sort_keys=True).encode()).hexdigest()
+            self.written[rel] = digest
+            # Every version this run wrote: the harness may roll a failed patch back to an earlier one.
+            self.__dict__.setdefault('written_all', {}).setdefault(rel, set()).add(digest)
         except (OSError, ValueError, UnicodeError) as error:
             self.warnings.append(str(error))
 
@@ -79,7 +82,7 @@ class Changes:
                 if current == before:
                     continue
                 digest = hashlib.sha256(json.dumps(current, sort_keys=True).encode()).hexdigest()
-                if written.get(rel) != digest:
+                if digest not in getattr(self, 'written_all', {}).get(rel, {written.get(rel)}):
                     self.warnings.append(f'{rel}: changed outside this run; not restored')
                     continue
                 path = (self.root / rel)

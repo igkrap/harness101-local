@@ -275,6 +275,16 @@ async function run(page, check) {
           evidence.push({ action: 'expect_same_style', selector: step.selector, compared: Object.keys(base).length });
           continue;
         }
+        if (['fill', 'select', 'expect_value', 'expect_text', 'expect_visible'].includes(step.action)
+            && String(step.selector).includes('internal:label=') && await page.locator(step.selector).count() === 0) {
+          // A person fills "상위부서" without caring which editor tab holds it: open the tab that has the field.
+          const names = (await page.locator('[data-ui="tabbed-panel"] [role="tab"][aria-selected="false"]').allInnerTexts()).map(t => t.trim());
+          for (const name of names) {
+            await page.locator('[data-ui="tabbed-panel"] [role="tab"]').filter({ hasText: name }).first().click({ timeout: 2000 }).catch(() => {});
+            await page.waitForTimeout(150);
+            if (await page.locator(step.selector).count() > 0) { evidence.push({ action: 'reveal_tab', tab: name, for: step.selector }); break; }
+          }
+        }
         if (step.action === 'expect_text' || step.action === 'expect_visible') {
           // Several matches (e.g. a summary and a field message): the expectation holds if any matching
           // visible element satisfies it. Actions (click/fill/select) still require exactly one target.
@@ -323,7 +333,7 @@ async function run(page, check) {
        } catch (err) {
         if (step.action === 'expect_hidden') throw err;
         const why = await diagnose(step);
-        throw new Error(`step ${evidence.length + 1} (${step.action} ${step.selector}) failed: ${String(err.message).split('\n')[0]}` + (why ? ` | DIAGNOSTIC: ${why}` : ''));
+        throw new Error(`step ${evidence.filter(e => e.action !== 'reveal_tab').length + 1} (${step.action} ${step.selector}) failed: ${String(err.message).split('\n')[0]}` + (why ? ` | DIAGNOSTIC: ${why}` : ''));
        }
       }
       return { status: 'passed', reason: '', evidence };

@@ -47,6 +47,11 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual(args.kwargs.get('tools',args.args[1] if len(args.args)>1 else None),[])
         self.runner.ask.assert_called_once()
 
+    def test_issue_naming_a_requirement_is_a_contract_issue(self):
+        result=self.call({'approved':False,'issues':[{'criterion_id':'R1','reason':'요구사항 전체가 빠짐'}]})
+        self.assertFalse(result['approved'])
+        self.assertEqual(result['issues'][0]['criterion_id'],'contract')
+
     def test_only_explicit_boolean_approval_with_no_issues_passes(self):
         self.assertTrue(self.call({'approved':True,'issues':[]})['approved'])
         for result in [{'approved':'true','issues':[]},{'approved':True,'issues':[{'criterion_id':'C1','reason':'bad'}]},

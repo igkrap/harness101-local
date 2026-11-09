@@ -38,5 +38,14 @@ class RestoreTests(unittest.TestCase):
         self.assertTrue(any('outside this run' in w for w in c.warnings))
 
 
+    def test_new_file_rolled_back_to_an_earlier_own_version_is_still_removed(self):
+        new = self.root / 'frontend/src/New.tsx'
+        c = Changes(self.root, self.job)
+        c.capture('frontend/src/New.tsx'); new.write_text('first write'); c.note_written('frontend/src/New.tsx')
+        c.capture('frontend/src/New.tsx'); new.write_text('failed edit'); c.note_written('frontend/src/New.tsx')
+        new.write_text('first write')  # the harness rolled the failed patch back
+        self.assertEqual(c.restore_unverified(), ['frontend/src/New.tsx'])
+        self.assertFalse(new.exists())
+
 if __name__ == '__main__':
     unittest.main()

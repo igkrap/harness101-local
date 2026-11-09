@@ -69,7 +69,23 @@ class HarnessContractVerificationTest {
                 String responseBody = result.getResponse().getContentAsString(StandardCharsets.UTF_8);
                 int actualStatus = result.getResponse().getStatus();
 
-                assertEquals(expectedStatus, actualStatus, "Status mismatch for " + id);
+                if (expectedStatus != actualStatus) {
+                    // Tell the author exactly what the fixed check sent and why the server refused it.
+                    String reason = result.getResponse().getErrorMessage();
+                    Exception resolved = result.getResolvedException();
+                    if (resolved instanceof org.springframework.web.bind.MethodArgumentNotValidException invalid) {
+                        reason = "invalid fields " + invalid.getBindingResult().getFieldErrors().stream()
+                                .map(error -> error.getField() + " (" + error.getDefaultMessage() + ")").toList();
+                    } else if (resolved != null && resolved.getMessage() != null) {
+                        reason = resolved.getMessage().substring(0, Math.min(300, resolved.getMessage().length()));
+                    }
+                    String sent = check.containsKey("body") ? " with body " + mapper.writeValueAsString(check.get("body")) : "";
+                    String detail = (reason != null && !reason.isBlank() ? " reason: " + reason : "")
+                            + (responseBody.isBlank() ? "" : " response: " + responseBody.substring(0, Math.min(400, responseBody.length())));
+                    assertEquals(expectedStatus, actualStatus, "Status mismatch for " + id + ": " + method + " " + path + sent
+                            + " returned " + actualStatus + "." + detail
+                            + " The check is fixed; make the API accept this request.");
+                }
 
                 if (check.containsKey("json_path")) {
                     List<?> paths = (List<?>) check.get("json_path");
