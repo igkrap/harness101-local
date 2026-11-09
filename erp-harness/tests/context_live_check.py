@@ -36,9 +36,14 @@ def history(task):
     call(i, 'verify_requirements', {}, {'success': False, 'results': [{'id': 'C2', 'status': 'failed', 'reason': 'fill 상위부서: target does not exist in the DOM'}]}); i += 1
     msgs.append({'role': 'user', 'content': 'C2 failed: 상위부서 field is in the 추가정보 tab. Keep 부서코드 required.'})
     call(i, 'edit_file', {'path': 'frontend/src/screens/DepartmentRegistration.tsx', 'old_text': 'a', 'new_text': 'b'}, {'error': 'old_text not found'}); i += 1
-    for n in range(12):
-        call(i, 'read_file', {'path': f'frontend/src/framework/F{n}.tsx'}, {'content': text[: 900]}); i += 1
+    n = 0
+    while len(json.dumps(msgs, ensure_ascii=False)) < TARGET_CHARS:
+        # many small reads: rule-based pruning alone cannot make room, so the model must compact
+        call(i, 'read_file', {'path': f'frontend/src/framework/F{n}.tsx'}, {'content': text[n * 37 % 2000:][:1000]}); i += 1; n += 1
     return msgs
+
+
+TARGET_CHARS = 78000  # about 72% of 40960 with the 8192 output reserve at ~3.6 chars/token
 
 
 def main():
