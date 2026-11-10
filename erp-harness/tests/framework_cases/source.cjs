@@ -14,6 +14,13 @@ async function walk(dir, ctx) {
         if (!hasMeta || !hasDefault) {
           ctx.assert.fail(`${res}: add export const meta = { title: screen title } and a default component; a mere imported meta variable does not count`);
         }
+        // A program (meta.code) must be findable: the sidebar search indexes meta.keywords (synonyms users type).
+        const meta = content.match(/export\s+const\s+meta\s*=\s*\{([^{}]*(?:\[[^\]]*\][^{}]*)*)\}/);
+        if (meta && /\bcode\s*:/.test(meta[1])) {
+          const keywords = meta[1].match(/\bkeywords\s*:\s*\[([^\]]*)\]/);
+          const count = keywords ? (keywords[1].match(/['"`][^'"`]+['"`]/g) || []).length : 0;
+          if (count < 2) ctx.assert.fail(`${res}: add search keywords to meta, e.g. keywords: ['직원', '인사'] (at least 2 words users would type to find this screen; the sidebar search indexes them)`);
+        }
       }
       const forbidden = [
         { reg: /@ts-ignore|@ts-nocheck|@ts-expect-error/g, msg: 'TS suppression directive' },

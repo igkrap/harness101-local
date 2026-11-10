@@ -820,8 +820,10 @@ def _new_screen_brief(self):
     docs = usage(root, ['BusinessWorkspace', 'QueryPanel', 'RecordGrid', 'RecordEditor', 'ScreenActions'], budget=5000)
     self.read.add(REFERENCE_SCREEN)
     used = ', '.join(sorted(codes)) or '없음'
-    return ('새 화면은 frontend/src/screens/<이름>.tsx 파일 하나로 만든다. export const meta = { code, title, icon } 와 default 컴포넌트가 있으면 '
-            '메뉴에 자동으로 나온다. App.tsx, Home.tsx, workspace 폴더는 고치지 않는다. '
+    return ('새 화면은 frontend/src/screens/<이름>.tsx 파일 하나로 만든다. export const meta = { code, title, icon, keywords } 와 default 컴포넌트가 있으면 '
+            '프로그램으로 자동 등록되어 메뉴(관리자에게는 미편성 프로그램)와 사이드바 검색에 나온다. '
+            "keywords에는 사용자가 이 화면을 찾을 때 칠 만한 낱말을 2개 이상 적는다(예: 사원 등록이면 ['사원', '직원', '인사']). "
+            '메뉴 배치·권한·시스템명은 공통 시스템이 관리하므로 코드로 건드리지 않는다. App.tsx, Home.tsx, workspace 폴더는 고치지 않는다. '
             f'code는 영문 3자리+숫자 4자리이고 이미 쓰는 code({used})와 겹치지 않게 한다. '
             f'구성은 CURRENT FILE로 주어진 {REFERENCE_SCREEN}(품목 등록)과 같게 한다: BusinessWorkspace에 조회 조건, 그리드, 편집 패널, 공통 버튼. '
             '필드와 API 주소만 이 화면에 맞게 바꾼다.\n'

@@ -9,8 +9,8 @@
 module.exports = async function check(ctx) {
   const { page, assert } = ctx;
 
-  const expandBtn = page.getByRole('button', { name: /Expand sidebar|펼치기/i });
-  const collapseBtn = page.getByRole('button', { name: /Collapse sidebar|접기/i });
+  const expandBtn = page.getByRole('button', { name: '사이드바 펼치기', exact: true });
+  const collapseBtn = page.getByRole('button', { name: '사이드바 접기', exact: true });
   
   // Navigation target to click 'Home'
   const homeBtn = page.getByRole('button', { name: /Home|홈/i }).first();

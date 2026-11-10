@@ -23,7 +23,7 @@ module.exports = async function check(ctx) {
       createdDir = true;
     }
 
-    const content = `export const meta = { code: 'ZZZ9999', title: '검증화면' };
+    const content = `export const meta = { code: 'ZZZ9999', title: '검증화면', keywords: ['검증', '확인'] };
 import { Text } from '../framework';
 export default function RegistryProbe() { return <Text>local-registry-check</Text>; }`;
     
