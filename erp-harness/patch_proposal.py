@@ -26,7 +26,11 @@ def propose_patch(runner, call):
     current_source = service._validate(target).read_text(encoding='utf-8')
     
     if not hasattr(runner, '_grid_docs'):
-        docs_res = runner.h._execute_tool('astryx_docs', {'topic': 'Table'})
+        try:
+            offered = any(t['function']['name'] == 'astryx_docs' for t in runner.h._get_tool_schemas())
+        except Exception:
+            offered = True  # harness doubles without a tool list keep the previous behaviour
+        docs_res = runner.h._execute_tool('astryx_docs', {'topic': 'Table'}) if offered else None
         runner._grid_docs = json.dumps(docs_res)[:5000] if isinstance(docs_res, dict) else ""
     
     from project_context import project_context

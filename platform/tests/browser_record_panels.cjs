@@ -5,11 +5,7 @@ const root = path.resolve(__dirname, '../../local-only');
 const fixture = `
 import React, {useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {Theme} from '@astryxdesign/core/theme';
-import {neutralTheme} from '@astryxdesign/theme-neutral/built';
-import '@astryxdesign/core/reset.css';
-import '@astryxdesign/core/astryx.css';
-import '@astryxdesign/theme-neutral/theme.css';
+import {AppTheme} from './src/framework';
 import {DataWorkspace,QueryPanel,RecordGrid,RecordEditor} from './src/framework';
 const contacts=[{id:'a',name:'Alpha',quota:4,region:'east'},{id:'b',name:'Beta',quota:9,region:'west'}];
 const contactFields=[{name:'name',label:'연락처명',required:true},{name:'quota',label:'허용량',type:'integer',min:0,required:true},
@@ -28,7 +24,7 @@ function Fixture(){
  }}/>} />
  </main><section aria-label="작업장 예제"><RecordEditor fields={[{name:'title',label:'작업장명',required:true},{name:'location',label:'위치',required:true}]} record={null} onNew={()=>{}} onSave={async(values,id)=>{window.panelEvents.push({kind:'site-save',values,id})}}/></section></>;
 }
-createRoot(document.getElementById('root')).render(<Theme theme={neutralTheme}><Fixture/></Theme>);
+createRoot(document.getElementById('root')).render(<AppTheme><Fixture/></AppTheme>);
 `;
 
 async function verify(browser, project = root) {

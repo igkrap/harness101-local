@@ -24,14 +24,14 @@ module.exports = async function check(ctx) {
     }
 
     const content = `export const meta = { code: 'ZZZ9999', title: '검증화면' };
-import { Text } from '@astryxdesign/core/Text';
+import { Text } from '../framework';
 export default function RegistryProbe() { return <Text>local-registry-check</Text>; }`;
     
     await fs.writeFile(probePath, content);
     createdFile = true;
 
     // Sidebar Navigation
-    const sidebar = page.getByRole('navigation', { name: 'Side navigation', exact: true });
+    const sidebar = page.getByRole('navigation', { name: '메뉴', exact: true });
     const menuBtn = sidebar.getByRole('button', { name: '검증화면' });
     
     try {
@@ -42,11 +42,11 @@ export default function RegistryProbe() { return <Text>local-registry-check</Tex
     await menuBtn.click();
 
     // Tabs Navigation
-    const tabsNav = page.getByRole('navigation', { name: 'Tabs', exact: true });
+    const tabsNav = page.locator('[data-ui="workspace-tabs"]');
     
     // Assert exactly ONE LABEL tab named '검증화면' (allowing for repeated name if UI allows, but targeting the label)
     // and ensure it is visible.
-    const labelTab = tabsNav.getByRole('button', { name: /^(검증화면)+$/ });
+    const labelTab = tabsNav.getByRole('tab', { name: /^검증화면/ });
     await assert.strictEqual(await labelTab.count(), 1, 'Should have exactly one label tab named 검증화면');
     await assert.strictEqual(await labelTab.isVisible(), true, 'Tab should be visible');
 

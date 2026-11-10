@@ -178,7 +178,8 @@ class FrontendToolTests(unittest.TestCase):
             self.assertEqual(json.dumps(runner.tools()),json.dumps(before))
             args.context_profile='legacy'
             legacy_names={tool['function']['name'] for tool in runner.tools()}
-            self.assertTrue({'inspect_code','apply_ast_edits','search_components','astryx_docs'} <= legacy_names)
+            # astryx_docs is offered only when the project depends on that design system
+            self.assertTrue({'inspect_code','apply_ast_edits','search_components'} <= legacy_names)
 
 
 if __name__=='__main__':unittest.main()

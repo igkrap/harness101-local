@@ -4,8 +4,7 @@ const { openFixture } = require('./vite_fixture.cjs');
 
 const source = `
 import React, { useState } from 'react'; import { createRoot } from 'react-dom/client';
-import { Theme } from '@astryxdesign/core/theme'; import { neutralTheme } from '@astryxdesign/theme-neutral/built';
-import '@astryxdesign/core/reset.css'; import '@astryxdesign/core/astryx.css'; import '@astryxdesign/theme-neutral/theme.css';
+import {AppTheme} from './src/framework';
 import { RecordGrid, useEditableRows } from './src/framework';
 const data = [{ id: 'A', name: 'Alpha', qty: '1' }, { id: 'B', name: 'Beta', qty: '2' }, { id: 'C', name: 'Gamma', qty: '3' }, { id: 'D', name: 'Delta', qty: '4' }];
 const columns = [{ key: 'name', label: '이름' }, { key: 'qty', label: '수량' }];
@@ -31,9 +30,9 @@ function Editable() {
       onRowsChange={grid.onRowsChange} onSelectionChange={next => { setPicked(next); window.events.editableSel = next.map(r => r.id); }} />
   </section>;
 }
-createRoot(document.getElementById('root')).render(<Theme theme={neutralTheme}>
+createRoot(document.getElementById('root')).render(<AppTheme>
   {['single', 'multiple', 'checkbox-single', 'checkbox-multiple'].map(mode => <Mode key={mode} mode={mode} />)}<Editable />
-</Theme>);
+</AppTheme>);
 `;
 
 async function verify(browser, project) {

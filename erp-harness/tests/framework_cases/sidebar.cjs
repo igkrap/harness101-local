@@ -53,7 +53,8 @@ module.exports = async function check(ctx) {
   let expandedBoxAgain;
   for (let i = 0; i < 30; i++) {
     expandedBoxAgain = await homeHeading.boundingBox();
-    if (expandedBoxAgain && expandedBoxAgain.x > collapsedBox.x) break;
+    // the sidebar animates open: wait until the heading is back, not just moving
+    if (expandedBoxAgain && Math.abs(expandedBoxAgain.x - expandedX) < 5) break;
     await page.waitForTimeout(100);
   }
 

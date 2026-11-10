@@ -95,6 +95,7 @@ class FrontendTypeFeedbackTests(unittest.TestCase):
         self.assertIn('[frontend]', report)
         self.assertIn("'close' | 'wrench'", report)
 
+    @unittest.skipUnless((ROOT / 'local-only/frontend/node_modules/@astryxdesign/core').is_dir(), 'project no longer installs the astryx design system')
     def test_actual_installed_icon_type_is_resolved(self):
         from installed_type_records import declarations
         report = '\n'.join(declarations(ROOT / 'local-only', ('IconName', 'IconType')))
@@ -139,6 +140,7 @@ class FrontendTypeFeedbackTests(unittest.TestCase):
         self.assertIn("Did you mean 'onClick'?",report)
         self.assertLess(report.index('ACTUAL_EXPECTED_TYPE_API'),report.index('--- '+str(self.source.resolve())))
 
+    @unittest.skipUnless((ROOT / 'local-only/frontend/node_modules/@astryxdesign/core').is_dir(), 'project no longer installs the astryx design system')
     def test_actual_compact_declarations_include_useful_members_instead_of_only_comments(self):
         from installed_type_records import declarations
         records=declarations(ROOT/'local-only',('TextInputType','TableProps','TableColumn'))

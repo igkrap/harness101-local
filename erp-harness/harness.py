@@ -511,7 +511,7 @@ class Harness:
     def _get_tool_schemas(self):
         from code_search import SEARCH_TOOL
         from component_catalog import TOOL as COMPONENT_SEARCH_TOOL
-        return [
+        tools = [
             COMPONENT_SEARCH_TOOL,
             {"type":"function","function":SEARCH_TOOL},
             {"type": "function", "function": {"name": "list_files", "description": "List files", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}},
@@ -522,6 +522,15 @@ class Harness:
             {"type": "function", "function": {"name": "astryx_docs", "description": "Get component docs", "parameters": {"type": "object", "properties": {"topic": {"type": "string"}, "dependency_root": {"type": "string"}}, "required": ["topic"]}}},
             {"type": "function", "function": {"name": "finish", "description": "Call this when the task is complete and all checks pass.", "parameters": {"type": "object", "properties": {}}}}
         ]
+        # The design-system docs tool only makes sense for a project that depends on that design system;
+        # screens are otherwise built from the project's own framework (frontend/src/framework/API.txt).
+        try:
+            package = (self.workspace.root / 'frontend/package.json').read_text(encoding='utf-8')
+        except OSError:
+            package = ''
+        if '@astryxdesign' not in package:
+            tools = [t for t in tools if t['function']['name'] != 'astryx_docs']
+        return tools
 
 
 

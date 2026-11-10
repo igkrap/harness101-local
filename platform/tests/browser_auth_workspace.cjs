@@ -6,9 +6,7 @@ const {openFixture}=require('./vite_fixture.cjs');
 const source=`
 import React,{useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {Theme} from '@astryxdesign/core/theme';
-import {neutralTheme} from '@astryxdesign/theme-neutral/built';
-import '@astryxdesign/core/reset.css';import '@astryxdesign/core/astryx.css';import '@astryxdesign/theme-neutral/theme.css';
+import {AppTheme} from './src/framework';
 import {AuthProvider,useAuth} from './src/framework/auth/AuthProvider';
 import {AuthGate} from './src/framework/auth/AuthGate';
 import {apiFetch} from './src/framework/auth/sessionClient';
@@ -21,7 +19,7 @@ function Edit(){return <RecordEditor fields={[{name:'name',label:'검증 이름'
 function Read(){const[count,setCount]=useState('');return <><button onClick={async()=>{const r=await apiFetch('/api/inventory');if(r.ok)setCount(String((await r.json()).length));}}>목록 읽기</button><output>{count}</output></>;}
 const screens={Edit:{id:'Edit',meta:{title:'편집 예제',permissions:['inventory:write']},Component:Edit},Read:{id:'Read',meta:{title:'읽기 예제',permissions:['inventory:read']},Component:Read},Hidden:{id:'Hidden',meta:{title:'권한 없는 예제',permissions:['fixture:forbidden']},Component:Read}};
 function Shell(){const auth=useAuth();return auth.user?<WorkspaceShell screens={screens} initialWorkspace={{tabs:['Edit','Read'],activeTab:'Edit',sidebarCollapsed:false}} user={auth.user} onLogout={auth.signOut}/>:null;}
-createRoot(document.getElementById('root')).render(<Theme theme={neutralTheme}><AuthProvider><AuthGate><Shell/></AuthGate></AuthProvider></Theme>);
+createRoot(document.getElementById('root')).render(<AppTheme><AuthProvider><AuthGate><Shell/></AuthGate></AuthProvider></AppTheme>);
 `;
 
 async function verify(browser,{apiTarget='http://127.0.0.1:8084'}={}){

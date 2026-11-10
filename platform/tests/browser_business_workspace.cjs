@@ -2,8 +2,7 @@ const fs=require('node:fs'),path=require('node:path'),assert=require('node:asser
 const {openFixture}=require('./vite_fixture.cjs');
 const source=`
 import React,{useState} from 'react';import{createRoot}from'react-dom/client';
-import{Theme}from'@astryxdesign/core/theme';import{neutralTheme}from'@astryxdesign/theme-neutral/built';
-import'@astryxdesign/core/reset.css';import'@astryxdesign/core/astryx.css';import'@astryxdesign/theme-neutral/theme.css';
+import {AppTheme} from './src/framework';
 import{BusinessWorkspace,QueryPanel,RecordEditor,RecordGrid}from'./src/framework';
 window.workspaceEvents=[];
 function Notes(){const[value,setValue]=useState('');return <label>메모<textarea value={value} onChange={event=>setValue(event.target.value)}/></label>;}
@@ -17,7 +16,7 @@ function Fixture(){
  results={<RecordGrid rows={rows} columns={[{key:'name',label:'이름'}]} keyField="id" onSelect={row=>{setSelected({id:row.id,values:{name:row.name}});setCollapsed(false);}}/>}
  editorTabs={[{id:'basic',label:'기본정보',content:<RecordEditor formId="fixture-editor" showActions={false} compact fields={[{name:'name',label:'편집 이름',required:true}]} record={selected} resetKey={reset} onNew={fresh} onSave={async(values,id)=>{window.workspaceEvents.push({kind:'save',values,id});await new Promise(resolve=>setTimeout(resolve,120));}}/>},{id:'notes',label:'메모',content:<Notes/>}]}/></main>;
 }
-createRoot(document.getElementById('root')).render(<Theme theme={neutralTheme}><Fixture/></Theme>);
+createRoot(document.getElementById('root')).render(<AppTheme><Fixture/></AppTheme>);
 `;
 
 async function verify(browser,project){
