@@ -6,6 +6,8 @@ import re
 
 from ast_candidate_buffer import CandidateBuffer, CandidateStore, digest
 
+CANDIDATE_REJECTION_LIMIT = 6  # consecutive rejected repair proposals before the run stops
+
 
 PUBLISH_TOOL = {'type': 'function', 'function': {
     'name': 'publish_candidate_buffer', 'description': 'Internal publication of validated AST buffer edits.',
@@ -192,6 +194,7 @@ def extend_virtual_candidate(base, store):
             calls = response.get('tool_calls') or []
             if not calls:
                 self.h.log_event('autonomy.strategy', {'reason': 'candidate_buffer_rejected', 'path': buffer.path, 'error': self._candidate_focus_error})
+                self._candidate_give_up(buffer)
                 return response
             if len(calls) != 1 or calls[0]['function']['name'] != 'repair_ast_candidate':
                 raise ValueError('Unexpected candidate buffer action')
@@ -217,8 +220,10 @@ def extend_virtual_candidate(base, store):
                 self._candidate_last_rejected = key
                 self._candidate_focus_error = detail
                 self.h.log_event('autonomy.strategy', {'reason': 'candidate_buffer_rejected', 'path': buffer.path, 'error': detail})
+                self._candidate_give_up(buffer)
                 return {'content': 'Candidate AST edit rejected: ' + detail, 'tool_calls': []}
             self._candidate_repeat, self._candidate_last_rejected = 0, None
+            self._candidate_rejections = 0
             store.save(buffer.record(self.feedback))
             if buffer.pending['edits'] != data['changes']:
                 self.h.log_event('autonomy.strategy', {'reason': 'candidate_fragment_edits_normalized',
@@ -227,6 +232,14 @@ def extend_virtual_candidate(base, store):
             self.h.log_event('autonomy.strategy', {'reason': 'candidate_buffer_reindexed', 'path': buffer.path,
                              'node_count': len(snapshot['nodes']), 'node_ids': [c['node_id'] for c in data['changes']]})
             return self._publication()
+
+        def _candidate_give_up(self, buffer):
+            # Repair proposals that keep getting rejected only burn model calls (one run looped 61 times).
+            self._candidate_rejections = getattr(self, '_candidate_rejections', 0) + 1
+            if self._candidate_rejections >= CANDIDATE_REJECTION_LIMIT:
+                self.h.log_event('autonomy.stalled', {'reason': 'candidate_repair_no_progress', 'path': buffer.path,
+                                                      'rejections': self._candidate_rejections, 'model_calls': getattr(self, 'used', 0)})
+                raise RuntimeError(f'Candidate repair of {buffer.path} was rejected {self._candidate_rejections} times in a row; stopping instead of looping')
 
         def tools(self):
             result = super().tools()

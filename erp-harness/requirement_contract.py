@@ -128,7 +128,9 @@ def validate(task: str, raw: dict) -> dict:
         allowed = {'manual': {'reason'}, 'visible': {'selector'}, 'absent': {'selector'}, 'text': {'selector', 'contains'}, 'layout': {'left', 'right', 'relation', 'ratio'}, 'scenario': {'steps'}, 'api': {'method', 'path', 'status', 'body', 'json_path', 'equals'}, 'junit_added': {'suite', 'count', 'preserve_main'}}
         if op not in allowed:
             raise ValueError(f'Unknown op: {op}')
-        if set(check.keys()) - allowed[op] - {'op'}:
+        if 'page' in check and (op not in ('visible', 'absent', 'text', 'scenario') or check['page'] != 'login'):
+            raise ValueError(f"check.page for cid {cid} may only be \"login\" (checks the sign-in page before logging in) on visible/absent/text/scenario")
+        if set(check.keys()) - allowed[op] - {'op', 'page'}:
             raise ValueError(f"Extra keys in check for cid {cid}: {sorted(list(set(check.keys()) - allowed[op] - {'op'}))}; allowed keys: {sorted(list(allowed[op]))}")
         if op == 'manual':
             check_type(check.get('reason'), str, 'reason')

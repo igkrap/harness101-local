@@ -130,7 +130,7 @@ class Gate:
         (ctx_str, _) = self.runner.current_context()
         from active_preview_context import active_screen_context
         ctx_str = active_screen_context(self.runner) + ctx_str
-        prompt = requirement_contract.prompt(get_task) + '\nThis autonomous run has no manual approval step. Use executable visible/text/layout/scenario/api checks for concrete requirements. Explanatory headings can map to an objective overall layout check. Manual checks cannot be completed by code edits. The browser tab title is checked with {"op":"text","selector":"title","contains":"..."}. Browser checks run with writes blocked (POST/PUT/PATCH/DELETE are aborted), so never require a successful save/delete; check validation, visibility and values instead. Be concise: at most 2 criteria per requirement and at most 6 criteria in total, descriptions under 80 characters, compact JSON without comments or extra keys.\n' + ctx_str[:14000]
+        prompt = requirement_contract.prompt(get_task) + '\nThis autonomous run has no manual approval step. Use executable visible/text/layout/scenario/api checks for concrete requirements. Explanatory headings can map to an objective overall layout check. Manual checks cannot be completed by code edits. The browser tab title is checked with {"op":"text","selector":"title","contains":"..."}. Checks run signed in on the app; to check the sign-in page itself add \"page\": \"login\" to that check. Browser checks run with writes blocked (POST/PUT/PATCH/DELETE are aborted), so never require a successful save/delete; check validation, visibility and values instead. Be concise: at most 2 criteria per requirement and at most 6 criteria in total, descriptions under 80 characters, compact JSON without comments or extra keys.\n' + ctx_str[:14000]
         approach = os.environ.get('HARNESS_TASK_APPROACH', '').strip()
         if approach:
             # The planned direction names the fields/paths the author will build; checks must use the same ones.
@@ -185,6 +185,7 @@ class Gate:
                 self._require_absent_baseline(parsed)
                 self._require_unique_selectors(parsed)
                 self._dry_run_scenarios(parsed)
+                self._require_change_sensitive(parsed)
                 from requirement_review import review
                 review_result = review(self.runner, parsed)
                 if review_result['approved'] is not True:
@@ -399,6 +400,21 @@ class Gate:
         if problems:
             raise ValueError(f"criteria selectors do not fit the current screen: {problems}. Use the exact tags and attributes "
                              "from the CURRENT SCREEN ELEMENTS for existing elements; only the new element itself may be absent before the change.")
+
+    def _require_change_sensitive(self, parsed):
+        """A contract whose browser checks all pass before any edit cannot tell whether the request was done."""
+        ui = [c for c in parsed['criteria'] if c.get('check', {}).get('op') in ('visible', 'text', 'scenario')]
+        if not ui or len(ui) != len(parsed['criteria']):
+            return
+        try:
+            report = self._probe(ui)
+        except Exception:
+            return
+        passed = {r.get('id') for r in report.get('results', []) if r.get('status') == 'passed'}
+        self.runner.h.log_event('requirement.baseline_pass', {'passed': sorted(passed), 'checked': [c['id'] for c in ui]})
+        if passed >= {c['id'] for c in ui}:
+            raise ValueError('every check already passes before any change, so none of them can show the request was done. '
+                             'Check what will differ after the change (for the sign-in page add "page": "login" to the check).')
 
     def _require_absent_baseline(self, parsed):
         """An absence check only means something if the element exists before the change."""

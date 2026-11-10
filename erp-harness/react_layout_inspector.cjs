@@ -31,7 +31,10 @@ async function verify(input) {
           const apiRes = await api.run(c.check, api_url, allow_api_writes);
           Object.assign(res, apiRes);
         } else if (isUI) {
-          const page = await context.newPage();
+          // page:"login" checks the sign-in page itself, in a fresh context without the session.
+          const loginPage = c.check.page === 'login';
+          const pageContext = loginPage ? await browser.newContext({ viewport: { width: 1440, height: 1000 } }) : context;
+          const page = await pageContext.newPage();
           const blocked = [];
           await page.route('**/*', async (route) => {
             const req = route.request();
@@ -45,7 +48,7 @@ async function verify(input) {
 
           try {
             const urlObj = new URL(preview_url); const isLocal = ['localhost', '127.0.0.1', '[::1]'].includes(urlObj.hostname); if (!['http:', 'https:'].includes(urlObj.protocol) || !isLocal) throw new Error('invalid preview_url'); await page.goto(preview_url, { waitUntil: 'domcontentloaded', timeout: 10000 }); await page.waitForLoadState('networkidle', { timeout: 10000 });
-            if (input.open_screen) {
+            if (input.open_screen && !loginPage) {
               // Open the task's target screen from the app menu so checks run where the change is.
               const entry = page.locator('nav').getByText(input.open_screen, { exact: true }).first();
               await entry.click({ timeout: 5000 }).catch(() => { throw new Error(`target screen '${input.open_screen}' could not be opened from the menu`); });
@@ -85,6 +88,7 @@ async function verify(input) {
             res.reason = e.message;
           } finally {
             await page.close();
+            if (loginPage) await pageContext.close();
           }
         }
       } catch (err) {
