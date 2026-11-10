@@ -99,6 +99,7 @@ async function verify(browser, project) {
     assert.deepEqual(await ev('editableSel'), ['A', 'D']);
     await grid('editable').getByRole('button', { name: '삭제 editable' }).click();
     assert.deepEqual(await ev('editable:deleted'), ['A', 'D']);
+    if (process.env.GRID_SHOT) await page.screenshot({ path: process.env.GRID_SHOT, clip: { x: 0, y: 0, width: 1200, height: 1100 } });  // visual check on demand
     assert.deepEqual(errors, []);
     return { passed: true, cases: ['no-row-buttons', 'single-click-arrows', 'multiple-ctrl-shift-all', 'checkbox-single', 'checkbox-multiple-select-all', 'selection-delete', 'editable-cell-focus', 'editable-commit-tracking', 'editable-checkbox-delete'] };
   } finally { await fixture.close(); }
