@@ -110,6 +110,17 @@ class TaskQueueTests(unittest.TestCase):
         self.assertEqual(q['status'], 'succeeded')
         self.assertEqual([b['goal'] for b in app.started], ['API 추가', '화면 연결'])
 
+    def test_app_down_fails_fast_without_starting_a_model_run(self):
+        app = FakeApp(self.tmp.name, ['succeeded'])
+        app.metadata['preview_url'] = 'http://127.0.0.1:9'
+        manager = task_queue.QueueManager(app)
+        manager._app_down = lambda: 'Connection refused'
+        with patch.object(task_queue.urllib.request, 'urlopen', side_effect=reply('1. [frontend] 화면 수정')):
+            q = wait(manager, manager.create({'goal': '화면 수정'})['id'])
+        self.assertEqual(q['status'], 'failed')
+        self.assertIn('앱 서버', q['detail'])
+        self.assertEqual(app.started, [])
+
     def test_failure_stops_queue_and_resume_retries_failed_item_only(self):
         app = FakeApp(self.tmp.name, ['succeeded', 'failed', 'succeeded', 'succeeded'])
         manager = task_queue.QueueManager(app)

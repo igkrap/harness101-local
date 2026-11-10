@@ -94,6 +94,7 @@ def env_file(env, directory, db_url=None):
 
 def run_app(name, config, jar, envfile, publish=True):
     cmd = ['docker', 'run', '-d', '--name', name, '--network', NETWORK, '--env-file', str(envfile),
+           *(['--restart', 'unless-stopped'] if publish else []),
            '-v', f'{jar}:/app/app.jar:ro']
     if publish:
         for port, binds in config['ports'].items():

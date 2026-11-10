@@ -68,6 +68,11 @@ class Gate:
                         rel = path.relative_to(root)
                         with path.open('rb') as f:
                             hashes[str(rel)] = hashlib.sha256(f.read()).digest()
+        # Top-level app files outside src (page title, root markup) are real source changes too.
+        for rel in ('frontend/index.html',):
+            path = root / rel
+            if path.is_file() and not path.is_symlink():
+                hashes[rel] = hashlib.sha256(path.read_bytes()).digest()
         return hashes
 
     def prepare(self):
@@ -596,7 +601,9 @@ class Gate:
             if old_h != new_h:
                 changed_paths.add(path)
         mutation_passed = self.runner.accepted and len(changed_paths) > 0
-        mutation_result = {'id': 'system:mutation', 'status': 'passed' if mutation_passed else 'failed', 'reason': 'verified source change' if mutation_passed else 'none'}
+        mutation_result = {'id': 'system:mutation', 'status': 'passed' if mutation_passed else 'failed', 'reason': 'verified source change' if mutation_passed else (
+            'no accepted change yet: edit the files and pass the checks before finishing' if not self.runner.accepted
+            else 'no source file differs from the start of this run (frontend/src, backend/src, frontend/index.html)')}
         actual_report['results'].append(mutation_result)
         all_statuses_passed = all((r.get('status') == 'passed' for r in actual_report['results']))
         actual_report['success'] = actual_report['success'] and mutation_passed and all_statuses_passed

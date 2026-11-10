@@ -3,6 +3,7 @@ import json
 import re
 import threading
 import time
+import urllib.error
 import urllib.request
 import uuid
 
@@ -214,8 +215,10 @@ class QueueManager:
                     status = self._run_item(queue_id, index, done)
                     if status != 'succeeded':
                         label = {'stopped': '중지됨', 'failed': '실패'}.get(status, status)
+                        current = self.get(queue_id)
+                        detail = current.get('detail') if current['items'][index].get('note') == '앱 서버 응답 없음' else ''
                         return self._finish(queue_id, 'stopped' if status == 'stopped' else 'failed',
-                                            f'{index + 1}번 항목 {label}. 이어서 실행하면 이 항목부터 다시 시도합니다.')
+                                            detail or f'{index + 1}번 항목 {label}. 이어서 실행하면 이 항목부터 다시 시도합니다.')
                 if (item['domain'] == 'backend' and item.get('deploy') not in ('succeeded', 'skipped')
                         and getattr(self.app, 'deploy_backend', None)):
                     # Later screen items and the user need the new API in the running app, not only in the test DB.
@@ -302,15 +305,34 @@ class QueueManager:
     def _run_item(self, queue_id, index, done):
         for _ in range(3):
             status, job_id = self._run_item_once(queue_id, index, done)
-            if status == 'failed' and self._infra_failure(job_id) and self._wait_for_model(queue_id):
+            if status == 'failed' and job_id and self._infra_failure(job_id) and self._wait_for_model(queue_id):
                 self._set_item(queue_id, index, note='모델 서버 중단으로 자동 재시도')
                 continue
             return status
         return status
 
+    def _app_down(self):
+        """Why the app under test cannot be used (backend/DB down), or '' when it answers."""
+        base = (getattr(self.app, 'metadata', None) or {}).get('preview_url')
+        if not base:
+            return ''
+        try:
+            with urllib.request.urlopen(base.rstrip('/') + '/api/auth/session', timeout=10) as response:
+                return '' if response.status < 500 else f'HTTP {response.status}'
+        except urllib.error.HTTPError as error:
+            return '' if error.code < 500 else f'HTTP {error.code}'
+        except OSError as error:
+            return str(error)[:120]
+
     def _run_item_once(self, queue_id, index, done):
         queue = self.get(queue_id)
         item = queue['items'][index]
+        down = self._app_down()
+        if down:
+            # Checks log in to the running app; without it every run fails for reasons the model cannot fix.
+            self._set_item(queue_id, index, status='failed', note='앱 서버 응답 없음')
+            self._update(queue_id, detail=f'앱 서버(백엔드·DB)가 응답하지 않아 시작하지 않았습니다 ({down}). Docker와 앱 서버를 켠 뒤 이어서 실행하세요.')
+            return 'failed', None
         body = {'kind': 'agent', 'goal': item['title'], 'checks': item['checks'], 'model': queue.get('model'),
                 'context_profile': 'legacy' if item['domain'] == 'backend' else 'focused',
                 'queue': {'id': queue_id, 'index': index, 'total': len(queue['items']), 'goal': queue['goal'][:2000],
