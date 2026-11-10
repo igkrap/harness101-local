@@ -32,12 +32,12 @@ async function verify(browser,project){
   assert.equal(await query.getByLabel('필수 사업장').isVisible(),true);
   await query.getByLabel('조회 이름').fill('Beta');
   await toolbar.getByRole('button',{name:'조회',exact:true}).click();
-  await page.locator('table').getByText('Alpha',{exact:true}).waitFor({state:'hidden'});
+  await page.locator('[data-ui="record-grid"]').getByText('Alpha',{exact:true}).waitFor({state:'hidden'});
   assert.equal((await page.evaluate(()=>window.workspaceEvents.find(event=>event.kind==='query'))).values.category,'보관할 상세조건');
   await query.getByRole('button',{name:'상세조건 펼치기'}).click();
   assert.equal(await query.getByLabel('상세 분류').inputValue(),'보관할 상세조건');
   await query.getByRole('button',{name:'상세조건 접기'}).click();
-  await page.locator('table tbody tr').first().click();
+  await page.locator('[data-ui="record-grid"] [role="gridcell"]').first().click();
   await editor.getByLabel('편집 이름').fill('편집 중인 값');
   await page.getByRole('tab',{name:'메모',exact:true}).click();
   await page.getByRole('textbox',{name:'메모',exact:true}).fill('탭 이동 후 보존');

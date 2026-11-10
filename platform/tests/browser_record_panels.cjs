@@ -54,12 +54,12 @@ async function verify(browser, project = root) {
     await page.goto(base+'/fixture.html');
     const query=page.locator('main form[data-ui="query-panel"]');
     const editor=page.locator('main form[data-ui="record-editor"]');
-    const grid=page.locator('main table');
+    const grid=page.locator('main [data-ui="record-grid"]');
     await editor.getByLabel('연락처명').waitFor().catch(async error=>{throw new Error(error.message+'\nBrowser errors: '+errors.join('\n')+'\n'+(await page.content()).slice(0,1800));});
     await query.getByLabel('조회어').fill('Beta');
     assert.equal(await editor.getByLabel('연락처명').inputValue(),'');
     await query.getByLabel('조회어').press('Enter');
-    await grid.getByRole('row').filter({hasText:'Beta'}).click();
+    await grid.locator('[role="gridcell"]',{hasText:'Beta'}).first().click();
     await page.waitForFunction(()=>document.querySelector('main form[data-ui="record-editor"] input')?.value==='Beta');
     assert.equal(await editor.getByLabel('허용량').inputValue(),'9');
     assert.equal(await editor.getByLabel('권역').inputValue(),'west');
@@ -79,7 +79,7 @@ async function verify(browser, project = root) {
     assert.deepEqual(saves,[{kind:'contact-save',values:{name:'Changed Beta',quota:'12',region:'east'},id:'b'}]);
     await page.waitForFunction(()=>![...document.querySelectorAll('main form[data-ui="record-editor"] input')].some(i=>i.disabled));
     await editor.getByLabel('허용량').fill('3');
-    await grid.getByRole('row').filter({hasText:'Changed Beta'}).click();
+    await grid.locator('[role="gridcell"]',{hasText:'Changed Beta'}).first().click();
     await page.waitForFunction(()=>document.querySelector('main form[data-ui="record-editor"] input[type]:not([type="text"]), main form[data-ui="record-editor"] input:nth-of-type(1)')!==null);
     assert.equal(await editor.getByLabel('허용량').inputValue(),'12');
     await editor.getByRole('button',{name:'신규',exact:true}).click();

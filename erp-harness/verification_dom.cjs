@@ -105,7 +105,7 @@ async function run(page, check) {
         }
         const stableId = el.id && !/^_r_|^:r/.test(el.id) ? el.id : null;
         return { tag: el.tagName.toLowerCase(), role: pick('role'), label: pick('aria-label'), ui: pick('data-ui'), testid: pick('data-testid'), region: pick('data-region'), id: stableId, text, field, visible };
-      }).filter(x => x.visible && (x.role || x.label || x.ui || x.testid || x.region || x.id || x.text || x.field)));
+      }).filter(x => x.visible && x.role !== 'gridcell' && (x.role || x.label || x.ui || x.testid || x.region || x.id || x.text || x.field)));  // grid cells would crowd out everything else
       // Fields inside inactive tabs are not on screen until their tab is opened: open each tab once
       // and record which fields it holds, then restore the originally selected tab.
       const tabs = [];

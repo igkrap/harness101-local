@@ -40,9 +40,12 @@ async function verify(browser, project) {
   const { page, errors } = fixture;
   const ev = key => page.evaluate(k => window.events[k], key);
   const grid = mode => page.locator(`section[data-mode="${mode}"]`);
-  const row = (mode, name) => grid(mode).locator('tbody tr').filter({ hasText: name });
+  // Blueprint's table has no row elements: a row is the cells sharing data-row-key; its first cell stands for it.
+  const row = (mode, name) => grid(mode).locator('[role="gridcell"]', { hasText: name }).first();
+  const check = (mode, key) => grid(mode).locator(`[data-row-key="${key}"] input[type="checkbox"]`);
+  const rowCount = mode => grid(mode).locator('[role="gridcell"][data-col="0"]').count();
   try {
-    await grid('single').locator('tbody tr').first().waitFor();
+    await grid('single').locator('[role="gridcell"]').first().waitFor();
     for (const mode of ['single', 'multiple', 'checkbox-single', 'checkbox-multiple'])
       assert.equal(await grid(mode).getByRole('button', { name: '선택', exact: true }).count(), 0, `${mode}: no per-row select buttons`);
 
@@ -59,17 +62,17 @@ async function verify(browser, project) {
     await row('multiple', 'Alpha').click({ modifiers: ['ControlOrMeta'] }); assert.deepEqual(await ev('multiple'), ['C']);
     await row('multiple', 'Beta').click(); await row('multiple', 'Delta').click({ modifiers: ['Shift'] }); assert.deepEqual(await ev('multiple'), ['B', 'C', 'D']);
     await page.keyboard.press('ControlOrMeta+a'); assert.deepEqual(await ev('multiple'), ['A', 'B', 'C', 'D']);
-    assert.equal(await grid('multiple').locator('table').getAttribute('aria-multiselectable'), 'true');
+    assert.equal(await grid('multiple').locator('[data-ui="record-grid"]').getAttribute('aria-multiselectable'), 'true');
 
     // checkbox-single: checkbox column without select-all; row click selects only one
     assert.equal(await grid('checkbox-single').getByRole('checkbox', { name: '전체 선택' }).count(), 0);
     await row('checkbox-single', 'Beta').click(); await row('checkbox-single', 'Delta').click();
     assert.deepEqual(await ev('checkbox-single'), ['D']);
-    assert.equal(await row('checkbox-single', 'Delta').getByRole('checkbox').isChecked(), true);
-    assert.equal(await row('checkbox-single', 'Beta').getByRole('checkbox').isChecked(), false);
+    assert.equal(await check('checkbox-single', 'D').isChecked(), true);
+    assert.equal(await check('checkbox-single', 'B').isChecked(), false);
 
     // checkbox-multiple: row click toggles, checkbox toggles, select-all; then delete the selection
-    await row('checkbox-multiple', 'Alpha').click(); await row('checkbox-multiple', 'Gamma').getByRole('checkbox').check();
+    await row('checkbox-multiple', 'Alpha').click(); await check('checkbox-multiple', 'C').check();
     assert.deepEqual(await ev('checkbox-multiple'), ['A', 'C']);
     await row('checkbox-multiple', 'Alpha').click(); assert.deepEqual(await ev('checkbox-multiple'), ['C']);
     await grid('checkbox-multiple').getByRole('checkbox', { name: '전체 선택' }).check(); assert.deepEqual(await ev('checkbox-multiple'), ['A', 'B', 'C', 'D']);
@@ -77,7 +80,7 @@ async function verify(browser, project) {
     await row('checkbox-multiple', 'Beta').click(); await row('checkbox-multiple', 'Delta').click();
     await grid('checkbox-multiple').getByRole('button', { name: '삭제 checkbox-multiple' }).click();
     assert.deepEqual(await ev('checkbox-multiple:deleted'), ['B', 'D']);
-    assert.equal(await grid('checkbox-multiple').locator('tbody tr').count(), 2);
+    assert.equal(await rowCount('checkbox-multiple'), 2);
     assert.deepEqual(await ev('checkbox-multiple'), [], 'deleted rows leave the selection');
 
     // editable: cell focus moves with arrows, typing edits, Enter commits; checkbox selects rows
@@ -91,7 +94,7 @@ async function verify(browser, project) {
     await page.keyboard.press('ArrowLeft'); await page.keyboard.press('F2'); await page.keyboard.press('ControlOrMeta+a'); await page.keyboard.type('감마'); await page.keyboard.press('Tab');
     await page.keyboard.press('ArrowUp'); await page.keyboard.press('Enter'); await page.keyboard.press('Escape');
     assert.deepEqual(await ev('changed'), ['B=Beta/9', 'C=감마/3']);
-    await grid('editable').locator('tbody tr').filter({ hasText: 'Alpha' }).getByRole('checkbox').check();
+    await check('editable', 'A').check();
     await cell(3, 1).click(); await page.keyboard.press('ArrowLeft'); assert.equal(await focused(3, 0), true); await page.keyboard.press(' ');
     assert.deepEqual(await ev('editableSel'), ['A', 'D']);
     await grid('editable').getByRole('button', { name: '삭제 editable' }).click();
