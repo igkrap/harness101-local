@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 import hashlib
 import os
@@ -391,6 +392,14 @@ class Runner:
                     self.memory.record(self.cp._records, error, self.compiled_before)
                     restored = self.cp.rollback()
                     self.h.log_event('autonomy.rollback', {'paths': restored, 'reason': error})
+                    # The same failure again and again is a loop, not progress: stop instead of running for an hour.
+                    key = re.sub(r'\d+', '#', str(error))[:300]
+                    repeats = self.__dict__.setdefault('_failure_repeats', {})
+                    repeats[key] = repeats.get(key, 0) + 1
+                    if repeats[key] >= 4:
+                        self.feedback = 'Stopped: the same check failed 4 times in a row with the same error.\n' + str(error)[:800]
+                        self.h.log_event('autonomy.stalled', {'reason': 'same_failure_repeated', 'repeats': repeats[key], 'model_calls': self.used, 'error': str(error)[:300]})
+                        return False
                     self.feedback = f'{error}\nRejected changes restored; reread actual files.'
                     if rejected_context:
                         self.feedback += f'\n\n{rejected_context}'

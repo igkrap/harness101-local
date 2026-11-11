@@ -199,6 +199,10 @@ class Checker:
         if not fe_dir.exists():
             return {"success": False, "stdout": "", "stderr": "frontend directory not found"}
         
+        from screen_sites import precheck
+        broken = precheck(self.workspace.root)   # a standard screen change: every place of a new field is filled in
+        if broken:
+            return broken
         res1 = self._exec(["npx", "tsc", "--noEmit"], cwd=fe_dir)
         if not res1["success"]: return res1
         

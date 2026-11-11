@@ -464,11 +464,18 @@ def build(runner, new_screen_reference=''):
                 if isinstance(getattr(runner, 'read', None), set) and file:
                     runner.read.add(file)
                 runner._no_candidate_buffer = True  # a failed attempt is retried as a normal edit/rewrite, not through the fragment buffer
+                import screen_sites
+                source = (Path(root) / file).read_text(encoding='utf-8') if file else ''
+                old = {item['name']: item for item in current['fields']}
+                added = [item for item in sheet['fields'] if item['name'] not in old]
+                changed = [item for item in sheet['fields'] if item['name'] in old and item['required'] != old[item['name']]['required']]
+                removed = [item for item in current['fields'] if item['name'] not in {new['name'] for new in sheet['fields']}]
+                steps = screen_sites.plan(source, added, changed, removed)
+                screen_sites.expect(file, added)
                 facts = '\n'.join(f"- {f.get('id')} {description.get(f.get('id'), '')}" for f in failing[:8])
                 runner._field_sheet_note = (sheet_note(sheet, screen=True) + f'고칠 화면 파일은 {file} 하나다. 지금 화면에서 통과하지 못하는 검사(이것을 고친다):\n' + facts
-                                            + '\n화면 파일의 행 타입, toRow, 필드 정의(editFields), 그리드 열(gridColumns), 저장 payload 를 항목표에 맞게 고친다. '
-                                            '이 파일은 짧으므로 AST 편집 대신 고친 파일 전체를 write_file 로 한 번에 다시 쓴다(지금 내용은 CURRENT FILE 로 주어져 있다). '
-                                            '항목 하나를 더할 때는 위 다섯 곳 모두에 넣어야 타입 오류가 나지 않는다. 다른 파일은 건드리지 않는다.\n')
+                                            + ('\n고칠 자리(줄 번호는 지금 파일 기준; 아래 목록의 모든 자리를 한 번에 고친다. 하나라도 빠지면 거절된다):\n' + '\n'.join(steps) + '\n' if steps else '\n')
+                                            + '기존 파일이므로 편집 도구(edit_file)로 위 자리만 고친다. 다른 줄과 다른 파일은 건드리지 않는다.\n')
                 return dict(base, criteria=criteria), 'standard-screen-change', sheet
         return None
     if new_screen_reference and 'backend' not in (getattr(runner, 'modes', ()) or ()):
