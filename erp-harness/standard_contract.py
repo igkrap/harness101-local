@@ -463,6 +463,7 @@ def build(runner, new_screen_reference=''):
                                                       saved_at=time.strftime('%Y-%m-%dT%H:%M:%S')), ensure_ascii=False, indent=1), encoding='utf-8')
                 if isinstance(getattr(runner, 'read', None), set) and file:
                     runner.read.add(file)
+                runner._no_candidate_buffer = True  # a failed attempt is retried as a normal edit/rewrite, not through the fragment buffer
                 facts = '\n'.join(f"- {f.get('id')} {description.get(f.get('id'), '')}" for f in failing[:8])
                 runner._field_sheet_note = (sheet_note(sheet, screen=True) + f'고칠 화면 파일은 {file} 하나다. 지금 화면에서 통과하지 못하는 검사(이것을 고친다):\n' + facts
                                             + '\n화면 파일의 행 타입, toRow, 필드 정의(editFields), 그리드 열(gridColumns), 저장 payload 를 항목표에 맞게 고친다. '

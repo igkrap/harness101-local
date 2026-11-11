@@ -22,6 +22,10 @@ def extend_virtual_candidate(base, store):
             super().__init__(*args, **kwargs)
 
         def _buffer_allowed(self, path):
+            # Standard screen changes rewrite a short file whole; the fragment-repair buffer only got in the way there
+            # (its structural rules rejected six repairs of a one-line omission in a row).
+            if getattr(self, '_no_candidate_buffer', False):
+                return False
             if not isinstance(path, str) or path not in self.initial_frontend_files:
                 return False
             stage = getattr(getattr(self, 'requirement_gate', None), 'stage', {})
