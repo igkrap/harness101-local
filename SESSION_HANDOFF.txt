@@ -1,3 +1,5 @@
+[2026-11-11] Row-number column removed from RecordGrid on user request (its rows did not line up with the 24px body rows). enableRowHeader={false} again; grid test checks 'no-row-numbers'.
+
 [2026-11-11] Grid header 26px: RecordGrid sets the static Grid.MIN_COLUMN_HEADER_HEIGHT (Blueprint's JS floor, 30 by default) to 26 at module load, plus CSS line-heights. Re-check after a @blueprintjs/table upgrade.
 
 [2026-11-11] Collapsed sidebar is a short rail (user: it should not list everything): 홈, search (expands the sidebar), 즐겨찾기, one icon per top-level folder, "기타 프로그램" for loose/unplaced ones; each opens a Blueprint Popover Menu (ui PopoverMenu, MenuItem with icon/children; nested folders are submenus). Folders without a custom icon all show the same folder icon — names only via the native title.

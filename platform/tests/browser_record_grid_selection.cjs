@@ -54,8 +54,9 @@ async function verify(browser, project) {
     assert.deepEqual(await ev('single'), ['B']); assert.equal(await ev('single:current'), 'B');
     await page.keyboard.press('ArrowDown'); assert.deepEqual(await ev('single'), ['C']);
     await row('single', 'Alpha').click(); assert.deepEqual(await ev('single'), ['A']);
-    // spreadsheet features: a row number selects its row; the header menu sorts the shown rows only
-    await grid('single').locator('.bp6-table-quadrant-left [data-row-number="3"]').first().click(); assert.deepEqual(await ev('single'), ['C']);
+    // spreadsheet features: the header menu sorts the shown rows only
+    await row('single', 'Gamma').click(); assert.deepEqual(await ev('single'), ['C']);
+    assert.equal(await grid('single').locator('.bp6-table-row-headers').count(), 0, 'no row-number column');
     const firstName = () => grid('single').locator('[role="gridcell"][data-row-index="0"][data-col="0"]').first().textContent();
     const sortBy = async text => { const head = grid('single').locator('.bp6-table-quadrant-top .fw-grid-th').first(); await head.hover();
       await head.locator('.bp6-table-th-menu').click({ force: true }); await page.getByText(text, { exact: true }).click(); };
@@ -109,7 +110,7 @@ async function verify(browser, project) {
     assert.deepEqual(await ev('editable:deleted'), ['A', 'D']);
     if (process.env.GRID_SHOT) await page.screenshot({ path: process.env.GRID_SHOT, clip: { x: 0, y: 0, width: 1200, height: 1100 } });  // visual check on demand
     assert.deepEqual(errors, []);
-    return { passed: true, cases: ['no-row-buttons', 'row-number-select', 'header-menu-sort', 'single-click-arrows', 'multiple-ctrl-shift-all', 'checkbox-single', 'checkbox-multiple-select-all', 'selection-delete', 'editable-cell-focus', 'editable-commit-tracking', 'editable-checkbox-delete'] };
+    return { passed: true, cases: ['no-row-buttons', 'no-row-numbers', 'header-menu-sort', 'single-click-arrows', 'multiple-ctrl-shift-all', 'checkbox-single', 'checkbox-multiple-select-all', 'selection-delete', 'editable-cell-focus', 'editable-commit-tracking', 'editable-checkbox-delete'] };
   } finally { await fixture.close(); }
 }
 module.exports = { verify };
