@@ -366,7 +366,10 @@ def build(runner, new_screen_reference=''):
         file = _sheet_file(root, sheet['path'])
         file.parent.mkdir(parents=True, exist_ok=True)
         file.write_text(json.dumps(dict(sheet, task=task, saved_at=time.strftime('%Y-%m-%dT%H:%M:%S')), ensure_ascii=False, indent=1), encoding='utf-8')
-        runner._field_sheet_note = sheet_note(sheet)
+        import schema_state
+        table = sheet['path'].rsplit('/', 1)[-1].replace('-', '_')
+        runner._field_sheet_note = (sheet_note(sheet) + f"새 테이블 {table} 을(를) 새 V{next_migration(root)}__ 마이그레이션에서 CREATE TABLE 로 만든다. "
+                                    + schema_state.note(root) + '\n')
         return dict(base, criteria=criteria), 'standard-api', sheet
     modes = set(getattr(runner, 'modes', ()) or ())
     if 'backend' in modes and not ({'frontend', 'framework'} & modes):

@@ -385,6 +385,9 @@ READ_STREAK_LIMIT = 12     # read-only responses in a row (any task type) before
 
 def repeated_read(runner, name, inputs=None):
     """Any task type: refuse a third read of a file whose content has not changed since it was read."""
+    if getattr(runner, '_read_nudged', False) and name in ('search_code', 'list_files'):
+        # After the warning the run has what it needs; more looking around is how it stalls.
+        return {'error': '이미 충분히 살펴봤다. 더 찾지 말고 지금 변경한다: 새 파일은 write_file, 기존 파일은 편집 도구.'}
     if name != 'read_file' or not isinstance(inputs, dict) or not isinstance(inputs.get('path'), str):
         return None
     import hashlib
@@ -396,7 +399,7 @@ def repeated_read(runner, name, inputs=None):
     seen = runner.__dict__.setdefault('_read_counts', {})
     key = (path, digest)
     seen[key] = seen.get(key, 0) + 1
-    if seen[key] <= REPEAT_READ_LIMIT:
+    if seen[key] <= (1 if getattr(runner, '_read_nudged', False) else REPEAT_READ_LIMIT):
         return None
     return {'error': f'{path} was already read {REPEAT_READ_LIMIT} times and has not changed. '
                      'Reading it again adds nothing. Write the change now with an edit tool.'}
@@ -416,6 +419,7 @@ def note_read_streak(runner, message, edited):
         runner.messages.append({'role': 'user', 'content': (
             f'지금까지 {runner._read_streak}번 연속으로 읽기만 했다. 필요한 내용은 이미 읽었다. 더 읽지 말고 이번 응답에서 바로 변경한다: '
             '새 파일은 write_file, 기존 파일은 편집 도구로 고친다. 읽기만 계속하면 작업이 중단된다.' + (('\n' + known) if known else ''))})
+        runner._read_nudged = True  # from here: no more searching, and no second read of an unchanged file
         runner.h.log_event('autonomy.read_nudge', {'responses': runner._read_streak, 'model_calls': 0})
     if getattr(runner, '_read_streak', 0) >= READ_STREAK_LIMIT:
         runner.h.log_event('autonomy.stalled', {'reason': 'read_only_streak', 'responses': runner._read_streak,

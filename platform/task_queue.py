@@ -18,7 +18,7 @@ def now():
     return time.strftime('%Y-%m-%dT%H:%M:%S')
 
 
-def planner_prompt(goal, inventory, code=''):
+def planner_prompt(goal, inventory, code='', schema=''):
     return (
         '아래 요청을 순서대로 할 작업 목록으로 나눠줘.\n'
         '- 작은 변경이면 한 줄이면 된다.\n'
@@ -32,6 +32,7 @@ def planner_prompt(goal, inventory, code=''):
         '2. [frontend] 할 일 || 방향: 파일과 방법\n\n'
         f'프로젝트 파일 일부:\n{inventory}\n\n'
         + (f'관련 코드 (참고용):\n{code}\n\n' if code else '')
+        + (f'DB 상태: {schema}\n\n' if schema else '')
         + f'요청: {goal}\n'
     )
 
@@ -48,6 +49,19 @@ def parse_plan(text):
             if title:
                 items.append({'domain': match.group(2).lower(), 'title': title, **({'approach': approach} if approach else {})})
     return items[:MAX_ITEMS]
+
+
+def schema_note(app):
+    """Which tables exist now (old migration files of dropped tables mislead the planner)."""
+    try:
+        import sys
+        runtime = str(app.runtime_root())
+        if runtime not in sys.path:
+            sys.path.insert(0, runtime)
+        import schema_state
+        return schema_state.note(app.project)
+    except Exception:
+        return ''
 
 
 def code_context(app, goal):
@@ -249,7 +263,7 @@ class QueueManager:
                        # Brief reasoning keeps the planner accurate (it still checks which file hard-codes the
                        # behavior) while cutting ~1,800 thinking tokens to ~600-1,400 (3-5 min instead of 5-9).
                        'messages': [{'role': 'system', 'content': 'Think briefly: at most 8 short lines of reasoning. Decide which file actually hard-codes the behavior, then answer.'},
-                                    {'role': 'user', 'content': planner_prompt(goal, inventory(self.app), code_context(self.app, goal))}]}
+                                    {'role': 'user', 'content': planner_prompt(goal, inventory(self.app), code_context(self.app, goal), schema_note(self.app))}]}
             request = urllib.request.Request(url + '/chat/completions', json.dumps(payload, ensure_ascii=False).encode(),
                                              {'Content-Type': 'application/json'})
             with urllib.request.urlopen(request, timeout=1500) as response:
