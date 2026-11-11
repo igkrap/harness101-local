@@ -4,7 +4,7 @@ A new registration API and a new registration screen always have the same shape.
 list of fields. So the model is asked for one small thing only, the field sheet (path, field names,
 labels, which are required), and every check is derived from it mechanically:
 
-  API     create -> list shows it -> update -> a blank required field is refused -> delete
+  API     create -> list shows it -> update -> a blank required field is refused -> optional fields may be omitted -> delete
   screen  the workspace, query panel, grid, editor and toolbar exist; required fields are in the editor
           (marked required) and in the grid
 
@@ -80,6 +80,8 @@ def api_criteria(sheet):
     body = {field['name']: field['sample'] for field in fields}
     changed = dict(body, **{key['name']: key['sample'] + ' 수정'})
     blank = dict(body, **{key['name']: ''})
+    # Only the required fields, with distinct values so a unique column cannot be the reason for a refusal.
+    minimal = {field['name']: field['sample'] + ' 2' for field in fields if field['required']}
     return [
         {'id': 'C1', 'requirement_id': 'R1', 'description': f"등록: POST {path} 가 저장하고 {key['label']} 을(를) 돌려준다",
          'check': {'op': 'api', 'method': 'POST', 'path': path, 'status': 201, 'body': body, 'json_path': [key['name']], 'equals': key['sample']}},
@@ -89,6 +91,8 @@ def api_criteria(sheet):
          'check': {'op': 'api', 'method': 'PUT', 'path': f'{path}/1', 'status': 200, 'body': changed, 'json_path': [key['name']], 'equals': changed[key['name']]}},
         {'id': 'C4', 'requirement_id': 'R1', 'description': f"필수 항목 {key['label']}({key['name']}) 이(가) 빈 값이면 400 으로 거절한다",
          'check': {'op': 'api', 'method': 'POST', 'path': path, 'status': 400, 'body': blank}},
+        {'id': 'C4b', 'requirement_id': 'R1', 'description': "선택 항목은 비워도 저장된다: 필수 항목만 보낸 POST 가 201 이다",
+         'check': {'op': 'api', 'method': 'POST', 'path': path, 'status': 201, 'body': minimal, 'json_path': [key['name']], 'equals': minimal[key['name']]}},
         {'id': 'C5', 'requirement_id': 'R1', 'description': f"삭제: DELETE {path}/1 이 204 로 지운다",
          'check': {'op': 'api', 'method': 'DELETE', 'path': f'{path}/1', 'status': 204}},
         {'id': 'C6', 'requirement_id': 'R1', 'description': f"지운 자료는 더 수정할 수 없다: PUT {path}/1 이 404 로 답한다",

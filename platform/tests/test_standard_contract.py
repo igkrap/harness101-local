@@ -34,7 +34,8 @@ class StandardContractTests(unittest.TestCase):
             self.assertEqual(len(parsed['criteria']), len(criteria))
         api = sc.api_criteria(sheet)
         self.assertEqual([(c['check']['method'], c['check']['status']) for c in api],
-                         [('POST', 201), ('GET', 200), ('PUT', 200), ('POST', 400), ('DELETE', 204), ('PUT', 404)])
+                         [('POST', 201), ('GET', 200), ('PUT', 200), ('POST', 400), ('POST', 201), ('DELETE', 204), ('PUT', 404)])
+        self.assertEqual(api[4]['check']['body'], {'companyName': '한빛상사 2'})  # optional fields may be left out
         self.assertEqual(api[3]['check']['body']['companyName'], '')  # the refusal is unmistakable: the required field is blank
         self.assertIn('companyName(회사명, 필수)', sc.sheet_note(sheet))
 
