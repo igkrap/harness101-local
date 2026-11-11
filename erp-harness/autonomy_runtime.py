@@ -796,6 +796,8 @@ def _plain_brief(self, approach):
             text += context_for_task(self)
     if 'backend' in self.modes:
         text += '\n' + self.backend_context()
+    # Standard tasks: the field sheet the checks were built from (names, labels, required marks).
+    text += getattr(self, '_field_sheet_note', '')
     return text
 
 

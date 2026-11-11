@@ -40,6 +40,10 @@ async function verify(input) {
             const req = route.request();
             const newURL = new URL(req.url()); const targetURL = new URL(preview_url); const isSameOrigin = newURL.origin === targetURL.origin; const isReadonly = ['GET', 'HEAD', 'OPTIONS'].includes(req.method()); const isStatic = ['font', 'stylesheet', 'image', 'script'].includes(req.resourceType()); const isAllowed = (isSameOrigin && (isReadonly || allow_browser_writes)) || (isStatic && isReadonly);
             if (!isAllowed) {
+              // The framework's own housekeeping writes (which program was opened, registering screens as programs)
+              // are answered here: they are not the screen's behaviour and must not reach the running app.
+              const housekeeping = isSameOrigin && req.method() === 'POST' && { '/api/auth/usage': { recorded: true }, '/api/system/programs/sync': { added: 0, unassigned: [] } }[newURL.pathname];
+              if (housekeeping) return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(housekeeping) });
               blocked.push({ method: req.method(), path: req.url() });
               return route.abort();
             }
@@ -84,7 +88,7 @@ async function verify(input) {
             await page.waitForLoadState('networkidle', { timeout: 1000 }).catch(() => {});
             if (blocked.length > 0) {
               res.status = 'unverified';
-              res.reason = 'blocked_requests';
+              res.reason = 'blocked_requests: the screen sent a write the check may not make on the running app: ' + blocked.slice(0, 3).map(b => b.method + ' ' + new URL(b.path).pathname).join(', ');
               res.evidence.blocked = blocked;
             }
           } catch (e) {

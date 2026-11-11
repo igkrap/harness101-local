@@ -191,6 +191,8 @@ class Gate:
             })
             return None
         get_task = self.runner.args.task
+        if self._prepare_standard(get_task):
+            return None
         (ctx_str, _) = self.runner.current_context()
         from active_preview_context import active_screen_context
         ctx_str = active_screen_context(self.runner) + ctx_str
@@ -401,6 +403,38 @@ class Gate:
                      'e.g. {"action":"click","selector":"role=tab[name=\\"<tab>\\"]"}): '
                      + '; '.join(f"tab '{t['tab']}': " + ', '.join(t['fields'][:12]) for t in tabs[:6]))
         return text
+
+    def _prepare_standard(self, task):
+        """Standard registration API / screen: the checks come from a field sheet, not from a model-written contract.
+
+        Any problem here falls back to the model-written contract; the run is never blocked by this path."""
+        try:
+            import standard_contract
+            from task_sources import task_screen_title, new_screen_reference
+            root = self.runner.h.workspace.root
+            reference = '' if task_screen_title(root, task) else new_screen_reference(root, task)
+            built = standard_contract.build(self.runner, reference)
+            if not built:
+                return False
+            raw, kind, sheet = built
+            parsed = requirement_contract.validate(task, raw)
+        except Exception as error:
+            if isinstance(error, (SystemExit, KeyboardInterrupt)):
+                raise
+            self.runner.h.log_event('requirement.standard_skipped', {'error': str(error)[:400]})
+            self.runner.__dict__.pop('_field_sheet_note', None)
+            return False
+        if kind == 'standard-screen':
+            self._probe_screen = reference
+            self.runner._screen_layout_facts = (f"New screen, not built yet; it uses the same components as '{reference}'. "
+                                                "Its editor puts required fields in tab 기본정보 and the rest in 추가정보.")
+        self.frozen_contract = json.dumps(parsed, ensure_ascii=False, sort_keys=True, allow_nan=False)
+        self.contract_hash = requirement_contract.digest(parsed)
+        self.artifact_dir.mkdir(parents=True, exist_ok=True)
+        (self.artifact_dir / 'contract.json').write_text(self.frozen_contract, encoding='utf-8')
+        self.runner.h.log_event('requirement.contract', {'contract': parsed, 'contract_hash': self.contract_hash, 'artifact_dir': str(self.artifact_dir),
+                                                         'standard': kind, 'sheet': sheet})
+        return True
 
     @staticmethod
     def _require_clear_rejection(parsed):
