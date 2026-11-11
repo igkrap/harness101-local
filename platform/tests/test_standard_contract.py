@@ -57,6 +57,7 @@ class StandardContractTests(unittest.TestCase):
             return SimpleNamespace(args=SimpleNamespace(task=task), modes=modes, h=SimpleNamespace(workspace=SimpleNamespace(root=Path('/nonexistent')), log_event=Mock()))
         self.assertTrue(sc._is_new_api(runner('회사 등록 API', ['backend'])))
         self.assertFalse(sc._is_new_api(runner('회사 API에 팩스번호 추가해줘', ['backend'])))
+        self.assertFalse(sc._is_new_api(runner('회사 API에 팩스번호 필드 추가', ['backend'])))  # this once created a separate fax API
         self.assertFalse(sc._is_new_api(runner('회사 등록 화면', ['frontend', 'framework'])))
         with patch.dict('os.environ', {'HARNESS_STANDARD_CONTRACT': '0'}):
             self.assertIsNone(sc.build(runner('회사 등록 API', ['backend'])))

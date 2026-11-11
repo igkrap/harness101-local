@@ -253,7 +253,8 @@ def _is_new_api(runner):
     modes = set(getattr(runner, 'modes', ()) or ())
     task = str(runner.args.task)
     return 'backend' in modes and not ({'frontend', 'framework'} & modes) \
-        and re.search(r'API|엔티티|테이블|컨트롤러|entity|controller', task, re.I) and not re.search(r'테스트|test|fixture|수정|변경|추가해|바꿔|고쳐', task, re.I)
+        and re.search(r'API|엔티티|테이블|컨트롤러|entity|controller', task, re.I) \
+        and not re.search(r'테스트|test|fixture|수정|변경|추가|삭제|제거|바꿔|바꾸|고쳐|고치|필드|항목|컬럼|열을|열 ', task, re.I)
 
 
 def _unused_sheet(root):
@@ -401,7 +402,10 @@ def build(runner, new_screen_reference=''):
         return None  # several request clauses: not the plain standard case
     import requirement_contract
     base = {'version': 1, 'task': task, 'requirements': requirement_contract.requirements(task)}
-    if _is_new_api(runner):
+    modes = set(getattr(runner, 'modes', ()) or ())
+    about_existing = _matching_sheet(root, task) if 'backend' in modes and not ({'frontend', 'framework'} & modes) else None
+    # A request that names a resource which already has an API changes that API; it never creates another one.
+    if _is_new_api(runner) and not about_existing:
         refs = known_refs(root)
         sheet = ask_sheet(runner, existing_api_paths(root), refs)
         criteria = api_criteria(sheet, refs)
@@ -413,12 +417,11 @@ def build(runner, new_screen_reference=''):
         runner._field_sheet_note = (sheet_note(sheet) + f"새 테이블 {table} 을(를) 새 V{next_migration(root)}__ 마이그레이션에서 CREATE TABLE 로 만든다. "
                                     + schema_state.note(root) + '\n')
         return dict(base, criteria=criteria), 'standard-api', sheet
-    modes = set(getattr(runner, 'modes', ()) or ())
     if 'backend' in modes and not ({'frontend', 'framework'} & modes):
         # A change to an existing registration API: the same standard checks, for the sheet as the request wants it.
         # They are used only if at least one fails on the current code - then they describe the fix; otherwise the
         # request is about something the standard checks do not cover and the model-written contract is used.
-        current = _matching_sheet(root, task)
+        current = about_existing
         if current:
             sheet = ask_updated_sheet(runner, current)
             criteria = api_criteria(sheet, known_refs(root))
@@ -429,11 +432,14 @@ def build(runner, new_screen_reference=''):
                 file.write_text(json.dumps(dict(sheet, task=json.loads(file.read_text(encoding='utf-8')).get('task', task), saved_at=time.strftime('%Y-%m-%dT%H:%M:%S')),
                                            ensure_ascii=False, indent=1), encoding='utf-8')
                 facts = '\n'.join(f"- {f.get('id')}: {str(f.get('reason'))[:600]}" for f in failing[:4])
+                added = [field for field in sheet['fields'] if field['name'] not in {old['name'] for old in current['fields']}]
                 files = resource_files(root, sheet['path'])
                 if isinstance(getattr(runner, 'read', None), set):
                     runner.read.update(files)  # given to the author as CURRENT FILE blocks
                 runner._field_sheet_note = (sheet_note(sheet) + '지금 코드에서 실패하는 검사와 관찰된 원인(이것을 고친다; 방향 설명보다 이 관찰이 정확하다):\n' + facts
                                             + '\n' + likely_fix(root, failing)
+                                            + (('새로 추가할 항목: ' + ', '.join(f"{field['name']}({field['label']})" for field in added) + f". 이 API({sheet['path']})의 기존 테이블에 열을 더하고(ALTER TABLE ... ADD COLUMN), "
+                                                '엔티티·요청 본문·저장 코드에 같은 이름으로 반영한다. 새 API나 새 테이블을 만들지 않는다.\n') if added else '')
                                             + f'이미 적용된 마이그레이션은 고칠 수 없으므로 테이블 변경은 새 V{next_migration(root)}__ 마이그레이션(ALTER TABLE)으로 한다. '
                                             + ('관련 파일은 CURRENT FILE 로 이미 주어져 있다: ' + ', '.join(files) + '. 다시 읽지 말고 바로 고친다.\n' if files else '\n'))
                 return dict(base, criteria=criteria), 'standard-api-change', sheet
@@ -459,7 +465,9 @@ def build(runner, new_screen_reference=''):
                     runner.read.add(file)
                 facts = '\n'.join(f"- {f.get('id')} {description.get(f.get('id'), '')}" for f in failing[:8])
                 runner._field_sheet_note = (sheet_note(sheet, screen=True) + f'고칠 화면 파일은 {file} 하나다. 지금 화면에서 통과하지 못하는 검사(이것을 고친다):\n' + facts
-                                            + '\n화면 파일의 필드 정의(editFields)와 그리드 열(gridColumns)을 항목표에 맞게 고친다. 다른 파일은 건드리지 않는다.\n')
+                                            + '\n화면 파일의 행 타입, toRow, 필드 정의(editFields), 그리드 열(gridColumns), 저장 payload 를 항목표에 맞게 고친다. '
+                                            '이 파일은 짧으므로 AST 편집 대신 고친 파일 전체를 write_file 로 한 번에 다시 쓴다(지금 내용은 CURRENT FILE 로 주어져 있다). '
+                                            '항목 하나를 더할 때는 위 다섯 곳 모두에 넣어야 타입 오류가 나지 않는다. 다른 파일은 건드리지 않는다.\n')
                 return dict(base, criteria=criteria), 'standard-screen-change', sheet
         return None
     if new_screen_reference and 'backend' not in (getattr(runner, 'modes', ()) or ()):
