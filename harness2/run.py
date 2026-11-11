@@ -58,6 +58,9 @@ def run(request=None, definition_file=None, dry=False, force=False):
         else:
             (folder / 'request.txt').write_text(request, encoding='utf-8')
             proposal = define.write(request, framework, folder / '1-define', TRIAL)
+        if proposal['action'] == 'other':
+            result.update(status='other', reason=proposal.get('reason', ''))
+            return result
         key, definition, action = proposal['key'], proposal['definition'], proposal['action']
         (folder / '1-define').mkdir(exist_ok=True)
         (folder / '1-define' / 'accepted.json').write_text(json.dumps(proposal, ensure_ascii=False, indent=1), encoding='utf-8')
@@ -120,6 +123,8 @@ def say(result):
     elif status == 'failed':
         lines.append(f"검사 {result['checks']}개 중 {len(result['failed'])}개 실패. 적용하지 않았습니다:")
         lines += [f"  - {item['description']}: {item['detail']}" for item in result['failed']]
+    elif status == 'other':
+        lines.append('정의로 처리할 수 없는 요청입니다: ' + result.get('reason', ''))
     else:
         lines.append('실패: ' + result.get('error', ''))
     lines.append('기록: ' + result['folder'])

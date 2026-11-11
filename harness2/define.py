@@ -30,6 +30,9 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 - 다른 자료에서 고르는 항목(예: 사원의 부서)은 글자로 받지 말고 type "ref" 와 "ref": {"entity": "<그 자료의 key>", "label": "<보여 줄 항목 name>"} 로 한다. 이미 있는 자료만 가리킬 수 있다.
 - 단위·구분·상태처럼 정해진 값 중에서 고르는 항목은 type "code" 와 "codeGroup": "<공통 코드 그룹>" 으로 한다. 있는 그룹만 쓴다. 맞는 그룹이 없으면 글자(text)로 둔다.
 - id 와 등록·수정자/일시는 프레임워크가 관리하므로 넣지 않는다.
+- 정의로 할 수 없는 요청이면 {"action": "other", "reason": "<이유 한 줄>"} 로만 답한다. 해당하는 경우: 아래 '코드로 만든 화면'을 고치는 요청, 로그인·메뉴·권한·디자인 같은 시스템 요청, 계산·집계·보고서, 한 화면에 표가 둘 이상 얽히는 요청.
+
+코드로 만든 화면(정의가 아니라서 여기서 고칠 수 없음): %(code_screens)s
 
 요청: %(request)s'''
 
@@ -41,6 +44,17 @@ def _existing(framework):
         fields = ', '.join(f"{field['name']}({field['label']}, {field['type']}{', 필수' if field['required'] else ''})" for field in definition['fields'])
         lines.append(f"- key {item['key']} / 화면 이름 {definition['title']} / 항목: {fields}")
     return '\n'.join(lines) or '(없음)'
+
+
+def code_screens():
+    """Titles of the screens that exist as code files (they are changed by the code route, not by definitions)."""
+    from pathlib import Path
+    titles = []
+    for path in sorted((Path(__file__).resolve().parents[1] / 'local-only/frontend/src/screens').glob('*.tsx')):
+        found = re.search(r"title:\s*'([^']+)'", path.read_text(encoding='utf-8', errors='replace'))
+        if found and found.group(1) != '홈':
+            titles.append(found.group(1))
+    return titles
 
 
 def _json(text):
@@ -55,13 +69,16 @@ def write(request, framework, record_to, trial_prefix='trial_'):
     capabilities = framework.capabilities()
     shown = {key: capabilities[key] for key in ('screenTypes', 'fieldTypes', 'builtInRules', 'codeGroups') if key in capabilities}
     messages = [{'role': 'system', 'content': 'JSON only'},
-                {'role': 'user', 'content': PROMPT % {'capabilities': json.dumps(shown, ensure_ascii=False, indent=1), 'existing': _existing(framework), 'request': request}}]
+                {'role': 'user', 'content': PROMPT % {'capabilities': json.dumps(shown, ensure_ascii=False, indent=1), 'existing': _existing(framework), 'request': request,
+                                                      'code_screens': ', '.join(code_screens()) or '(없음)'}}]
     known = {item['key'] for item in framework.definitions()}
     error = ''
     for attempt in range(1, 4):
         answer = llm.ask(messages, record_to, f'define-{attempt}')
         try:
             proposal = _json(answer)
+            if proposal.get('action') == 'other':
+                return {'action': 'other', 'reason': str(proposal.get('reason') or '')[:300]}
             action, key, definition = proposal.get('action'), proposal.get('key'), proposal.get('definition')
             if action not in ('create', 'change') or not isinstance(key, str) or not isinstance(definition, dict):
                 raise ValueError('action(create|change), key, definition 이 모두 있어야 한다')

@@ -1,6 +1,8 @@
 """Model-planned task queue: split one request into small items, then run each as an ordinary agent job in order."""
 import json
+import os
 import re
+from pathlib import Path
 import threading
 import time
 import urllib.error
@@ -167,7 +169,11 @@ class QueueManager:
                     item.update(status='pending', job_id=None, attempts=item.get('attempts', 0))
             queue.update(status='running', detail='', finished_at=None)
             self._write(queue)
-        self._spawn(queue_id, plan=not queue['items'])
+        # A definition request starts over from the request itself (there is no half-done code to continue from).
+        again = queue.get('route') == 'definition'
+        if again:
+            queue.update(items=[], status='planning'); self._write(queue)
+        self._spawn(queue_id, plan=again or not queue['items'])
         return queue
 
     def stop(self, queue_id):
@@ -207,6 +213,10 @@ class QueueManager:
     def _run(self, queue_id, plan):
         hub = self.app.coordinator
         try:
+            if plan and self._definition_route(queue_id):
+                if hub is not None:
+                    hub.queue_planning = False
+                return
             if plan:
                 try:
                     items = self._plan(queue_id)
@@ -248,6 +258,37 @@ class QueueManager:
             if hub is not None:
                 hub.queue_planning = False
             self._finish(queue_id, 'failed', '큐 실행 오류: ' + str(error)[:300])
+
+    def _definition_route(self, queue_id):
+        """Requests a definition can answer (a new registration screen, a field added, a field made required ...)
+        go through harness2: the model writes a definition, the framework judges it, checks are derived from it and
+        it is published - no code, no deploy. Returns False when the request is not of that kind (or this route
+        fails to start), so the code route below takes it."""
+        # Only the real server turns this on (it needs the running app); tests and other hosts keep the code route.
+        if os.environ.get('PLATFORM_DEFINITION_ROUTE') == '0' or not getattr(self.app, 'definition_route', False):
+            return False
+        try:
+            import sys
+            folder = str(Path(__file__).resolve().parents[1] / 'harness2')
+            if folder not in sys.path:
+                sys.path.insert(0, folder)
+            import run as definition_run
+            goal = self.get(queue_id)['goal']
+            self._update(queue_id, items=[{'domain': 'definition', 'title': '화면 정의 작성과 검사', 'checks': ['definition'], 'status': 'running', 'job_id': None, 'attempts': 1}],
+                         status='running', route='definition')
+            result = definition_run.run(goal)
+        except Exception as error:
+            self._update(queue_id, items=[], status='planning', route_error=str(error)[:300])
+            return False
+        status = result.get('status')
+        if status == 'other':
+            self._update(queue_id, items=[], status='planning', route='code', route_reason=result.get('reason', ''))
+            return False
+        ok = status == 'applied'
+        self._update(queue_id, items=[{'domain': 'definition', 'title': result.get('title') or '화면 정의', 'checks': ['definition'],
+                                       'status': 'succeeded' if ok else 'failed', 'job_id': None, 'attempts': 1}], definition_result=result)
+        self._finish(queue_id, 'succeeded' if ok else 'failed', definition_run.say(result).rsplit('\n기록:', 1)[0])
+        return True
 
     def _plan(self, queue_id):
         queue = self.get(queue_id)

@@ -126,6 +126,7 @@ export default function HomePage(props: {
       {queue.status === "planning" && <p className="home-note">요청을 작업 단위로 나누는 중입니다…</p>}
       <ol className="home-steps">{queue.items.map((item, i) => <Step key={i} item={item} index={i} phase={props.phase} onDetail={props.onDetail} events={eventsFor(item.job_id)} />)}</ol>
       {queue.status === "failed" && <p className="home-fail-detail">{queue.detail}</p>}
+      {queue.status === "succeeded" && queue.detail && <p className="home-note home-result">{queue.detail}</p>}
       <div className="home-actions">
         {live && <button type="button" className="home-btn" disabled={props.busy || queue.status === "stopping"} onClick={() => props.onStopQueue(queue.id)}>중지</button>}
         {["failed", "stopped", "interrupted"].includes(queue.status) && <button type="button" className="home-btn primary" disabled={props.busy} onClick={() => props.onResumeQueue(queue.id)}>이어서 실행</button>}

@@ -68,3 +68,6 @@
 .f-live .home-feed-detail{color:#94a3b8}
 .home-spin{width:11px;height:11px;border-radius:50%;border:2px solid #475569;border-top-color:#e2e8f0;animation:home-rot .8s linear infinite}
 @keyframes home-rot{to{transform:rotate(360deg)}}
+
+/* Outcome text keeps its lines (definition route reports several). */
+.home-fail-detail, .home-result, .queue-note { white-space: pre-line; }

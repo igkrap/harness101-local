@@ -130,6 +130,7 @@ class Platform:
         self.catalogued = set(self.jobs)
         for job_id in self.orphans:
             threading.Thread(target=self.watch_orphan, args=(job_id,), daemon=True).start()
+        self.definition_route = True   # definition-type requests go through harness2 (see task_queue._definition_route)
         self.queues = QueueManager(self)
 
     def orphan_alive(self, job):
