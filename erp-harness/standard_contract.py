@@ -464,6 +464,9 @@ def build(runner, new_screen_reference=''):
                 if isinstance(getattr(runner, 'read', None), set) and file:
                     runner.read.add(file)
                 runner._no_candidate_buffer = True  # a failed attempt is retried as a normal edit/rewrite, not through the fragment buffer
+                # Plain text edits for this run: the AST edit tool has no node for a helper's `return {...}` (toRow), so the
+                # one place every field change must touch could only be 'fixed' by inserting a second statement before it.
+                runner.args.edit_format = 'diff'
                 import screen_sites
                 source = (Path(root) / file).read_text(encoding='utf-8') if file else ''
                 old = {item['name']: item for item in current['fields']}
@@ -478,7 +481,9 @@ def build(runner, new_screen_reference=''):
                 facts = '\n'.join(f"- {f.get('id')} {description.get(f.get('id'), '')}" for f in failing[:8])
                 runner._field_sheet_note = (sheet_note(sheet, screen=True) + f'고칠 화면 파일은 {file} 하나다. 지금 화면에서 통과하지 못하는 검사(이것을 고친다):\n' + facts
                                             + ('\n고칠 자리(줄 번호는 지금 파일 기준; 아래 목록의 모든 자리를 한 번에 고친다. 하나라도 빠지면 거절된다):\n' + '\n'.join(steps) + '\n' if steps else '\n')
-                                            + '기존 파일이므로 편집 도구(edit_file)로 위 자리만 고친다. 다른 줄과 다른 파일은 건드리지 않는다.\n')
+                                            + '기존 파일이므로 edit_file(old_text 는 지금 파일의 그 줄들 그대로, new_text 는 고친 줄들)로 위 자리만 고친다. '
+                                            '자리마다 edit_file 을 한 번씩, 한 응답에 모두 호출한다. toRow 와 payload 는 기존 객체 안에 항목을 더하는 것이지 새 문장을 추가하는 것이 아니다. '
+                                            '다른 줄과 다른 파일은 건드리지 않는다.\n')
                 return dict(base, criteria=criteria), 'standard-screen-change', sheet
         return None
     if new_screen_reference and 'backend' not in (getattr(runner, 'modes', ()) or ()):
