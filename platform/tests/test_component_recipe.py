@@ -168,7 +168,7 @@ class ComponentRecipeTests(unittest.TestCase):
             text = catalog.context_for_task(runner)
         contracts = json.loads(text.split('\nFRAMEWORK USAGE')[0].split('\n', 2)[2])
         self.assertEqual([c['id'] for c in contracts['components']], ['registration-status', 'screen-actions', 'query-panel', 'record-grid', 'record-editor', 'tabbed-panel'])
-        self.assertLessEqual(len(json.dumps(contracts['components'], ensure_ascii=False)), 8500)
+        self.assertLessEqual(len(json.dumps(contracts['components'], ensure_ascii=False)), 9200)  # field options (codeGroup, lookup) added ~150 chars
         recipe = runner._component_recipe
         self.assertEqual(recipe['id'], 'registration-status')
         self.assertEqual(recipe['files'], [])

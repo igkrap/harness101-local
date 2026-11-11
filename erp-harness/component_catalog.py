@@ -315,7 +315,7 @@ def context_for_task(runner):
         if evidence.get('checks'):
             # Log filenames say nothing about how to use the component; the status is the signal.
             compact['validation'] = {'status': 'verified', 'implementation_author': evidence.get('implementation_author', 'unknown')}
-        if len(json.dumps(selected + [compact], ensure_ascii=False)) > (10500 if required else 6500 if focused else 8500):
+        if len(json.dumps(selected + [compact], ensure_ascii=False)) > (11200 if required else 7200 if focused else 9200):  # room for the field options (codeGroup, lookup)
             break
         selected.append(compact)
         shared_types = next_shared
