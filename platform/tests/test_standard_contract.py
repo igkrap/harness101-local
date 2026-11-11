@@ -87,3 +87,31 @@ class StandardChangeTests(unittest.TestCase):
         built, runner = self.run_build([])
         self.assertIsNone(built)
         self.assertFalse(hasattr(runner, '_field_sheet_note'))
+
+
+class ReferenceFieldTests(unittest.TestCase):
+    """A field that points to another record: its target is created first and the field carries the id."""
+    REFS = {'/api/departments': sc.validate_sheet({'path': '/api/departments', 'fields': [
+        {'name': 'name', 'label': '부서명', 'required': True, 'sample': '개발팀'}, {'name': 'sortOrder', 'label': '순서', 'required': False, 'sample': '1'}]})}
+    EMPLOYEE = {'path': '/api/employees', 'fields': [
+        {'name': 'name', 'label': '이름', 'required': True, 'sample': '홍길동'},
+        {'name': 'departmentId', 'label': '부서', 'required': False, 'ref': {'path': '/api/departments', 'label': 'name'}}]}
+
+    def test_target_is_prepared_and_the_reference_is_an_id(self):
+        sheet = sc.validate_sheet(self.EMPLOYEE, set(self.REFS), self.REFS)
+        criteria = sc.api_criteria(sheet, self.REFS)
+        self.assertEqual(criteria[0]['id'], 'P1')
+        self.assertEqual(criteria[0]['check']['body'], {'name': '개발팀'})
+        self.assertEqual(criteria[1]['check']['body'], {'name': '홍길동', 'departmentId': 1})
+        task = '사원 등록 API'
+        requirement_contract.validate(task, {'version': 1, 'task': task, 'requirements': requirement_contract.requirements(task), 'criteria': criteria})
+        self.assertIn('department_id BIGINT', sc.sheet_note(sheet))
+        self.assertIn("lookup:{api:'/api/departments',label:'name'}", sc.sheet_note(sheet, screen=True))
+
+    def test_bad_references_are_refused_with_the_choices(self):
+        for field, message in [
+                ({'name': 'departmentId', 'label': '부서', 'ref': {'path': '/api/teams', 'label': 'name'}}, 'not an existing registration API'),
+                ({'name': 'departmentId', 'label': '부서', 'ref': {'path': '/api/departments', 'label': 'title'}}, 'ref label must be a field'),
+                ({'name': 'department', 'label': '부서', 'ref': {'path': '/api/departments', 'label': 'name'}}, 'name it <target>Id')]:
+            with self.assertRaisesRegex(ValueError, message):
+                sc.validate_sheet(dict(self.EMPLOYEE, fields=[self.EMPLOYEE['fields'][0], field]), set(self.REFS), self.REFS)

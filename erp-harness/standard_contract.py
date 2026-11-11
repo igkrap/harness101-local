@@ -37,8 +37,23 @@ def existing_api_paths(root):
     return paths
 
 
-def validate_sheet(sheet, taken=()):
-    """The field sheet in canonical form, or ValueError with what to fix."""
+def known_refs(root):
+    """{api path: saved sheet} of the registration APIs another record may point to."""
+    apis, out = existing_api_paths(root), {}
+    for file in (SHEETS / Path(root).name).glob('*.json'):
+        try:
+            sheet = validate_sheet(json.loads(file.read_text(encoding='utf-8')))
+        except (ValueError, OSError):
+            continue
+        if sheet['path'] in apis:
+            out[sheet['path']] = sheet
+    return out
+
+
+def validate_sheet(sheet, taken=(), refs=None):
+    """The field sheet in canonical form, or ValueError with what to fix.
+
+    refs: the APIs a field may point to ({path: sheet}); None accepts any ref (re-reading a saved sheet)."""
     if not isinstance(sheet, dict):
         raise ValueError('Answer with one JSON object {"path": ..., "fields": [...]}')
     path = sheet.get('path')
@@ -63,26 +78,53 @@ def validate_sheet(sheet, taken=()):
         seen.add(name)
         if not isinstance(label, str) or not label.strip() or len(label) > 30:
             raise ValueError(f'field {name} needs a short Korean label')
+        ref = field.get('ref')
+        if ref is not None:
+            if not isinstance(ref, dict) or not isinstance(ref.get('path'), str) or not PATH.fullmatch(ref['path']) or not isinstance(ref.get('label'), str) \
+                    or not NAME.fullmatch(ref['label']):
+                raise ValueError(f'field {name}: ref must be {{"path": "/api/<existing>", "label": "<field of that record to show>"}}')
+            if refs is not None:
+                if ref['path'] not in refs:
+                    raise ValueError(f"field {name}: ref path {ref['path']} is not an existing registration API; choose one of {sorted(refs) or 'none (leave ref out)'}")
+                names = [item['name'] for item in refs[ref['path']]['fields']]
+                if ref['label'] not in names:
+                    raise ValueError(f"field {name}: ref label must be a field of {ref['path']}: {names}")
+            if not name.endswith('Id'):
+                raise ValueError(f'field {name} points to another record; name it <target>Id (e.g. departmentId)')
+            out.append({'name': name, 'label': label.strip(), 'required': field.get('required') is True, 'sample': '1', 'ref': {'path': ref['path'], 'label': ref['label']}})
+            continue
         if not isinstance(sample, str) or not sample.strip() or len(sample) > 40:
             raise ValueError(f'field {name} needs a short sample value as a string')
         out.append({'name': name, 'label': label.strip(), 'required': field.get('required') is True, 'sample': sample.strip()})
-    if not any(field['required'] for field in out):
+    if not any(field['required'] and 'ref' not in field for field in out):
         raise ValueError('mark at least the main name or code field as "required": true')
     if sum(field['required'] for field in out) > max(2, len(out) // 2):
         raise ValueError('only fields a record cannot exist without are required (usually the name and/or code); the rest are optional')
     return {'path': path, 'fields': out}
 
 
-def api_criteria(sheet):
-    """create -> list -> update -> refuse blank -> delete, in this order on a fresh database (first id is 1)."""
+def api_criteria(sheet, refs=None):
+    """create -> list -> update -> refuse blank -> optional fields omitted -> delete, in this order on a fresh
+    database (first id is 1). Records a field points to are created first, from their own sheets."""
     path, fields = sheet['path'], sheet['fields']
-    key = next(field for field in fields if field['required'])
-    body = {field['name']: field['sample'] for field in fields}
+    key = next(field for field in fields if field['required'] and 'ref' not in field)
+    value = lambda field: 1 if 'ref' in field else field['sample']
+    body = {field['name']: value(field) for field in fields}
     changed = dict(body, **{key['name']: key['sample'] + ' 수정'})
     blank = dict(body, **{key['name']: ''})
     # Only the required fields, with distinct values so a unique column cannot be the reason for a refusal.
-    minimal = {field['name']: field['sample'] + ' 2' for field in fields if field['required']}
-    return [
+    minimal = {field['name']: (1 if 'ref' in field else field['sample'] + ' 2') for field in fields if field['required']}
+    before = []
+    for target in dict.fromkeys(field['ref']['path'] for field in fields if 'ref' in field):
+        other = (refs or {}).get(target)
+        if other is None or any('ref' in item and item['required'] for item in other['fields']):
+            raise ValueError(f'{target} cannot be prepared for the checks (no saved sheet, or it needs another record itself)')
+        first = next(item for item in other['fields'] if item['required'] and 'ref' not in item)
+        before.append({'id': f'P{len(before) + 1}', 'requirement_id': 'R1', 'description': f"준비: 고를 대상 {target} 자료를 하나 만든다(id 1)",
+                       'check': {'op': 'api', 'method': 'POST', 'path': target, 'status': 201,
+                                 'body': {item['name']: item['sample'] for item in other['fields'] if item['required'] and 'ref' not in item},
+                                 'json_path': [first['name']], 'equals': first['sample']}})
+    return before + [
         {'id': 'C1', 'requirement_id': 'R1', 'description': f"등록: POST {path} 가 저장하고 {key['label']} 을(를) 돌려준다",
          'check': {'op': 'api', 'method': 'POST', 'path': path, 'status': 201, 'body': body, 'json_path': [key['name']], 'equals': key['sample']}},
         {'id': 'C2', 'requirement_id': 'R1', 'description': f"조회: GET {path} 목록에 방금 등록한 자료가 있다",
@@ -121,19 +163,40 @@ def screen_criteria(sheet):
         criteria.append((f"편집 패널에 필수 항목 {label} 입력칸이 있다", {'op': 'visible', 'selector': f'{EDITOR} >> internal:label="{label}"i'}))
         criteria.append((f"{label} 은(는) 필수 표시(*)가 있다", {'op': 'text', 'selector': f'{EDITOR} label:has-text("{label}")', 'contains': '*'}))
         criteria.append((f"그리드에 {label} 열이 있다", {'op': 'text', 'selector': GRID, 'contains': label}))
+    optional = [field for field in sheet['fields'] if not field['required']]
+    if optional:
+        steps = [{'action': 'click', 'selector': '[data-ui="tabbed-panel"] >> role=tab[name="추가정보"]'}]
+        steps += [{'action': 'expect_visible', 'selector': f'{EDITOR} >> internal:label="{field["label"]}"i'} for field in optional]
+        criteria.append(('선택 항목(' + ', '.join(field['label'] for field in optional) + ')은 편집 패널의 추가정보 탭에 있다', {'op': 'scenario', 'steps': steps}))
     return [{'id': f'C{index + 1}', 'requirement_id': 'R1', 'description': description, 'check': check}
             for index, (description, check) in enumerate(criteria)]
 
 
 def sheet_note(sheet, screen=False):
     """What the author is told: the same names, labels and required marks the checks use."""
-    rows = ', '.join(f"{field['name']}({field['label']}{', 필수' if field['required'] else ''})" for field in sheet['fields'])
+    def row(field):
+        text = f"{field['name']}({field['label']}{', 필수' if field['required'] else ''}"
+        if 'ref' in field:
+            text += f", {field['ref']['path']} 에서 고름"
+        return text + ')'
+    rows = ', '.join(row(field) for field in sheet['fields'])
+    refs = [field for field in sheet['fields'] if 'ref' in field]
     if screen:
-        return (f"\n항목표(검사가 이 이름과 라벨을 그대로 쓴다): API {sheet['path']} / {rows}. 라벨은 표의 한국어를 그대로 쓰고, 필수 항목은 "
-                "required:true 와 group:'basic' 으로 둔다. 그리드에는 적어도 필수 항목 열을 같은 라벨로 넣는다.\n")
-    return (f"\n항목표(검사가 이 경로와 이름을 그대로 쓴다): {sheet['path']} / {rows}. JSON 필드 이름은 표의 영문 이름과 정확히 같게 한다. "
+        note = (f"\n항목표(검사가 이 이름과 라벨을 그대로 쓴다): API {sheet['path']} / {rows}. 라벨은 표의 한국어를 그대로 쓴다. 필수 항목은 "
+                "required:true 와 group:'basic', 선택 항목은 group:'extra'(추가정보 탭)로 둔다. 그리드에는 적어도 필수 항목 열을 같은 라벨로 넣는다.\n")
+        for field in refs:
+            note += (f"{field['label']} 은(는) 다른 화면의 자료에서 고르는 항목이다: 필드에 lookup:{{api:'{field['ref']['path']}',label:'{field['ref']['label']}'}} 를 주고, "
+                     f"그리드에는 const x=useLookup({{api:'{field['ref']['path']}',label:'{field['ref']['label']}'}}) 의 x.name(row.{field['name']}) 로 이름을 보여 준다. "
+                     f"저장할 때는 Number(values.{field['name']}) || null 을 보낸다(useLookup 은 '../framework' 에서 import).\n")
+        return note
+    note = (f"\n항목표(검사가 이 경로와 이름을 그대로 쓴다): {sheet['path']} / {rows}. JSON 필드 이름은 표의 영문 이름과 정확히 같게 한다. "
             "POST 는 201 과 저장된 자료, GET 은 목록 배열, PUT /{id} 는 200 과 수정된 자료, DELETE /{id} 는 204, "
-            "필수 항목이 비어 있으면 400 으로 답한다(품목 API 와 같은 방식).\n")
+            "필수 항목이 비어 있으면 400 으로 답한다(품목 API 와 같은 방식). 선택 항목의 열은 NULL 을 허용한다.\n")
+    for field in refs:
+        column = re.sub(r'(?<!^)(?=[A-Z])', '_', field['name']).lower()
+        note += (f"{field['name']} 은(는) {field['ref']['path']} 자료의 id 를 담는다: 열은 {column} BIGINT, 엔티티 필드는 Long {field['name']}, "
+                 "외래키(REFERENCES) 제약은 걸지 않는다.\n")
+    return note
 
 
 SHEET_PROMPT = '''새로 만들 등록 API의 항목표를 JSON 하나로만 답하라. 설명이나 코드 블록 표시는 쓰지 않는다.
@@ -142,22 +205,25 @@ SHEET_PROMPT = '''새로 만들 등록 API의 항목표를 JSON 하나로만 답
 - 요청과 방향에 나온 항목만 넣는다. id 와 등록/수정자·일시는 프레임워크가 관리하므로 넣지 않는다.
 - required 는 그 값 없이는 자료가 성립하지 않는 항목(보통 이름이나 코드 하나)에만 true 를 준다. 나머지는 false.
 - sample 은 그 항목에 들어갈 만한 짧은 문자열 값이다.
+- 다른 등록 자료에서 고르는 항목(예: 사원의 부서)은 글자로 입력받지 않는다. name 을 <대상>Id 로 하고 "ref": {"path": "<대상 API 경로>", "label": "<그 자료에서 보여 줄 항목 name>"} 를 넣는다(sample 은 생략). 고를 수 있는 대상: %s
 - 이미 있는 API 경로(%s)는 쓰지 않는다.
 요청: %s
 방향: %s'''
 
 
-def ask_sheet(runner, taken):
+def ask_sheet(runner, taken, refs=None):
     task, approach = str(runner.args.task), os.environ.get('HARNESS_TASK_APPROACH', '').strip()
+    refs = refs or {}
+    targets = '; '.join(f"{path} (항목: {', '.join(item['name'] + '=' + item['label'] for item in sheet['fields'])})" for path, sheet in sorted(refs.items()))
     messages = [{'role': 'system', 'content': 'JSON only'},
-                {'role': 'user', 'content': SHEET_PROMPT % (', '.join(sorted(taken)) or '없음', task, approach[:800] or '없음')}]
+                {'role': 'user', 'content': SHEET_PROMPT % (targets or '없음', ', '.join(sorted(taken)) or '없음', task, approach[:800] or '없음')}]
     error = ''
     for attempt in range(3):
         response = runner.ask(messages=list(messages), tools=[])
         text = str(response.get('content') or '')
         try:
             found = re.search(r'\{.*\}', text, re.S)
-            return validate_sheet(json.loads(found.group(0)) if found else None, taken)
+            return validate_sheet(json.loads(found.group(0)) if found else None, taken, refs)
         except (ValueError, AttributeError) as problem:
             error = str(problem)
             runner.h.log_event('requirement.sheet_rejected', {'attempt': attempt + 1, 'error': error[:300]})
@@ -294,12 +360,14 @@ def build(runner, new_screen_reference=''):
     import requirement_contract
     base = {'version': 1, 'task': task, 'requirements': requirement_contract.requirements(task)}
     if _is_new_api(runner):
-        sheet = ask_sheet(runner, existing_api_paths(root))
+        refs = known_refs(root)
+        sheet = ask_sheet(runner, existing_api_paths(root), refs)
+        criteria = api_criteria(sheet, refs)
         file = _sheet_file(root, sheet['path'])
         file.parent.mkdir(parents=True, exist_ok=True)
         file.write_text(json.dumps(dict(sheet, task=task, saved_at=time.strftime('%Y-%m-%dT%H:%M:%S')), ensure_ascii=False, indent=1), encoding='utf-8')
         runner._field_sheet_note = sheet_note(sheet)
-        return dict(base, criteria=api_criteria(sheet)), 'standard-api', sheet
+        return dict(base, criteria=criteria), 'standard-api', sheet
     modes = set(getattr(runner, 'modes', ()) or ())
     if 'backend' in modes and not ({'frontend', 'framework'} & modes):
         # A change to an existing registration API: the same standard checks, for the sheet as the request wants it.
@@ -308,7 +376,7 @@ def build(runner, new_screen_reference=''):
         current = _matching_sheet(root, task)
         if current:
             sheet = ask_updated_sheet(runner, current)
-            criteria = api_criteria(sheet)
+            criteria = api_criteria(sheet, known_refs(root))
             failing = _baseline(runner, criteria)
             runner.h.log_event('requirement.standard_baseline', {'path': sheet['path'], 'failing': [f.get('id') for f in failing], 'model_calls': 0})
             if failing and not all(f.get('status') == 'unverified' for f in failing):
