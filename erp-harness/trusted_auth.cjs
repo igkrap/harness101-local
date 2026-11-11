@@ -18,7 +18,10 @@ async function ensureAuthenticated(request, base, { localProxy = false } = {}) {
   if (typeof session.authenticated !== 'boolean') return false;
   if (session.authenticated) return true;
   if (!session.csrf?.token || session.csrf.headerName !== 'X-CSRF-TOKEN') throw new Error('Invalid trusted session CSRF contract');
-  const file = process.env.HARNESS_LOGIN_CREDENTIALS || path.resolve(__dirname, '../platform/state/auth/local-login.json');
+  // The checker signs in with its own account (platform/provision_verifier.py): the app allows one live session
+  // per account, so sharing the administrator's would sign the person using the app out on every check.
+  const own = path.resolve(__dirname, '../platform/state/auth/verifier-login.json');
+  const file = process.env.HARNESS_LOGIN_CREDENTIALS || (fs.existsSync(own) ? own : path.resolve(__dirname, '../platform/state/auth/local-login.json'));
   if (!fs.existsSync(file)) throw new Error('Local test login is not provisioned; run platform/bootstrap_auth.py');
   const account = JSON.parse(fs.readFileSync(file, 'utf8'));
   const login = await request.post(new URL('/api/auth/login', base).toString(), {
