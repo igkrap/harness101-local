@@ -24,6 +24,10 @@ class StandardContractTests(unittest.TestCase):
                 (dict(SHEET, fields=SHEET['fields'] + [dict(SHEET['fields'][1], name='companyName')]), 'listed twice')]:
             with self.assertRaisesRegex(ValueError, message):
                 sc.validate_sheet(bad)
+        every = dict(SHEET, fields=[dict(field, required=True) for field in SHEET['fields']] + [{'name': 'fax', 'label': '팩스', 'required': True, 'sample': '02'}])
+        with self.assertRaisesRegex(ValueError, 'the rest are optional'):
+            sc.validate_sheet(every, few_required=True)   # a sheet the model invents keeps required fields few
+        self.assertEqual(len(sc.validate_sheet(every)['fields']), 3)  # a user's explicit change may require more
         with self.assertRaisesRegex(ValueError, 'already exists'):
             sc.validate_sheet(SHEET, {'/api/companies'})
 
@@ -33,10 +37,12 @@ class StandardContractTests(unittest.TestCase):
             parsed = requirement_contract.validate(task, {'version': 1, 'task': task, 'requirements': requirement_contract.requirements(task), 'criteria': criteria})
             self.assertEqual(len(parsed['criteria']), len(criteria))
         api = sc.api_criteria(sheet)
-        self.assertEqual([(c['check']['method'], c['check']['status']) for c in api],
-                         [('POST', 201), ('GET', 200), ('PUT', 200), ('POST', 400), ('POST', 201), ('DELETE', 204), ('PUT', 404)])
-        self.assertEqual(api[4]['check']['body'], {'companyName': '한빛상사 2'})  # optional fields may be left out
-        self.assertEqual(api[3]['check']['body']['companyName'], '')  # the refusal is unmistakable: the required field is blank
+        self.assertEqual([(c['id'], c['check']['method'], c['check']['status']) for c in api],
+                         [('C1', 'POST', 201), ('C2', 'GET', 200), ('C2_2', 'GET', 200), ('C3', 'PUT', 200), ('C4', 'POST', 400), ('C4b', 'POST', 201),
+                          ('C5', 'DELETE', 204), ('C6', 'PUT', 404)])
+        self.assertEqual(api[2]['check']['json_path'], [0, 'phone'])   # every field is read back, not only the key
+        self.assertEqual(api[5]['check']['body'], {'companyName': '한빛상사 2'})  # optional fields may be left out
+        self.assertEqual(api[4]['check']['body']['companyName'], '')  # the refusal is unmistakable: the required field is blank
         self.assertIn('companyName(회사명, 필수)', sc.sheet_note(sheet))
 
     def test_model_gives_only_the_sheet_and_bad_answers_are_retried(self):
@@ -115,3 +121,42 @@ class ReferenceFieldTests(unittest.TestCase):
                 ({'name': 'department', 'label': '부서', 'ref': {'path': '/api/departments', 'label': 'name'}}, 'name it <target>Id')]:
             with self.assertRaisesRegex(ValueError, message):
                 sc.validate_sheet(dict(self.EMPLOYEE, fields=[self.EMPLOYEE['fields'][0], field]), set(self.REFS), self.REFS)
+
+
+class TypedFieldTests(unittest.TestCase):
+    def test_numbers_and_dates_are_sent_and_compared_in_their_own_form(self):
+        sheet = sc.validate_sheet({'path': '/api/orders', 'fields': [
+            {'name': 'orderNo', 'label': '주문번호', 'required': True, 'sample': 'A-1'},
+            {'name': 'quantity', 'label': '수량', 'required': False, 'type': 'number', 'sample': '10'},
+            {'name': 'orderDate', 'label': '주문일', 'required': False, 'type': 'date', 'sample': '2026-01-15'}]})
+        body = sc.api_criteria(sheet)[0]['check']['body']
+        self.assertEqual(body, {'orderNo': 'A-1', 'quantity': 10, 'orderDate': '2026-01-15'})
+        self.assertIn('quantity(수량, 숫자)', sc.sheet_note(sheet))
+        for field, message in [({'name': 'quantity', 'label': '수량', 'type': 'number', 'sample': '열 개'}, 'whole number'),
+                               ({'name': 'orderDate', 'label': '주문일', 'type': 'date', 'sample': '1월 15일'}, 'must look like')]:
+            with self.assertRaisesRegex(ValueError, message):
+                sc.validate_sheet({'path': '/api/orders', 'fields': [{'name': 'orderNo', 'label': '주문번호', 'required': True, 'sample': 'A-1'}, field]})
+
+
+class ScreenChangeTests(unittest.TestCase):
+    def test_existing_screen_change_uses_failing_screen_checks(self):
+        import json, tempfile
+        folder = tempfile.TemporaryDirectory(); self.addCleanup(folder.cleanup)
+        root = Path(folder.name) / 'proj'
+        (root / 'frontend/src/screens').mkdir(parents=True)
+        (root / 'frontend/src/screens/Company.tsx').write_text("export const meta = { code: 'MST0002', title: '회사 등록' };\nawait apiFetch(`/api/companies?x`);")
+        controller = root / 'backend/src/main/java/app/CompanyController.java'
+        controller.parent.mkdir(parents=True); controller.write_text('@RequestMapping("/api/companies")')
+        wanted = dict(SHEET, fields=[dict(SHEET['fields'][0]), dict(SHEET['fields'][1], required=True)])
+        runner = SimpleNamespace(args=SimpleNamespace(task='회사 등록 화면에서 전화번호를 필수로 바꿔줘'), modes=['frontend', 'framework'], read=set(),
+                                 h=SimpleNamespace(workspace=SimpleNamespace(root=root), log_event=Mock()),
+                                 ask=lambda messages, tools: {'content': json.dumps(wanted, ensure_ascii=False)})
+        with patch.object(sc, 'SHEETS', Path(folder.name) / 'sheets'), \
+                patch.object(sc, '_screen_baseline', return_value=[{'id': 'C12', 'status': 'failed', 'reason': 'not visible'}]) as baseline:
+            file = sc._sheet_file(root, '/api/companies'); file.parent.mkdir(parents=True)
+            file.write_text(json.dumps(dict(SHEET, task='회사 등록 API'), ensure_ascii=False))
+            built = sc.build(runner)
+        self.assertEqual(built[1], 'standard-screen-change')
+        self.assertEqual(baseline.call_args.args[1], '회사 등록')
+        self.assertEqual(runner.read, {'frontend/src/screens/Company.tsx'})
+        self.assertIn('전화번호', runner._field_sheet_note)

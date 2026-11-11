@@ -50,7 +50,7 @@ def known_refs(root):
     return out
 
 
-def validate_sheet(sheet, taken=(), refs=None):
+def validate_sheet(sheet, taken=(), refs=None, few_required=False):
     """The field sheet in canonical form, or ValueError with what to fix.
 
     refs: the APIs a field may point to ({path: sheet}); None accepts any ref (re-reading a saved sheet)."""
@@ -95,10 +95,21 @@ def validate_sheet(sheet, taken=(), refs=None):
             continue
         if not isinstance(sample, str) or not sample.strip() or len(sample) > 40:
             raise ValueError(f'field {name} needs a short sample value as a string')
-        out.append({'name': name, 'label': label.strip(), 'required': field.get('required') is True, 'sample': sample.strip()})
+        kind = field.get('type', 'text')
+        if kind not in ('text', 'number', 'date'):
+            raise ValueError(f'field {name}: type must be "text", "number" or "date"')
+        if kind == 'number' and not re.fullmatch(r'\d{1,9}', sample.strip()):
+            raise ValueError(f'field {name} is a number: its sample must be a whole number like "10"')
+        if kind == 'date' and not re.fullmatch(r'\d{4}-\d{2}-\d{2}', sample.strip()):
+            raise ValueError(f'field {name} is a date: its sample must look like "2026-01-15"')
+        item = {'name': name, 'label': label.strip(), 'required': field.get('required') is True, 'sample': sample.strip()}
+        if kind != 'text':
+            item['type'] = kind
+        out.append(item)
     if not any(field['required'] and 'ref' not in field for field in out):
         raise ValueError('mark at least the main name or code field as "required": true')
-    if sum(field['required'] for field in out) > max(2, len(out) // 2):
+    # Only for a sheet the model invents: when the user asks for a field to be required, that is their decision.
+    if few_required and sum(field['required'] for field in out) > max(2, len(out) // 2):
         raise ValueError('only fields a record cannot exist without are required (usually the name and/or code); the rest are optional')
     return {'path': path, 'fields': out}
 
@@ -108,7 +119,7 @@ def api_criteria(sheet, refs=None):
     database (first id is 1). Records a field points to are created first, from their own sheets."""
     path, fields = sheet['path'], sheet['fields']
     key = next(field for field in fields if field['required'] and 'ref' not in field)
-    value = lambda field: 1 if 'ref' in field else field['sample']
+    value = lambda field: 1 if 'ref' in field else int(field['sample']) if field.get('type') == 'number' else field['sample']
     body = {field['name']: value(field) for field in fields}
     changed = dict(body, **{key['name']: key['sample'] + ' 수정'})
     blank = dict(body, **{key['name']: ''})
@@ -129,6 +140,9 @@ def api_criteria(sheet, refs=None):
          'check': {'op': 'api', 'method': 'POST', 'path': path, 'status': 201, 'body': body, 'json_path': [key['name']], 'equals': key['sample']}},
         {'id': 'C2', 'requirement_id': 'R1', 'description': f"조회: GET {path} 목록에 방금 등록한 자료가 있다",
          'check': {'op': 'api', 'method': 'GET', 'path': path, 'status': 200, 'json_path': [0, key['name']], 'equals': key['sample']}},
+        *[{'id': f'C2_{index + 2}', 'requirement_id': 'R1', 'description': f"저장 확인: 목록의 {field['label']}({field['name']}) 값이 보낸 값과 같다",
+           'check': {'op': 'api', 'method': 'GET', 'path': path, 'status': 200, 'json_path': [0, field['name']], 'equals': value(field)}}
+          for index, field in enumerate(item for item in fields if item is not key)],
         {'id': 'C3', 'requirement_id': 'R1', 'description': f"수정: PUT {path}/1 이 {key['label']} 을(를) 바꾼다",
          'check': {'op': 'api', 'method': 'PUT', 'path': f'{path}/1', 'status': 200, 'body': changed, 'json_path': [key['name']], 'equals': changed[key['name']]}},
         {'id': 'C4', 'requirement_id': 'R1', 'description': f"필수 항목 {key['label']}({key['name']}) 이(가) 빈 값이면 400 으로 거절한다",
@@ -175,7 +189,7 @@ def screen_criteria(sheet):
 def sheet_note(sheet, screen=False):
     """What the author is told: the same names, labels and required marks the checks use."""
     def row(field):
-        text = f"{field['name']}({field['label']}{', 필수' if field['required'] else ''}"
+        text = f"{field['name']}({field['label']}{', 필수' if field['required'] else ''}{', 숫자' if field.get('type') == 'number' else ', 날짜' if field.get('type') == 'date' else ''}"
         if 'ref' in field:
             text += f", {field['ref']['path']} 에서 고름"
         return text + ')'
@@ -183,7 +197,8 @@ def sheet_note(sheet, screen=False):
     refs = [field for field in sheet['fields'] if 'ref' in field]
     if screen:
         note = (f"\n항목표(검사가 이 이름과 라벨을 그대로 쓴다): API {sheet['path']} / {rows}. 라벨은 표의 한국어를 그대로 쓴다. 필수 항목은 "
-                "required:true 와 group:'basic', 선택 항목은 group:'extra'(추가정보 탭)로 둔다. 그리드에는 적어도 필수 항목 열을 같은 라벨로 넣는다.\n")
+                "required:true 와 group:'basic', 선택 항목은 group:'extra'(추가정보 탭)로 둔다. 그리드에는 적어도 필수 항목 열을 같은 라벨로 넣는다. "
+                "숫자 항목은 type:'integer' 로 두고 저장할 때 Number(값) 또는 null 을 보낸다. 날짜 항목은 placeholder:'2026-01-15' 인 글자 입력으로 둔다.\n")
         for field in refs:
             note += (f"{field['label']} 은(는) 다른 화면의 자료에서 고르는 항목이다: 필드에 lookup:{{api:'{field['ref']['path']}',label:'{field['ref']['label']}'}} 를 주고, "
                      f"그리드에는 const x=useLookup({{api:'{field['ref']['path']}',label:'{field['ref']['label']}'}}) 의 x.name(row.{field['name']}) 로 이름을 보여 준다. "
@@ -191,7 +206,9 @@ def sheet_note(sheet, screen=False):
         return note
     note = (f"\n항목표(검사가 이 경로와 이름을 그대로 쓴다): {sheet['path']} / {rows}. JSON 필드 이름은 표의 영문 이름과 정확히 같게 한다. "
             "POST 는 201 과 저장된 자료, GET 은 목록 배열, PUT /{id} 는 200 과 수정된 자료, DELETE /{id} 는 204, "
-            "필수 항목이 비어 있으면 400 으로 답한다(품목 API 와 같은 방식). 선택 항목의 열은 NULL 을 허용한다.\n")
+            "필수 항목이 비어 있으면 400 으로 답한다(품목 API 와 같은 방식). 선택 항목의 열은 NULL 을 허용한다. "
+            "숫자 항목은 INTEGER 열과 Integer 필드, 날짜 항목은 DATE 열과 java.time.LocalDate 필드(JSON 은 \"2026-01-15\" 형태), 그 밖은 글자다. "
+            "보낸 모든 항목을 저장하고 응답과 목록에 그대로 돌려준다.\n")
     for field in refs:
         column = re.sub(r'(?<!^)(?=[A-Z])', '_', field['name']).lower()
         note += (f"{field['name']} 은(는) {field['ref']['path']} 자료의 id 를 담는다: 열은 {column} BIGINT, 엔티티 필드는 Long {field['name']}, "
@@ -204,7 +221,7 @@ SHEET_PROMPT = '''새로 만들 등록 API의 항목표를 JSON 하나로만 답
 규칙:
 - 요청과 방향에 나온 항목만 넣는다. id 와 등록/수정자·일시는 프레임워크가 관리하므로 넣지 않는다.
 - required 는 그 값 없이는 자료가 성립하지 않는 항목(보통 이름이나 코드 하나)에만 true 를 준다. 나머지는 false.
-- sample 은 그 항목에 들어갈 만한 짧은 문자열 값이다.
+- sample 은 그 항목에 들어갈 만한 짧은 문자열 값이다. 수량·순서·금액 같은 숫자 항목은 "type": "number"(sample 은 "10" 같은 정수), 날짜 항목은 "type": "date"(sample 은 "2026-01-15")를 넣고, 글자 항목은 type 을 쓰지 않는다.
 - 다른 등록 자료에서 고르는 항목(예: 사원의 부서)은 글자로 입력받지 않는다. name 을 <대상>Id 로 하고 "ref": {"path": "<대상 API 경로>", "label": "<그 자료에서 보여 줄 항목 name>"} 를 넣는다(sample 은 생략). 고를 수 있는 대상: %s
 - 이미 있는 API 경로(%s)는 쓰지 않는다.
 요청: %s
@@ -223,7 +240,7 @@ def ask_sheet(runner, taken, refs=None):
         text = str(response.get('content') or '')
         try:
             found = re.search(r'\{.*\}', text, re.S)
-            return validate_sheet(json.loads(found.group(0)) if found else None, taken, refs)
+            return validate_sheet(json.loads(found.group(0)) if found else None, taken, refs, few_required=True)
         except (ValueError, AttributeError) as problem:
             error = str(problem)
             runner.h.log_event('requirement.sheet_rejected', {'attempt': attempt + 1, 'error': error[:300]})
@@ -350,6 +367,31 @@ def likely_fix(root, failing):
     return ''
 
 
+def screen_api(root, title):
+    """(screen file, API path) of the existing screen with this title, from its meta and its apiFetch calls."""
+    for path in sorted((Path(root) / 'frontend/src/screens').glob('*.tsx')):
+        source = path.read_text(encoding='utf-8', errors='replace')
+        meta = re.search(r'\bexport\s+const\s+meta\s*=\s*\{([^{}]{0,1000})\}', source)
+        if not meta or not re.search(r"\btitle\s*:\s*(['\"])" + re.escape(title) + r'\1', meta.group(1)):
+            continue
+        api = re.search(r'apiFetch\(\s*[`\'"](/api/[a-z][a-z0-9-]*)', source)
+        return path.relative_to(root).as_posix(), api.group(1) if api else None
+    return None, None
+
+
+def _screen_baseline(runner, title, criteria):
+    """Run the screen checks on the screen as it is now (read-only, in a real browser); the ones that fail."""
+    import subprocess
+    import uuid
+    data = {'open_screen': title, 'contract': {'criteria': criteria, 'requirements': []},
+            'preview_url': os.environ.get('HARNESS_VERIFICATION_PREVIEW_URL') or os.environ.get('HARNESS_PREVIEW_URL') or '', 'api_url': '',
+            'output_dir': str(Path(os.environ.get('TMPDIR', '/tmp')) / ('standard-screen-baseline-' + uuid.uuid4().hex)),
+            'allow_browser_writes': False, 'allow_api_writes': False}
+    script = Path(__file__).resolve().with_name('react_layout_inspector.cjs')
+    done = subprocess.run(['node', str(script)], input=json.dumps(data), text=True, capture_output=True, timeout=180)
+    return [result for result in json.loads(done.stdout).get('results', []) if result.get('status') != 'passed']
+
+
 def build(runner, new_screen_reference=''):
     """(raw contract, kind) for a standard task, else None. Sets runner._field_sheet_note for the author's brief."""
     if os.environ.get('HARNESS_STANDARD_CONTRACT') == '0':
@@ -395,6 +437,30 @@ def build(runner, new_screen_reference=''):
                                             + f'이미 적용된 마이그레이션은 고칠 수 없으므로 테이블 변경은 새 V{next_migration(root)}__ 마이그레이션(ALTER TABLE)으로 한다. '
                                             + ('관련 파일은 CURRENT FILE 로 이미 주어져 있다: ' + ', '.join(files) + '. 다시 읽지 말고 바로 고친다.\n' if files else '\n'))
                 return dict(base, criteria=criteria), 'standard-api-change', sheet
+        return None
+    if not new_screen_reference and 'backend' not in modes and ({'frontend', 'framework'} & modes):
+        # A change to an existing registration screen: the standard screen checks for the sheet as the request wants
+        # it, used only if some fail on the screen as it is now (otherwise the request is about something else).
+        from task_sources import task_screen_title
+        title = task_screen_title(root, task)
+        file, api = screen_api(root, title) if title else (None, None)
+        current = known_refs(root).get(api) if api else None
+        if current:
+            sheet = ask_updated_sheet(runner, current)
+            description = {c['id']: c['description'] for c in screen_criteria(sheet)}
+            criteria = screen_criteria(sheet)
+            failing = _screen_baseline(runner, title, criteria)
+            runner.h.log_event('requirement.standard_baseline', {'screen': title, 'failing': [f.get('id') for f in failing], 'model_calls': 0})
+            if failing and not all(f.get('status') == 'unverified' for f in failing):
+                sheet_file = _sheet_file(root, sheet['path'])
+                sheet_file.write_text(json.dumps(dict(sheet, task=json.loads(sheet_file.read_text(encoding='utf-8')).get('task', task),
+                                                      saved_at=time.strftime('%Y-%m-%dT%H:%M:%S')), ensure_ascii=False, indent=1), encoding='utf-8')
+                if isinstance(getattr(runner, 'read', None), set) and file:
+                    runner.read.add(file)
+                facts = '\n'.join(f"- {f.get('id')} {description.get(f.get('id'), '')}" for f in failing[:8])
+                runner._field_sheet_note = (sheet_note(sheet, screen=True) + f'고칠 화면 파일은 {file} 하나다. 지금 화면에서 통과하지 못하는 검사(이것을 고친다):\n' + facts
+                                            + '\n화면 파일의 필드 정의(editFields)와 그리드 열(gridColumns)을 항목표에 맞게 고친다. 다른 파일은 건드리지 않는다.\n')
+                return dict(base, criteria=criteria), 'standard-screen-change', sheet
         return None
     if new_screen_reference and 'backend' not in (getattr(runner, 'modes', ()) or ()):
         sheet = _unused_sheet(root)
