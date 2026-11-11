@@ -1,3 +1,5 @@
+[2026-11-11] Login background. sys_settings key login_background holds a data: URL (png/jpeg/webp/gif, <=7,000,000 chars ~5MB); no migration needed. PUT /api/system/settings/login-background {image} (admin), GET /api/auth/branding/login-background (public, binary, cached 30 days; added to the permitAll matcher). /api/auth/branding returns only loginBackground=<version>; branding.ts turns it into the versioned URL. AuthGate main[data-ui="login-page"] shows it as cover. 시스템 설정 has the upload card (applies at once, separate from 저장; the 저장 PUT now sends explicit fields). Deployed live. Verified with a tiny animated GIF: preview, anonymous login page background, image endpoint 200 image/gif, removal.
+
 [2026-11-11] Row-number column removed from RecordGrid on user request (its rows did not line up with the 24px body rows). enableRowHeader={false} again; grid test checks 'no-row-numbers'.
 
 [2026-11-11] Grid header 26px: RecordGrid sets the static Grid.MIN_COLUMN_HEADER_HEIGHT (Blueprint's JS floor, 30 by default) to 26 at module load, plus CSS line-heights. Re-check after a @blueprintjs/table upgrade.
