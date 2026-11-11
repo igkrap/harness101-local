@@ -81,7 +81,7 @@ class StandardChangeTests(unittest.TestCase):
         built, runner = self.run_build([{'id': 'C4b', 'status': 'failed', 'reason': 'returned 409 | root cause: null value in column "business_number"'}])
         self.assertEqual(built[1], 'standard-api-change')
         self.assertIn('business_number', runner._field_sheet_note)
-        self.assertIn('새 V<n>__ 마이그레이션', runner._field_sheet_note)
+        self.assertIn('새 V1__ 마이그레이션', runner._field_sheet_note)  # the next free migration number is named
 
     def test_passing_baseline_leaves_the_task_to_the_model_written_contract(self):
         built, runner = self.run_build([])

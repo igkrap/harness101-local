@@ -410,6 +410,13 @@ def note_read_streak(runner, message, edited):
         runner._read_streak = 0
     elif names:
         runner._read_streak = getattr(runner, '_read_streak', 0) + 1
+    if getattr(runner, '_read_streak', 0) == READ_STREAK_LIMIT // 2 and isinstance(getattr(runner, 'messages', None), list):
+        # Half way to the stop: say so once, with what is already known, instead of stopping without a word.
+        known = getattr(runner, '_field_sheet_note', '')
+        runner.messages.append({'role': 'user', 'content': (
+            f'지금까지 {runner._read_streak}번 연속으로 읽기만 했다. 필요한 내용은 이미 읽었다. 더 읽지 말고 이번 응답에서 바로 변경한다: '
+            '새 파일은 write_file, 기존 파일은 편집 도구로 고친다. 읽기만 계속하면 작업이 중단된다.' + (('\n' + known) if known else ''))})
+        runner.h.log_event('autonomy.read_nudge', {'responses': runner._read_streak, 'model_calls': 0})
     if getattr(runner, '_read_streak', 0) >= READ_STREAK_LIMIT:
         runner.h.log_event('autonomy.stalled', {'reason': 'read_only_streak', 'responses': runner._read_streak,
                                                 'model_calls': getattr(runner, 'used', 0)})

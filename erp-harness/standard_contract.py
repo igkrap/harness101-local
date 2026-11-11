@@ -245,6 +245,45 @@ def _baseline(runner, criteria):
     return [result for result in report.get('results', []) if result.get('status') != 'passed']
 
 
+def resource_files(root, path):
+    """The files that make up an existing registration API: controller, entity, repository, the migration creating its table."""
+    root, files = Path(root), []
+    for controller in (root / 'backend/src/main/java').rglob('*Controller.java'):
+        if f'@RequestMapping("{path}")' not in controller.read_text(encoding='utf-8', errors='replace'):
+            continue
+        stem = controller.stem[:-len('Controller')]
+        for name in (controller.name, stem + '.java', stem + 'Repository.java'):
+            if (controller.parent / name).is_file():
+                files.append((controller.parent / name).relative_to(root).as_posix())
+        entity = controller.parent / (stem + '.java')
+        table = re.search(r'@Table\s*\(\s*name\s*=\s*"([^"]+)"', entity.read_text(encoding='utf-8', errors='replace')) if entity.is_file() else None
+        if table:
+            creating = [m for m in sorted((root / 'backend/src/main/resources/db/migration').glob('V*.sql'),
+                                          key=lambda item: int(re.match(r'V(\d+)', item.name).group(1)))
+                        if re.search(r'CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?"?' + re.escape(table.group(1)) + r'\b', m.read_text(encoding='utf-8', errors='replace'), re.I)]
+            if creating:
+                files.append(creating[-1].relative_to(root).as_posix())  # the latest one is the table as it is now
+        break
+    return files
+
+
+def next_migration(root):
+    versions = [int(m.group(1)) for p in (Path(root) / 'backend/src/main/resources/db/migration').glob('V*.sql') for m in [re.match(r'V(\d+)__', p.name)] if m]
+    return max(versions, default=0) + 1
+
+
+def likely_fix(root, failing):
+    """A concrete suggestion when the observed root cause has an obvious remedy."""
+    text = ' '.join(str(f.get('reason')) for f in failing)
+    match = re.search(r'null value in column "(\w+)" of relation "(\w+)" violates not-null constraint', text)
+    if match:
+        column, table = match.groups()
+        return (f'가장 가능성 높은 수정: {table}.{column} 열이 NULL 을 허용하지 않는 것이 원인이다. 새 마이그레이션 파일 '
+                f'backend/src/main/resources/db/migration/V{next_migration(root)}__{table}_{column}_optional.sql 을 write_file 로 만들고 내용은 '
+                f'"ALTER TABLE {table} ALTER COLUMN {column} DROP NOT NULL;" 로 한다.\n')
+    return ''
+
+
 def build(runner, new_screen_reference=''):
     """(raw contract, kind) for a standard task, else None. Sets runner._field_sheet_note for the author's brief."""
     if os.environ.get('HARNESS_STANDARD_CONTRACT') == '0':
@@ -277,8 +316,13 @@ def build(runner, new_screen_reference=''):
                 file.write_text(json.dumps(dict(sheet, task=json.loads(file.read_text(encoding='utf-8')).get('task', task), saved_at=time.strftime('%Y-%m-%dT%H:%M:%S')),
                                            ensure_ascii=False, indent=1), encoding='utf-8')
                 facts = '\n'.join(f"- {f.get('id')}: {str(f.get('reason'))[:600]}" for f in failing[:4])
+                files = resource_files(root, sheet['path'])
+                if isinstance(getattr(runner, 'read', None), set):
+                    runner.read.update(files)  # given to the author as CURRENT FILE blocks
                 runner._field_sheet_note = (sheet_note(sheet) + '지금 코드에서 실패하는 검사와 관찰된 원인(이것을 고친다; 방향 설명보다 이 관찰이 정확하다):\n' + facts
-                                            + '\n이미 적용된 마이그레이션은 고칠 수 없으므로 테이블 변경은 새 V<n>__ 마이그레이션(ALTER TABLE)으로 한다.\n')
+                                            + '\n' + likely_fix(root, failing)
+                                            + f'이미 적용된 마이그레이션은 고칠 수 없으므로 테이블 변경은 새 V{next_migration(root)}__ 마이그레이션(ALTER TABLE)으로 한다. '
+                                            + ('관련 파일은 CURRENT FILE 로 이미 주어져 있다: ' + ', '.join(files) + '. 다시 읽지 말고 바로 고친다.\n' if files else '\n'))
                 return dict(base, criteria=criteria), 'standard-api-change', sheet
         return None
     if new_screen_reference and 'backend' not in (getattr(runner, 'modes', ()) or ()):
