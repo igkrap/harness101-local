@@ -84,7 +84,12 @@ class HarnessContractVerificationTest {
                             + (responseBody.isBlank() ? "" : " response: " + responseBody.substring(0, Math.min(400, responseBody.length())));
                     assertEquals(expectedStatus, actualStatus, "Status mismatch for " + id + ": " + method + " " + path + sent
                             + " returned " + actualStatus + "." + detail
-                            + " The check is fixed; make the API accept this request.");
+                            + (expectedStatus >= 400 && actualStatus < 400
+                                ? " The API accepted a request it must refuse. The check is fixed; make the API answer " + expectedStatus
+                                    + " for this request (validate the missing or blank required fields before saving)."
+                                : expectedStatus < 400 && actualStatus >= 400
+                                    ? " The check is fixed; make the API accept this request."
+                                    : " The check is fixed; make the API answer " + expectedStatus + " for this request."));
                 }
 
                 if (check.containsKey("json_path")) {

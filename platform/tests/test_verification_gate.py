@@ -279,3 +279,22 @@ class UniqueSelectorTests(unittest.TestCase):
         self.assertIn('container form[aria-label="조회 조건"]', text)
         self.assertIn('another tag', text)
         self.assertNotIn('조건 초기화', text)
+
+
+class ClearRejectionTests(unittest.TestCase):
+    """A 400 check must violate something on its face; omitting optional attributes is a valid request."""
+    def contract(self, bad_body):
+        good = {'companyName': '테스트회사', 'phone': '010', 'email': 'a@b.c'}
+        return {'criteria': [
+            {'id': 'C1', 'check': {'op': 'api', 'method': 'POST', 'path': '/api/companies', 'status': 201, 'body': good}},
+            {'id': 'C2', 'check': {'op': 'api', 'method': 'POST', 'path': '/api/companies', 'status': 400, 'body': bad_body}}]}
+
+    def test_subset_of_an_accepted_body_is_refused_with_guidance(self):
+        from verification_gate import Gate
+        with self.assertRaisesRegex(ValueError, "only omits \\['email', 'phone'\\]"):
+            Gate._require_clear_rejection(self.contract({'companyName': '테스트회사'}))
+
+    def test_empty_blank_or_different_bodies_are_fine(self):
+        from verification_gate import Gate
+        for body in ({}, {'companyName': ''}, {'companyName': None, 'phone': '010'}, {'companyName': '다른회사'}):
+            Gate._require_clear_rejection(self.contract(body))

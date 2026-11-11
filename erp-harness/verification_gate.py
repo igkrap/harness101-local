@@ -137,7 +137,11 @@ class Gate:
             prompt += '\nPLANNED DIRECTION (the author builds this; use the same fields, names and paths in request bodies and selectors): ' + approach[:1200]
         if 'backend' in (getattr(self.runner, 'modes', ()) or ()):
             prompt += ('\nAPI JSON uses camelCase field names like the existing APIs (e.g. {"itemCode": "A1", "name": "볼트"}); '
-                       'snake_case names such as dept_code are database columns and never appear in request bodies or json_path.')
+                       'snake_case names such as dept_code are database columns and never appear in request bodies or json_path.'
+                       '\nA rejection check (status 400) must make the violation unmistakable: send an empty body {} or the main '
+                       'name/code field as "" (blank). Never write a 400 check whose body only leaves out other attributes '
+                       '(address, phone, email, memo, ...): attributes the request does not call required are optional, so such a '
+                       'request is valid and is saved. Name the required field in the criterion description.')
         from component_catalog import context_for_task
         prompt += context_for_task(self.runner)
         from task_sources import task_screen_title
@@ -191,6 +195,7 @@ class Gate:
                         raise ValueError(f'This task is backend only (no screen is part of it): check it through its API with op=api. Remove or replace {ui}.')
                 self._require_absent_baseline(parsed)
                 self._require_unique_selectors(parsed)
+                self._require_clear_rejection(parsed)
                 self._dry_run_scenarios(parsed)
                 self._require_change_sensitive(parsed)
                 from requirement_review import review
@@ -331,6 +336,28 @@ class Gate:
                      'e.g. {"action":"click","selector":"role=tab[name=\\"<tab>\\"]"}): '
                      + '; '.join(f"tab '{t['tab']}': " + ', '.join(t['fields'][:12]) for t in tabs[:6]))
         return text
+
+    @staticmethod
+    def _require_clear_rejection(parsed):
+        """A 4xx API check must violate something on its face (empty body or a blank value).
+
+        A body that merely omits attributes another (accepted) request sends says nothing about which
+        field is required; the author then builds an API that rightly accepts it and the run cannot pass."""
+        checks = [(c.get('id'), c.get('check') or {}) for c in parsed.get('criteria', [])]
+        accepted = [k for _, k in checks if k.get('op') == 'api' and 200 <= int(k.get('status') or 0) < 300 and isinstance(k.get('body'), dict)]
+        for cid, check in checks:
+            body = check.get('body')
+            if check.get('op') != 'api' or int(check.get('status') or 0) != 400 or not isinstance(body, dict) or not body:
+                continue
+            if any(value is None or (isinstance(value, str) and not value.strip()) for value in body.values()):
+                continue
+            for good in accepted:
+                if good.get('path') == check.get('path') and good.get('method') == check.get('method') \
+                        and all(key in good['body'] and good['body'][key] == value for key, value in body.items()):
+                    left_out = sorted(set(good['body']) - set(body))
+                    raise ValueError(f"Criterion {cid} expects 400 for a body that only omits {left_out}; those attributes are optional unless the "
+                                     "request says they are required, so this request is valid. Make the violation explicit: send {} or the main "
+                                     'name/code field as "" and name the required field in the description, or remove the criterion.')
 
     def _require_unique_selectors(self, parsed):
         """Validate contract selectors against the screen before the change.
