@@ -20,6 +20,70 @@ def css_selector(e):
     return sel
 
 
+def split_selector_list(selector):
+    """Top-level comma-separated selectors ("A, B" outside brackets, parentheses and quotes)."""
+    parts, depth, quote, current = [], 0, '', ''
+    for ch in selector:
+        if quote:
+            current += ch
+            if ch == quote:
+                quote = ''
+        elif ch in '"\'':
+            quote = ch; current += ch
+        elif ch in '[(':
+            depth += 1; current += ch
+        elif ch in '])':
+            depth -= 1; current += ch
+        elif ch == ',' and depth == 0:
+            parts.append(current.strip()); current = ''
+        else:
+            current += ch
+    parts.append(current.strip())
+    return [part for part in parts if part]
+
+
+_LABELLED = re.compile(r'(?:^|\s+)(?:input|select|textarea)\[aria-label=(["\'])(.+?)\1\]\s*$')
+
+
+def by_label(selector):
+    """`form input[aria-label="회사명"]` -> `form >> internal:label="회사명"`.
+
+    Framework fields are named by a <label>, not by aria-label, so the attribute form never matches them;
+    Playwright's label selector finds a control by either."""
+    if not isinstance(selector, str) or '>>' in selector:
+        return selector
+    match = _LABELLED.search(selector)
+    if not match:
+        return selector
+    container = selector[:match.start()].strip()
+    label = 'internal:label="%s"' % match.group(2).replace('"', '\\"')
+    return f'{container} >> {label}' if container else label
+
+
+def normalize_contract(parsed):
+    """Mechanical repairs of common selector mistakes, so a run is not lost to them:
+
+    - a `visible` check listing several selectors with commas means "all of these exist": one criterion each;
+    - fields selected by aria-label are selected by their label instead."""
+    criteria = []
+    for criterion in parsed.get('criteria', []):
+        check = dict(criterion.get('check') or {})
+        parts = split_selector_list(check['selector']) if check.get('op') == 'visible' and isinstance(check.get('selector'), str) else []
+        if len(parts) > 1:
+            for index, part in enumerate(parts):
+                criteria.append(dict(criterion, id=criterion['id'] if index == 0 else f"{criterion['id']}_{index + 1}", check=dict(check, selector=part)))
+        else:
+            criteria.append(dict(criterion, check=check))
+    for criterion in criteria:
+        check = criterion['check']
+        for key in ('selector', 'left', 'right'):
+            if key in check:
+                check[key] = by_label(check[key])
+        if isinstance(check.get('steps'), list):
+            check['steps'] = [dict(step, selector=by_label(step.get('selector'))) if isinstance(step, dict) and 'selector' in step else step for step in check['steps']]
+    return dict(parsed, criteria=criteria)
+
+
 def selector_parts(selector):
     """Top-level compound selectors of a CSS/Playwright selector (descendant and child combinators)."""
     parts, buf, depth, quote = [], '', 0, ''
@@ -193,6 +257,7 @@ class Gate:
                     ui = [c['id'] for c in parsed['criteria'] if c['check'].get('op') not in ('api', 'junit_added')]
                     if ui:
                         raise ValueError(f'This task is backend only (no screen is part of it): check it through its API with op=api. Remove or replace {ui}.')
+                parsed = requirement_contract.validate(get_task, normalize_contract(parsed))
                 self._require_absent_baseline(parsed)
                 self._require_unique_selectors(parsed)
                 self._require_clear_rejection(parsed)

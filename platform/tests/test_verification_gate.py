@@ -298,3 +298,20 @@ class ClearRejectionTests(unittest.TestCase):
         from verification_gate import Gate
         for body in ({}, {'companyName': ''}, {'companyName': None, 'phone': '010'}, {'companyName': '다른회사'}):
             Gate._require_clear_rejection(self.contract(body))
+
+
+class NormalizeContractTests(unittest.TestCase):
+    def test_comma_list_becomes_one_criterion_per_selector_and_fields_use_labels(self):
+        from verification_gate import normalize_contract, split_selector_list, by_label
+        self.assertEqual(split_selector_list('[data-a="x,y"], form:has(input, select) , div'), ['[data-a="x,y"]', 'form:has(input, select)', 'div'])
+        self.assertEqual(by_label('form[data-ui="record-editor"] input[aria-label="회사명"]'), 'form[data-ui="record-editor"] >> internal:label="회사명"')
+        self.assertEqual(by_label('select[aria-label="단위"]'), 'internal:label="단위"')
+        self.assertEqual(by_label('[data-ui="record-grid"]'), '[data-ui="record-grid"]')
+        parsed = {'criteria': [
+            {'id': 'C2', 'requirement_id': 'R1', 'description': '영역', 'check': {'op': 'visible', 'selector': '[data-region="query"], [data-region="results"]'}},
+            {'id': 'C3', 'requirement_id': 'R1', 'description': '입력', 'check': {'op': 'scenario', 'steps': [
+                {'action': 'fill', 'selector': 'form input[aria-label="회사명"]', 'value': '가'}]}}]}
+        out = normalize_contract(parsed)['criteria']
+        self.assertEqual([c['id'] for c in out], ['C2', 'C2_2', 'C3'])
+        self.assertEqual([c['check'].get('selector') for c in out[:2]], ['[data-region="query"]', '[data-region="results"]'])
+        self.assertEqual(out[2]['check']['steps'][0]['selector'], 'form >> internal:label="회사명"')
