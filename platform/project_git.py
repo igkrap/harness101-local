@@ -133,13 +133,30 @@ def status(project):
     return {'branch': branch, 'branches': branches, 'head': head(project), 'dirty': dirty, 'remote': remote or '', 'ahead': ahead}
 
 
+HISTORY_START = 'refs/platform/history-start'
+
+
+def set_history_start(project, ref='HEAD'):
+    """Hide everything up to and including ref from the change history list (nothing is deleted). ref=None clears it."""
+    _require_repo(project)
+    if ref is None:
+        _git(project, 'update-ref', '-d', HISTORY_START, check=False)
+        return None
+    sha = _sha(project, ref)
+    _git(project, 'update-ref', HISTORY_START, sha)
+    return sha
+
+
 def history(project, limit=60, ref=None):
     _require_repo(project)
     limit = max(1, min(int(limit or 60), 200))
     fmt = _SEP.join(['%H', '%h', '%an', '%aI', '%s', '%b', '%D']) + _END
     args = ['log', f'--format={fmt}', '-n', str(limit)]
-    if ref:
-        args.append(_sha(project, ref) + '^')
+    # The list starts after the marker commit when one is set (set_history_start): earlier commits stay in the
+    # repository and can still be reached by tag or sha, they are just not listed.
+    start = _git(project, 'rev-parse', '--verify', '--quiet', HISTORY_START, check=False).strip()
+    tip = _sha(project, ref) + '^' if ref else 'HEAD'
+    args.append(f'{start}..{tip}' if start else tip)
     out = _git(project, *args, check=False, raw=True)  # str.strip() would eat the \x1e/\x1f separators
     commits = []
     for record in out.split(_END):
