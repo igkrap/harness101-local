@@ -55,6 +55,7 @@ def run(request=None, definition_file=None, dry=False, force=False):
     try:
         if definition_file:
             proposal = json.loads(Path(definition_file).read_text(encoding='utf-8'))
+            define.complete(proposal['definition'])
         else:
             (folder / 'request.txt').write_text(request, encoding='utf-8')
             proposal = define.write(request, framework, folder / '1-define', TRIAL)
@@ -64,7 +65,15 @@ def run(request=None, definition_file=None, dry=False, force=False):
         key, definition, action = proposal['key'], proposal['definition'], proposal['action']
         (folder / '1-define').mkdir(exist_ok=True)
         (folder / '1-define' / 'accepted.json').write_text(json.dumps(proposal, ensure_ascii=False, indent=1), encoding='utf-8')
-        result.update(action=action, key=key, title=definition['title'], fields=[f"{field['label']}({field.get('type', 'text')}{', 필수' if field['required'] else ''})" for field in definition['fields']])
+        label = lambda field: f"{field['label']}({field.get('type', 'text')}{', 필수' if field['required'] else ''}{', 계산' if field.get('formula') or field.get('sum') else ''})"
+        result.update(action=action, key=key, title=definition['title'], kind=definition.get('type', 'master'), fields=[label(field) for field in definition['fields']])
+        if definition.get('lines'):
+            result['lines'] = [label(field) for field in definition['lines']['fields']]
+        if definition.get('status'):
+            result['statuses'] = [value['label'] for value in definition['status']['values']]
+            result['actions'] = [action_['label'] for action_ in definition['status']['actions']]
+        if definition.get('rules'):
+            result['rules'] = [rule['message'] for rule in definition['rules']]
 
         current = next((item for item in framework.definitions() if item['key'] == key), None)
         if current and action == 'change':
@@ -76,8 +85,10 @@ def run(request=None, definition_file=None, dry=False, force=False):
 
         # Checks run on a trial copy: a draft with its own key and title, which the menus never show.
         trial_key, trial_title = TRIAL + key, definition['title'] + ' (시험)'
-        framework.save_definition(trial_key, dict(definition, title=trial_title), 'DRAFT')
-        data = checks.data_checks(trial_key, definition, framework)
+        # Rules point at other entities by their real keys, so they are checked after publishing (and undone if they fail).
+        trial = {name: value for name, value in definition.items() if name != 'rules'}
+        framework.save_definition(trial_key, dict(trial, title=trial_title), 'DRAFT')
+        data = (checks.document_checks if definition.get('type') == 'document' else checks.data_checks)(trial_key, definition, framework)
         screen = checks.screen_checks(trial_title, definition, folder / '2-check', APP)
         results = data.results + screen.results
         (folder / '2-check').mkdir(exist_ok=True)
@@ -90,6 +101,19 @@ def run(request=None, definition_file=None, dry=False, force=False):
             result['status'] = 'checked'
             return result
         saved = framework.save_definition(key, definition, 'PUBLISHED')
+        if definition.get('rules'):
+            ruled = checks.rule_checks(key, definition, framework)
+            results += ruled.results
+            (folder / '2-check' / 'results.json').write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding='utf-8')
+            result.update(checks=len(results), failed=[item for item in results if not item['passed']])
+            if result['failed']:
+                # Put back what was there before (or take the new entity away again).
+                if current:
+                    framework.save_definition(key, current['definition'], current['status'])
+                else:
+                    framework.delete_definition(key, force=True)
+                result['status'] = 'failed'
+                return result
         (folder / '3-apply').mkdir(exist_ok=True)
         (folder / '3-apply' / 'published.json').write_text(json.dumps(saved, ensure_ascii=False, indent=1), encoding='utf-8')
         result.update(status='applied', program=saved['programCode'], revision=saved['revision'])
@@ -100,6 +124,11 @@ def run(request=None, definition_file=None, dry=False, force=False):
     finally:
         if result.get('key'):
             framework.delete_definition(TRIAL + result['key'], force=True)   # the trial copy never outlives the run
+        pending, checks.LEFTOVER[:] = list(checks.LEFTOVER), []
+        still = [item for item in checks.sweep(framework, pending) if not item[0].startswith(TRIAL)]
+        checks.LEFTOVER[:] = []
+        if still:
+            result['leftover_rows'] = still
         result['seconds'] = round(time.time() - started, 1)
         (folder / 'result.json').write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding='utf-8')
 
@@ -110,7 +139,13 @@ def say(result):
     status = result.get('status')
     if result.get('title'):
         lines.append(f"{'새 화면' if result.get('action') == 'create' else '화면 수정'}: {result['title']}  ({result['key']})")
-        lines.append('항목: ' + ', '.join(result.get('fields', [])))
+        lines.append(('머리 항목: ' if result.get('lines') else '항목: ') + ', '.join(result.get('fields', [])))
+        if result.get('lines'):
+            lines.append('명세 항목: ' + ', '.join(result['lines']))
+        if result.get('statuses'):
+            lines.append('상태: ' + ' → '.join(result['statuses']) + ' / 동작: ' + ', '.join(result.get('actions', [])))
+        for rule in result.get('rules', []):
+            lines.append('규칙: ' + rule)
     for note in result.get('impact', []):
         lines.append('· ' + note)
     if status == 'applied':

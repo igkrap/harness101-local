@@ -9,40 +9,56 @@ import re
 
 import llm
 
-PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰지 않는다. 아래 요청을 읽고 정의를 JSON 하나로만 답하라(설명, 코드 블록 표시 없이).
+PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰지 않는다. 아래 요청을 읽고 답을 JSON 하나로만 하라(설명, 코드 블록 표시 없이).
 
-형식:
-{"action": "create" 또는 "change", "key": "<자료 이름: 영문 소문자, 단수형, 예 customer>", "definition": {"title": "<화면 이름>", "keywords": ["<찾을 때 칠 낱말>", ...],
- "fields": [{"name": "<camelCase 영문>", "label": "<화면에 보이는 한국어 이름>", "type": "<항목 종류>", "required": true|false, "search": true|false, ...}]}}
+답의 형식: {"action": "create" 또는 "change", "key": "<자료 이름: 영문 소문자, 단수형, 예 customer, sales_order>", "definition": <정의>}
 
-프레임워크가 지원하는 것:
+프레임워크 안내 (정의의 모양과 쓸 수 있는 것):
+%(guide)s
+프레임워크가 지원하는 목록:
 %(capabilities)s
 
 이미 있는 자료(정의):
 %(existing)s
 
 규칙:
-- 요청이 이미 있는 자료를 고치는 것이면 action 은 "change", key 는 그 자료의 key 이고, definition 에는 고친 뒤의 전체를 적는다(요청이 말하지 않은 항목은 그대로 둔다).
+- 요청이 이미 있는 자료를 고치는 것이면 action 은 "change", key 는 그 자료의 key 이고, definition 에는 고친 뒤의 전체를 적는다(요청이 말하지 않은 부분은 그대로 둔다).
 - 새 자료면 action 은 "create" 이고 key 는 이미 있는 key 와 겹치지 않게 한다.
-- 요청이 항목을 정해 주지 않았으면 그 업무에서 흔히 쓰는 항목으로 정한다(5~8개).
-- required 는 그 값 없이는 자료가 성립하지 않는 항목(보통 이름이나 코드)에만 true. 적어도 하나의 글자(text) 항목은 required 여야 한다.
-- search 는 조회 조건으로 쓸 항목(1~3개)에 true.
-- 다른 자료에서 고르는 항목(예: 사원의 부서)은 글자로 받지 말고 type "ref" 와 "ref": {"entity": "<그 자료의 key>", "label": "<보여 줄 항목 name>"} 로 한다. 이미 있는 자료만 가리킬 수 있다.
-- 단위·구분·상태처럼 정해진 값 중에서 고르는 항목은 type "code" 와 "codeGroup": "<공통 코드 그룹>" 으로 한다. 있는 그룹만 쓴다. 맞는 그룹이 없으면 글자(text)로 둔다.
-- id 와 등록·수정자/일시는 프레임워크가 관리하므로 넣지 않는다.
-- 정의로 할 수 없는 요청이면 {"action": "other", "reason": "<이유 한 줄>"} 로만 답한다. 해당하는 경우: 아래 '코드로 만든 화면'을 고치는 요청, 로그인·메뉴·권한·디자인 같은 시스템 요청, 계산·집계·보고서, 한 화면에 표가 둘 이상 얽히는 요청.
+- 요청이 항목을 정해 주지 않았으면 그 업무에서 흔히 쓰는 항목으로 정한다(머리 5~8개, 명세 3~5개).
+- required 는 그 값 없이는 자료가 성립하지 않는 항목에만 true.
+- search 는 조회 조건으로 쓸 머리 항목(1~3개)에 true.
+- 다른 자료에서 고르는 항목(거래처, 품목, 부서 ...)은 글자로 받지 말고 ref 로 한다. 이미 있는 자료만 가리킬 수 있고, ref.label 과 fill 의 값은 그 자료에 실제로 있는 항목 name 이어야 한다(위 '이미 있는 자료' 참고).
+- 정해진 값 중에서 고르는 항목은 code 로 하되 있는 공통 코드 그룹만 쓴다. 맞는 그룹이 없으면 글자(text)로 둔다.
+- "~하면 ~못 하게" 같은 요청은 rules 로 적는다. 규칙이 가리키는 자료와 항목은 이미 있어야 한다.
+- id, 상태, 등록·수정자/일시는 프레임워크가 관리하므로 항목으로 넣지 않는다(상태는 definition.status 로).
+- 정의로 할 수 없는 요청이면 {"action": "other", "reason": "<이유 한 줄>"} 로만 답한다. 해당하는 경우: 아래 '코드로 만든 화면'을 고치는 요청, 로그인·메뉴·권한·디자인 같은 시스템 요청, 집계·보고서.
 
 코드로 만든 화면(정의가 아니라서 여기서 고칠 수 없음): %(code_screens)s
 
 요청: %(request)s'''
 
 
+def _fields(fields):
+    def one(field):
+        extra = field['type'] + (f"→{field['ref']['entity']}" if field.get('ref') else '') + (', 필수' if field['required'] else '') \
+            + (', 계산' if field.get('formula') or field.get('sum') else '')
+        return f"{field['name']}({field['label']}, {extra})"
+    return ', '.join(one(field) for field in fields)
+
+
 def _existing(framework):
     lines = []
     for item in framework.definitions():
         definition = item['definition']
-        fields = ', '.join(f"{field['name']}({field['label']}, {field['type']}{', 필수' if field['required'] else ''})" for field in definition['fields'])
-        lines.append(f"- key {item['key']} / 화면 이름 {definition['title']} / 항목: {fields}")
+        text = f"- key {item['key']} / {definition.get('type', 'master')} / 화면 이름 {definition['title']} / 항목: {_fields(definition['fields'])}"
+        if definition.get('lines'):
+            text += f" / 명세({definition['lines']['label']}): {_fields(definition['lines']['fields'])}"
+        if definition.get('status'):
+            text += ' / 상태: ' + ', '.join(f"{value['code']}={value['label']}" for value in definition['status']['values']) \
+                + ' / 동작: ' + ', '.join(f"{action['name']}({action['label']})" for action in definition['status']['actions'])
+        if definition.get('rules'):
+            text += ' / 규칙: ' + '; '.join(rule['message'] for rule in definition['rules'])
+        lines.append(text)
     return '\n'.join(lines) or '(없음)'
 
 
@@ -64,12 +80,24 @@ def _json(text):
     return json.loads(found.group(0))
 
 
+def complete(definition):
+    """What the model may leave out, written out: the rest of the harness reads every field the same way."""
+    groups = [definition.get('fields') or []] + ([definition['lines'].get('fields') or []] if isinstance(definition.get('lines'), dict) else [])
+    for fields in groups:
+        for field in fields:
+            if isinstance(field, dict):
+                field.setdefault('type', 'text')
+                field.setdefault('required', False)
+                field.setdefault('search', False)
+    return definition
+
+
 def write(request, framework, record_to, trial_prefix='trial_'):
     """Returns {'action', 'key', 'definition'} that the framework has accepted (as a trial draft)."""
     capabilities = framework.capabilities()
-    shown = {key: capabilities[key] for key in ('screenTypes', 'fieldTypes', 'builtInRules', 'codeGroups') if key in capabilities}
+    shown = {key: capabilities[key] for key in ('screenTypes', 'fieldTypes', 'builtInRules', 'ruleTypes', 'codeGroups') if key in capabilities}
     messages = [{'role': 'system', 'content': 'JSON only'},
-                {'role': 'user', 'content': PROMPT % {'capabilities': json.dumps(shown, ensure_ascii=False, indent=1), 'existing': _existing(framework), 'request': request,
+                {'role': 'user', 'content': PROMPT % {'guide': capabilities.get('guide', ''), 'capabilities': json.dumps(shown, ensure_ascii=False, indent=1), 'existing': _existing(framework), 'request': request,
                                                       'code_screens': ', '.join(code_screens()) or '(없음)'}}]
     known = {item['key'] for item in framework.definitions()}
     error = ''
@@ -87,8 +115,8 @@ def write(request, framework, record_to, trial_prefix='trial_'):
             if action == 'create' and key in known:
                 raise ValueError(f'{key} 는 이미 있다. 그 자료를 고치는 요청이면 action 을 change 로, 새 자료면 다른 key 를 쓴다')
             # The framework is the judge: the definition is saved as a trial draft; a refusal is its message.
-            framework.save_definition(trial_prefix + key, definition, 'DRAFT')
-            return {'action': action, 'key': key, 'definition': definition}
+            framework.save_definition(trial_prefix + key, {name: value for name, value in definition.items() if name != 'rules'}, 'DRAFT')
+            return {'action': action, 'key': key, 'definition': complete(definition)}
         except Exception as problem:  # a refusal of any kind goes back to the model once more
             error = str(problem)
             messages = messages[:2] + [{'role': 'assistant', 'content': answer[:3000]},

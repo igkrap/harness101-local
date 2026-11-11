@@ -800,3 +800,11 @@ Orca CLI selected /Applications/Orca.app/Contents/Resources/bin/orca, skill read
   tab inventory (+ reviewer facts), internal:label selector lint, contains->value alias, 3 contract attempts,
   toolbar query button accepted in ui_query_requirement.cjs, post-edit read loop stop (8).
 - Bench after fixes: T1 2/2, T2 1/1, T3 3/3, T4 3/3 (9.5–14 min). See platform/bench/SUMMARY.md.
+
+[2026-11-12] Document type through the local model (platform -> harness2), no hand-written definition
+- "수주 등록 화면 만들어줘" -> sales_order (serial, vendor ref, lines with item ref + fill price, amount formula, total sum, status/actions): 42 checks, 165 s, 1 model call.
+- "출하 등록 화면 만들어줘. 어떤 수주에 대한 출하인지 고를 수 있어야 해" -> shipment (refs to sales_order, vendor, warehouse): 46 checks, 331 s.
+- "출하가 등록된 수주는 취소할 수 없게 해줘" -> rule added to sales_order: 44 checks, 215 s. Browser: order entered and saved, shipment saved, cancel refused with the rule's message.
+- Every failure on the way was harness code, not the model: platform still running the old harness2 modules (pkill pattern did not match; kill the 5293 listener by pid), omitted 'required' not defaulted, sample row for a document ref made without a line, sample rows left behind (locked trial documents; a cancelled sample order from the rule check).
+- Fixes: define.complete(), checks.sweep()/LEFTOVER swept again after the trial is removed, rule check asks with ?check=true (new framework mode: judged, nothing changed).
+- Still open: review step before applying a model-drafted definition; document list does not load until 조회 is pressed; platform UI for this route not looked at by eye.
