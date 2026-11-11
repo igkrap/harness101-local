@@ -139,9 +139,32 @@ class WorkspaceManager:
             raise HarnessError(f"{path_str} is version-control data managed by the platform")
         return target
 
+    # The common system belongs to the framework owner, not to a screen-building run: sign-in, permissions, menus,
+    # the shell, the home page, the board and the UI kit. A run that damages them breaks every screen at once.
+    # Shared screen parts at the framework root (BusinessWorkspace, RecordGrid, ...) stay editable.
+    FRAMEWORK_CORE = ('frontend/src/framework/system/', 'frontend/src/framework/workspace/', 'frontend/src/framework/auth/',
+                      'frontend/src/framework/ui/', 'frontend/src/screens/Home.tsx',
+                      'backend/src/main/java/com/example/localinventory/framework/')
+
+    def framework_core(self, path):
+        if os.environ.get('HARNESS_ALLOW_FRAMEWORK_CORE') == '1':
+            return False
+        try:
+            rel = Path(path).resolve().relative_to(self.root).as_posix()
+        except ValueError:
+            return False
+        return any(rel == item or rel.startswith(item) for item in self.FRAMEWORK_CORE)
+
     def is_protected(self, path):
         # Protect node_modules from writes
-        return any(p in path.parts for p in ("node_modules", "harness", "tests", ".git"))
+        return any(p in path.parts for p in ("node_modules", "harness", "tests", ".git")) or self.framework_core(path)
+
+    def protection_note(self, path):
+        if self.framework_core(path):
+            return ('공통 시스템 파일입니다(로그인·권한·메뉴·홈·게시판·UI 부품). 화면 작업에서는 고칠 수 없습니다. '
+                    '요청은 frontend/src/screens 의 화면 파일이나 새 백엔드 파일로 구현하고, 시스템 이름·로고·배경·메뉴·권한은 '
+                    '시스템 설정/메뉴 편성 화면에서 바꾸는 값이라 코드로 건드리지 않습니다.')
+        return ''
 
 class Checker:
     # _check_backend always delegates schema application to isolated_backend.
@@ -182,6 +205,10 @@ class Checker:
         return self._exec(["npx", "vite", "build"], cwd=fe_dir)
 
     def _check_backend(self):
+        from backend_conventions import check as conventions
+        broken = conventions(self.workspace.root)
+        if broken:
+            return broken
         from isolated_backend import run_backend
         return run_backend(self, self._check_backend_unisolated)
 
@@ -447,7 +474,7 @@ class Harness:
             elif name == "write_file":
                 path = self.workspace.safe_path(args['path'])
                 if self.workspace.is_protected(path):
-                    return {"error": f"Write to protected path blocked: {path}"}
+                    return {"error": f"Write to protected path blocked: {path}. " + self.workspace.protection_note(path)}
                 
                 # Ensure parent directory exists
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -461,7 +488,7 @@ class Harness:
             elif name == "edit_file":
                 path = self.workspace.safe_path(args['path'])
                 if self.workspace.is_protected(path):
-                    return {"error": f"Write to protected path blocked: {path}"}
+                    return {"error": f"Write to protected path blocked: {path}. " + self.workspace.protection_note(path)}
                 
                 old_text = args['old_text']
                 new_text = args['new_text']
@@ -484,7 +511,7 @@ class Harness:
             elif name == "delete_file":
                 path = self.workspace.safe_path(args['path'])
                 if self.workspace.is_protected(path):
-                    return {"error": f"Delete from protected path blocked: {path}"}
+                    return {"error": f"Delete from protected path blocked: {path}. " + self.workspace.protection_note(path)}
                 path.unlink()
                 return {"status": "ok"}
             elif name == "astryx_docs":

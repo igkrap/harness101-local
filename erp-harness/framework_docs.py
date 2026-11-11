@@ -41,17 +41,24 @@ def usage(root, names, budget=6000, general=False):
     if not names:
         return ''
     pattern = re.compile(r'(?<![\w$])(?:' + '|'.join(map(re.escape, names)) + r')(?![\w$])')
-    chunks, used = [], 0
-    for title, body in sections(root):
-        if title in GENERAL and not general:
+    # Budget goes first to the sections that present a requested component (its JSX or call appears in
+    # them), then to the general guide (when asked for), then to sections that merely mention one; output keeps document order.
+    presents = re.compile(r'(?:<(?:' + '|'.join(map(re.escape, names)) + r')\b|\b(?:' + '|'.join(map(re.escape, names)) + r')\s*[({=])')
+    ranked = []
+    for index, (title, body) in enumerate(sections(root)):
+        if title in GENERAL:
+            if general:
+                ranked.append((1, index, title, body))
+        elif pattern.search(title + '\n' + body):
+            ranked.append((0 if presents.search(body) else 2, index, title, body))
+    chosen, used = [], 0
+    for _, index, title, body in sorted(ranked, key=lambda item: (item[0], item[1])):
+        chunk = title + '\n' + body
+        if used + len(chunk) > budget:
             continue
-        if title in GENERAL or pattern.search(title + '\n' + body):
-            chunk = title + '\n' + body
-            if used + len(chunk) > budget:
-                continue
-            chunks.append(chunk)
-            used += len(chunk)
-    return '\n\n'.join(chunks)
+        chosen.append((index, chunk))
+        used += len(chunk)
+    return '\n\n'.join(chunk for _, chunk in sorted(chosen))
 
 
 def is_internal(rel):

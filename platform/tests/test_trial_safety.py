@@ -1,3 +1,4 @@
+import os
 import errno
 import importlib.util
 import io
@@ -11,6 +12,9 @@ from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import trial_safety as safety
+
+
+TRIAL_SCRIPT = '/tmp/gemma-component-trial-fixed.py'  # a one-off experiment script; these tests only apply while it exists
 
 
 class TrialSafetyTests(unittest.TestCase):
@@ -164,12 +168,14 @@ class TrialSafetyTests(unittest.TestCase):
         self.assertFalse(list(module.STATE.rglob('.cleanup-reserve')))
         return code, calls, check.call_count, module.STATE
 
+    @unittest.skipUnless(os.path.exists(TRIAL_SCRIPT), 'the one-off trial supervisor script is not present')
     def test_actual_supervisor_enospc_progress_error_log_and_final_result_still_cleans_up(self):
         code, calls, checks, _ = self.supervisor(fail_progress=True)
         self.assertEqual(code, 1)
         self.assertEqual(calls, ['/api/state', '/api/jobs', '/api/jobs/' + 'a' * 32 + '/stop'])
         self.assertEqual(checks, 0)
 
+    @unittest.skipUnless(os.path.exists(TRIAL_SCRIPT), 'the one-off trial supervisor script is not present')
     def test_actual_supervisor_normal_trial_keeps_both_checks_and_restores(self):
         code, calls, checks, state = self.supervisor()
         self.assertEqual(code, 0)
@@ -179,6 +185,7 @@ class TrialSafetyTests(unittest.TestCase):
         self.assertTrue(result['automatic_restoration'])
         self.assertTrue(result['result_written'])
 
+    @unittest.skipUnless(os.path.exists(TRIAL_SCRIPT), 'the one-off trial supervisor script is not present')
     def test_supervisor_stop_reuses_token_without_state_or_history_request(self):
         spec = importlib.util.spec_from_file_location('trial_token_fixture', '/tmp/gemma-component-trial-fixed.py')
         module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)

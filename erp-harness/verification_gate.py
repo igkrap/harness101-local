@@ -160,6 +160,13 @@ class Gate:
             elements = self._screen_inventory()
             if elements:
                 prompt += "\nCURRENT SCREEN ELEMENTS (before the change; use these exact attributes for selectors of existing elements): " + elements
+        if reference or screen:
+            # The framework's stable hooks (API.txt, DOM FOR CHECKS): what a grid cell, a toolbar button or an editor tab
+            # is in the DOM, so checks are written against the real structure instead of guessed tags.
+            from framework_docs import sections
+            hooks = next((body for title, body in sections(self.runner.h.workspace.root) if title.startswith('DOM FOR CHECKS')), '')
+            if hooks:
+                prompt += '\nFRAMEWORK DOM (how the shared components appear; the grid is NOT a <table>):\n' + hooks[:1500]
         messages = [{'role': 'system', 'content': 'JSON only'}, {'role': 'user', 'content': prompt}]
         last_error = ''
         attempts = int(os.environ.get('REQUIREMENT_CONTRACT_ATTEMPTS', '3'))

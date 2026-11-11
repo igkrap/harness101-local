@@ -138,6 +138,9 @@ class ProbeBridgeTests(unittest.TestCase):
                      'cases': ['query']}
         self.root_patch = patch.object(fixed_acceptance, 'CHECKS_ROOT', self.script.parent)
         self.root_patch.start(); self.addCleanup(self.root_patch.stop)
+        # These tests need the real gate even when another test module left a stand-in on completion_runner.
+        import completion_runner, verification_gate
+        gate_patch = patch.object(completion_runner, 'Gate', verification_gate.Gate); gate_patch.start(); self.addCleanup(gate_patch.stop)
 
     def runner(self):
         class Base:
@@ -176,7 +179,8 @@ class ProbeBridgeTests(unittest.TestCase):
         with patch.object(fixed_acceptance.subprocess, 'run', side_effect=self.executor()):
             self.assertFalse(runner.verify_step())
         self.assertEqual(runner.steps[0]['kind'], 'change')
-        text = runner.messages[1]['content']
+        # A focused run keeps its context and gets the failure appended (it is no longer rebuilt).
+        text = runner.messages[-1]['content']
         self.assertIn('HTTP 500', text)
         self.assertIn('text ~~ bytea', text)
         self.assertIn('42883', text)

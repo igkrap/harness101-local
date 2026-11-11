@@ -124,7 +124,7 @@ class LocalTypeRecordsTests(unittest.TestCase):
         workspace = actual_props(root, {'source': 'frontend/src/framework/BusinessWorkspace.tsx', 'props_type': 'BusinessWorkspaceProps'})
         fields = actual_props(root, {'source': 'frontend/src/framework/QueryPanel.tsx', 'props_type': 'QueryPanelProps'})
         grid = actual_props(root, {'source': 'frontend/src/framework/RecordGrid.tsx', 'props_type': 'RecordGridProps'})
-        self.assertIn("'query' | 'create' | 'remove' | 'save' | 'print'", workspace)
+        self.assertIn("'query' | 'create' | 'remove' | 'save' | 'export' | 'print'", workspace)
         self.assertIn('form?: string', workspace)
         self.assertIn("'integer' | 'decimal'", fields)
         self.assertIn('GridColumn<T>', grid)

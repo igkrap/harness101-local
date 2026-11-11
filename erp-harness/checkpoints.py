@@ -51,7 +51,8 @@ class Checkpoint:
 
     def stage(self, rel: str) -> None:
         if self.workspace.is_protected(self.workspace.safe_path(rel)):
-            raise ValueError("Protected path")
+            note = getattr(self.workspace, 'protection_note', lambda _path: '')(self.workspace.safe_path(rel))
+            raise ValueError("Protected path" + (': ' + note if note else ''))
         self._check_symlink_ancestors(rel)
         target = self.workspace.safe_path(rel)
         rel = str(target.relative_to(self.workspace.root))
