@@ -50,7 +50,7 @@ async function verify(input) {
             const urlObj = new URL(preview_url); const isLocal = ['localhost', '127.0.0.1', '[::1]'].includes(urlObj.hostname); if (!['http:', 'https:'].includes(urlObj.protocol) || !isLocal) throw new Error('invalid preview_url'); const target = input.open_screen && !loginPage ? preview_url.replace(/#.*$/, '') + '#open=' + encodeURIComponent(input.open_screen) : preview_url;
             await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 10000 }); await page.waitForLoadState('networkidle', { timeout: 10000 });
             if (input.open_screen && !loginPage) {
-              // The deep link opens the task's screen whatever module (대메뉴) holds it; apps without it fall back to the menu.
+              // The deep link opens the task's screen whatever module holds it; apps without it fall back to the menu.
               const opened = await page.getByRole('tabpanel', { name: input.open_screen, exact: true }).first().waitFor({ state: 'visible', timeout: 3000 }).then(() => true, () => false);
               if (!opened) {
                 const entry = page.locator('nav').getByText(input.open_screen, { exact: true }).first();

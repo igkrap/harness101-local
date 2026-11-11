@@ -729,6 +729,9 @@ class Runner:
         next_v = max(versions, default=0) + 1
         text = ('새 API는 아래 품목 API와 같은 방식으로 만든다: 마이그레이션 → 엔티티 → 저장소 → 컨트롤러, 같은 패키지. '
                 f'새 마이그레이션 파일 이름은 V{next_v}__ 로 시작하고, 기존 마이그레이션 파일은 고치지 않는다. '
+                '엔티티는 품목처럼 com.example.localinventory.framework.audit.AuditedEntity를 상속하고, 새 테이블에는 반드시 '
+                'created_by VARCHAR(100), created_at TIMESTAMP, updated_by VARCHAR(100), updated_at TIMESTAMP 열(NULL 허용)을 넣는다. '
+                '이 네 값은 저장할 때 자동으로 채워지므로 컨트롤러나 요청 본문에서 다루지 않는다. '
                 '로그인한 사용자는 /api/** 를 쓸 수 있으므로 보안 설정이나 화면 정의(DefinedScreen) 파일은 건드리지 않는다. '
                 '참고할 품목 API 파일은 CURRENT FILE로 이미 주어져 있다: ' + ', '.join(files) + '. 다시 읽지 말고 필요한 파일을 바로 새로 만든다.')
         self.read.update(files)
@@ -826,7 +829,9 @@ def _new_screen_brief(self):
             '메뉴 배치·권한·시스템명은 공통 시스템이 관리하므로 코드로 건드리지 않는다. App.tsx, Home.tsx, workspace 폴더는 고치지 않는다. '
             f'code는 영문 3자리+숫자 4자리이고 이미 쓰는 code({used})와 겹치지 않게 한다. '
             f'구성은 CURRENT FILE로 주어진 {REFERENCE_SCREEN}(품목 등록)과 같게 한다: BusinessWorkspace에 조회 조건, 그리드, 편집 패널, 공통 버튼. '
-            '필드와 API 주소만 이 화면에 맞게 바꾼다.\n'
+            '필드와 API 주소만 이 화면에 맞게 바꾼다. 관리자가 값을 바꿀 수 있어야 하는 선택 항목(단위, 구분, 상태 등)은 '
+            "선택지를 코드에 적지 말고 필드에 codeGroup:'<공통 코드 그룹>'을 준다. 엑셀·인쇄·즐겨찾기·탭·권한은 프레임워크에 있으므로 만들지 않는다.\n"
+
             '쓸 수 있는 API: ' + '; '.join(sorted(apis)) + '\n\n'
             'FRAMEWORK USAGE (frontend/src/framework/API.txt):\n' + docs + '\n')
 
