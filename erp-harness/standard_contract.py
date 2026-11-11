@@ -467,7 +467,10 @@ def build(runner, new_screen_reference=''):
                 import screen_sites
                 source = (Path(root) / file).read_text(encoding='utf-8') if file else ''
                 old = {item['name']: item for item in current['fields']}
-                added = [item for item in sheet['fields'] if item['name'] not in old]
+                # "New" is judged against the screen itself: the sheet may already hold a field that the API step added
+                # a moment ago while the screen still lacks it.
+                core = {'row_type', 'edit_fields', 'to_row', 'payload'}
+                added = [item for item in sheet['fields'] if item['name'] not in old or core & set(screen_sites.missing(source, item))]
                 changed = [item for item in sheet['fields'] if item['name'] in old and item['required'] != old[item['name']]['required']]
                 removed = [item for item in current['fields'] if item['name'] not in {new['name'] for new in sheet['fields']}]
                 steps = screen_sites.plan(source, added, changed, removed)
