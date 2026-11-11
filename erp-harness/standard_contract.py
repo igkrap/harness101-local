@@ -188,6 +188,63 @@ def _unused_sheet(root):
     return None
 
 
+UPDATE_PROMPT = '''이미 있는 등록 API를 고치는 요청이다. 아래는 지금의 항목표다. 요청을 반영해 고친 항목표 전체를 JSON 하나로만 답하라.
+- path 는 바꾸지 않는다. 요청이 말하지 않은 항목의 name/label/required 는 그대로 둔다.
+- 요청이 어떤 항목을 선택 항목으로(또는 필수로) 바꾸라고 하면 그 항목의 required 만 바꾼다. 항목 추가·삭제 요청이면 그만큼만 고친다.
+지금의 항목표: %s
+요청: %s
+방향(참고용, 틀릴 수 있음): %s'''
+
+
+def _matching_sheet(root, task):
+    """The one saved sheet of an existing API this task talks about (by the resource's Korean name or its path noun)."""
+    apis, found = existing_api_paths(root), []
+    for file in (SHEETS / Path(root).name).glob('*.json'):
+        try:
+            raw = json.loads(file.read_text(encoding='utf-8'))
+            sheet = validate_sheet(raw)
+        except (ValueError, OSError):
+            continue
+        if sheet['path'] not in apis:
+            continue
+        words = [word for word in re.split(r'\s+', str(raw.get('task', ''))) if word and word not in ('API', '등록', '화면', '관리')][:1]
+        noun = sheet['path'].rsplit('/', 1)[-1]
+        if any(word in task for word in words) or noun in task.lower() or noun.rstrip('s') in task.lower():
+            found.append(sheet)
+    return found[0] if len(found) == 1 else None
+
+
+def ask_updated_sheet(runner, current):
+    task, approach = str(runner.args.task), os.environ.get('HARNESS_TASK_APPROACH', '').strip()
+    messages = [{'role': 'system', 'content': 'JSON only'},
+                {'role': 'user', 'content': UPDATE_PROMPT % (json.dumps(current, ensure_ascii=False), task, approach[:600] or '없음')}]
+    error = ''
+    for attempt in range(3):
+        response = runner.ask(messages=list(messages), tools=[])
+        text = str(response.get('content') or '')
+        try:
+            found = re.search(r'\{.*\}', text, re.S)
+            sheet = validate_sheet(json.loads(found.group(0)) if found else None)
+            if sheet['path'] != current['path']:
+                raise ValueError(f"path must stay {current['path']}")
+            return sheet
+        except (ValueError, AttributeError) as problem:
+            error = str(problem)
+            runner.h.log_event('requirement.sheet_rejected', {'attempt': attempt + 1, 'error': error[:300]})
+            messages = messages[:2] + [{'role': 'assistant', 'content': text[:2000]},
+                                       {'role': 'user', 'content': f'고쳐서 JSON 전체를 다시 답하라: {error}'}]
+    raise ValueError('updated field sheet unavailable: ' + error)
+
+
+def _baseline(runner, criteria):
+    """Run the API checks on the code as it is now: which fail, and why (the observed answers and root causes)."""
+    import uuid
+    import backend_contract_gate
+    out = Path(os.environ.get('TMPDIR', '/tmp')) / ('standard-baseline-' + uuid.uuid4().hex)
+    report = backend_contract_gate.verify(runner.h.checker, criteria, str(out))
+    return [result for result in report.get('results', []) if result.get('status') != 'passed']
+
+
 def build(runner, new_screen_reference=''):
     """(raw contract, kind) for a standard task, else None. Sets runner._field_sheet_note for the author's brief."""
     if os.environ.get('HARNESS_STANDARD_CONTRACT') == '0':
@@ -204,6 +261,26 @@ def build(runner, new_screen_reference=''):
         file.write_text(json.dumps(dict(sheet, task=task, saved_at=time.strftime('%Y-%m-%dT%H:%M:%S')), ensure_ascii=False, indent=1), encoding='utf-8')
         runner._field_sheet_note = sheet_note(sheet)
         return dict(base, criteria=api_criteria(sheet)), 'standard-api', sheet
+    modes = set(getattr(runner, 'modes', ()) or ())
+    if 'backend' in modes and not ({'frontend', 'framework'} & modes):
+        # A change to an existing registration API: the same standard checks, for the sheet as the request wants it.
+        # They are used only if at least one fails on the current code - then they describe the fix; otherwise the
+        # request is about something the standard checks do not cover and the model-written contract is used.
+        current = _matching_sheet(root, task)
+        if current:
+            sheet = ask_updated_sheet(runner, current)
+            criteria = api_criteria(sheet)
+            failing = _baseline(runner, criteria)
+            runner.h.log_event('requirement.standard_baseline', {'path': sheet['path'], 'failing': [f.get('id') for f in failing], 'model_calls': 0})
+            if failing and not all(f.get('status') == 'unverified' for f in failing):
+                file = _sheet_file(root, sheet['path'])
+                file.write_text(json.dumps(dict(sheet, task=json.loads(file.read_text(encoding='utf-8')).get('task', task), saved_at=time.strftime('%Y-%m-%dT%H:%M:%S')),
+                                           ensure_ascii=False, indent=1), encoding='utf-8')
+                facts = '\n'.join(f"- {f.get('id')}: {str(f.get('reason'))[:600]}" for f in failing[:4])
+                runner._field_sheet_note = (sheet_note(sheet) + '지금 코드에서 실패하는 검사와 관찰된 원인(이것을 고친다; 방향 설명보다 이 관찰이 정확하다):\n' + facts
+                                            + '\n이미 적용된 마이그레이션은 고칠 수 없으므로 테이블 변경은 새 V<n>__ 마이그레이션(ALTER TABLE)으로 한다.\n')
+                return dict(base, criteria=criteria), 'standard-api-change', sheet
+        return None
     if new_screen_reference and 'backend' not in (getattr(runner, 'modes', ()) or ()):
         sheet = _unused_sheet(root)
         if sheet:

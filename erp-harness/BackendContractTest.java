@@ -79,6 +79,14 @@ class HarnessContractVerificationTest {
                     } else if (resolved != null && resolved.getMessage() != null) {
                         reason = resolved.getMessage().substring(0, Math.min(300, resolved.getMessage().length()));
                     }
+                    // The answer often hides the real cause (a catch-all message); the root exception names it,
+                    // e.g. a NOT NULL or unique constraint of the table.
+                    Throwable root = resolved;
+                    while (root != null && root.getCause() != null && root.getCause() != root) root = root.getCause();
+                    if (root != null && root != resolved && root.getMessage() != null) {
+                        String cause = root.getMessage().replaceAll("\\s+", " ");
+                        reason = (reason == null ? "" : reason) + " | root cause: " + cause.substring(0, Math.min(300, cause.length()));
+                    }
                     String sent = check.containsKey("body") ? " with body " + mapper.writeValueAsString(check.get("body")) : "";
                     String detail = (reason != null && !reason.isBlank() ? " reason: " + reason : "")
                             + (responseBody.isBlank() ? "" : " response: " + responseBody.substring(0, Math.min(400, responseBody.length())));

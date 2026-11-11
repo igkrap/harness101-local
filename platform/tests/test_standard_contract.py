@@ -59,3 +59,31 @@ class StandardContractTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class StandardChangeTests(unittest.TestCase):
+    """A change to an existing API uses the standard checks only when one of them fails on the current code."""
+    def run_build(self, failing):
+        import json, tempfile
+        folder = tempfile.TemporaryDirectory(); self.addCleanup(folder.cleanup)
+        root = Path(folder.name) / 'proj'
+        controller = root / 'backend/src/main/java/app/CompanyController.java'
+        controller.parent.mkdir(parents=True); controller.write_text('@RequestMapping("/api/companies")\nclass CompanyController {}')
+        runner = SimpleNamespace(args=SimpleNamespace(task='회사 등록에서 회사명만 입력해도 저장되게 해줘'), modes=['backend'],
+                                 h=SimpleNamespace(workspace=SimpleNamespace(root=root), log_event=Mock(), checker=None),
+                                 ask=lambda messages, tools: {'content': json.dumps(SHEET, ensure_ascii=False)})
+        with patch.object(sc, 'SHEETS', Path(folder.name) / 'sheets'), patch.object(sc, '_baseline', return_value=failing):
+            file = sc._sheet_file(root, '/api/companies'); file.parent.mkdir(parents=True)
+            file.write_text(json.dumps(dict(SHEET, task='회사 등록 API'), ensure_ascii=False))
+            return sc.build(runner), runner
+
+    def test_failing_baseline_becomes_the_contract_and_the_cause_reaches_the_author(self):
+        built, runner = self.run_build([{'id': 'C4b', 'status': 'failed', 'reason': 'returned 409 | root cause: null value in column "business_number"'}])
+        self.assertEqual(built[1], 'standard-api-change')
+        self.assertIn('business_number', runner._field_sheet_note)
+        self.assertIn('새 V<n>__ 마이그레이션', runner._field_sheet_note)
+
+    def test_passing_baseline_leaves_the_task_to_the_model_written_contract(self):
+        built, runner = self.run_build([])
+        self.assertIsNone(built)
+        self.assertFalse(hasattr(runner, '_field_sheet_note'))

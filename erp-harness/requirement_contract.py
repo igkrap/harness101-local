@@ -213,7 +213,8 @@ def validate(task: str, raw: dict) -> dict:
                 for (i, comp) in enumerate(jp):
                     if isinstance(comp, bool) or not isinstance(comp, (str, int)) or (isinstance(comp, int) and comp < 0):
                         raise ValueError('Invalid json_path component')
-            if isinstance(eq, str) and eq.strip().lower() in ('string', 'number', 'integer', 'int', 'any', 'uuid', 'boolean'):
+            if isinstance(eq, str) and eq.strip().lower() in ('string', 'number', 'integer', 'int', 'any', 'uuid', 'boolean', 'non-null', 'not null', 'notnull',
+                                                               'not-null', 'exists', 'present', 'non-empty', 'not empty', 'truthy', 'defined'):
                 raise ValueError(f"equals {eq!r} is a type name, but equals compares the literal value. Check a field you sent in body instead (e.g. json_path ['name'] equals the posted name).")
             # A DELETE answered 204 has no body to look into; every other successful write must show what it stored.
             if m != 'GET' and not (400 <= st < 500) and not (m == 'DELETE' and st == 204):
