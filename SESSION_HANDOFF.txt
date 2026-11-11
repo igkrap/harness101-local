@@ -1,3 +1,7 @@
+[2026-11-11] Business density pass (user: "업무적으로", "버튼이랑 에디트박스 높이 일치").
+One control height: Button default is now Blueprint small, TextInput small, select forced by CSS — all 24px / 13px (ui.css density block). RecordGrid rows 24px (header stays 30: Blueprint enforces a 30px minimum in JS), numbers right-aligned. Panel = compact Blueprint Card (new ui Card), shell padding 12, tabs 32px, sidebar 232px / 28px rows. MenuArrangement and MenuPermission lists are Blueprint Trees now. API.txt has the density rule (no heights/fonts on controls).
+Checks: framework_browser 6 OK, grid selection, business workspace pass.
+
 [2026-11-11] Grid header is one row again: interaction bar removed on user request. Sort menu = Blueprint's hover ▾ in the header cell; column reorder = HTML5 drag of the header name ([data-column-key], needs pointer-events:auto because Blueprint disables them inside the column name) dropped on another header. Blueprint's own reordering needs the interaction bar or column selection, so it is not used.
 
 [2026-11-11] Sidebar, workspace tabs, TabbedPanel and admin cards/tables moved to Blueprint parts.
