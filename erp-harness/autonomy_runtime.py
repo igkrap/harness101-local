@@ -795,7 +795,9 @@ def _plain_brief(self, approach):
     text += ('필요한 파일만 읽고 바로 고치거나 새로 만든다. 테스트를 약하게 바꾸지 않는다. '
              '검사가 통과하면 finish를 호출한다.\n')
     if 'frontend' in self.modes or 'framework' in self.modes:
-        text += ('기존 .tsx 파일은 apply_ast_edits로 고친다(제공된 AST ID 사용). 새 파일은 write_file로 만든다.\n')
+        text += ('기존 .tsx 파일은 edit_file 로 고친다(old_text 는 파일의 해당 줄들 그대로). 새 파일은 write_file로 만든다.\n'
+                 if getattr(self, '_plain_edits_only', False) else
+                 '기존 .tsx 파일은 apply_ast_edits로 고친다(제공된 AST ID 사용). 새 파일은 write_file로 만든다.\n')
         screen = _new_screen_brief(self)
         if screen:
             text += screen

@@ -77,6 +77,10 @@ def extend_runner(base):
             from frontend_tools import filter_tools
             from focused_context import enabled
             res = filter_tools(self, res, stable_schema=enabled(self))
+            if getattr(self, '_plain_edits_only', False):
+                # Standard screen change: plain text edits only; the AST tools cannot express the needed edit and the
+                # model reaches for them first when they are offered.
+                res = [t for t in res if t['function']['name'] not in ('apply_ast_edits', 'inspect_code', 'repair_ast_candidate', 'discard_ast_candidate', 'apply_snippet_patch')]
             svc = getattr(getattr(self.h, '_code_intelligence', None), 'allow_reads', lambda: True)()
             if not svc and not enabled(self):
                 return [t for t in res if t['function']['name'] != 'read_file']

@@ -467,6 +467,7 @@ def build(runner, new_screen_reference=''):
                 # Plain text edits for this run: the AST edit tool has no node for a helper's `return {...}` (toRow), so the
                 # one place every field change must touch could only be 'fixed' by inserting a second statement before it.
                 runner.args.edit_format = 'diff'
+                runner._plain_edits_only = True
                 import screen_sites
                 source = (Path(root) / file).read_text(encoding='utf-8') if file else ''
                 old = {item['name']: item for item in current['fields']}
