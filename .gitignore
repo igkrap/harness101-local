@@ -30,3 +30,4 @@ local-only/.zvec-grep/
 local-only/
 fullstack/
 erp-harness/state/
+harness2/runs/
