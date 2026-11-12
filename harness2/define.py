@@ -217,6 +217,15 @@ CHANGE = '''%(key)s 를 고치는 요청이다. 아래가 지금의 정의 전�
 이 정의에서 요청에 필요한 부분만 고치고, 나머지는 (keywords, 항목, 계산, fill, 상태, 동작, rules 까지) 한 글자도 바꾸지 말고 그대로 둔 전체를 답하라.
 형식: {"action": "change", "key": "%(key)s", "definition": <고친 뒤의 전체>}'''
 
+def accepted(saved, written):
+    """The definition as the framework took it: everything that may be left out is written out by the framework itself
+    (a field's required, a group's label, the lines' minimum ...), so nothing downstream reads the model's own wording."""
+    definition = {name: value for name, value in saved['definition'].items() if name != 'key'}
+    if written.get('rules'):
+        definition['rules'] = written['rules']        # the trial copy is saved without them (they are checked after publishing)
+    return complete(definition)
+
+
 def _unasked(request, lost, record_to):
     """Of the things that went missing, the ones the request did not ask to remove. Whether a sentence asks for a
     removal is a question of meaning, so it is put to the model as its own small question - not as a refusal of
@@ -274,8 +283,8 @@ def write(request, framework, record_to, trial_prefix='trial_'):
                     asked_back = True
                     raise ValueError('요청하지 않은 것이 사라졌다:\n- ' + '\n- '.join(unasked) + '\n이것들만 원래대로 되살리고, 나머지 고친 것은 그대로 둔다')
             # The framework is the judge: the definition is saved as a trial draft; a refusal is its message.
-            framework.save_definition(trial_prefix + key, {name: value for name, value in definition.items() if name != 'rules'}, 'DRAFT')
-            return {'action': action, 'key': key, 'definition': complete(definition)}
+            saved = framework.save_definition(trial_prefix + key, {name: value for name, value in definition.items() if name != 'rules'}, 'DRAFT')
+            return {'action': action, 'key': key, 'definition': accepted(saved, definition)}
         except Exception as problem:  # a refusal of any kind goes back to the model once more
             error = str(problem)
             messages = base + [{'role': 'assistant', 'content': answer[:4000]},

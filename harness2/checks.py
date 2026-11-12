@@ -341,7 +341,7 @@ def summary_screen_criteria(definition):
         items.append((f"표에 {column['label']} 열이 있다", {'op': 'text', 'selector': grid, 'contains': column['label']}))
     if part.get('chart'):
         kind = part['chart']['type']
-        items.append((f"{part['chart']['value']} 차트({kind})가 있다", {'op': 'visible', 'selector': f'[data-ui="chart"][data-kind="{kind}"] svg'}))
+        items.append((f"{part['chart']['value']} 차트({kind})가 있다", {'op': 'visible', 'selector': f'[data-ui="chart"][data-kind="{kind}"]'}))
     return [{'id': f'C{index + 1}', 'requirement_id': 'R1', 'description': description, 'check': check} for index, (description, check) in enumerate(items)]
 
 

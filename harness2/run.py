@@ -55,7 +55,9 @@ def run(request=None, definition_file=None, dry=False, force=False):
     try:
         if definition_file:
             proposal = json.loads(Path(definition_file).read_text(encoding='utf-8'))
-            define.complete(proposal['definition'])
+            written = proposal['definition']             # goes the same way as a model's answer: the framework takes it first
+            saved = framework.save_definition(TRIAL + proposal['key'], {name: value for name, value in written.items() if name != 'rules'}, 'DRAFT')
+            proposal['definition'] = define.accepted(saved, written)
         else:
             (folder / 'request.txt').write_text(request, encoding='utf-8')
             proposal = define.write(request, framework, folder / '1-define', TRIAL)
