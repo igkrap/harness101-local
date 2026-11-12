@@ -40,6 +40,11 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 요청: %(request)s'''
 
 
+def real(framework, trial_prefix='trial_'):
+    """The definitions there really are: a trial copy left by an interrupted run is not one of them."""
+    return [item for item in framework.definitions() if not item['key'].startswith(trial_prefix)]
+
+
 def _fields(fields):
     def one(field):
         extra = field['type'] + (f"→{field['ref']['entity']}" if field.get('ref') else '') + (', 필수' if field['required'] else '') \
@@ -50,7 +55,7 @@ def _fields(fields):
 
 def _existing(framework):
     lines = []
-    for item in framework.definitions():
+    for item in real(framework):
         definition = item['definition']
         text = f"- key {item['key']} / 화면 이름 {definition['title']} / 항목: {_fields(definition['fields'])}"
         if definition.get('lines'):
@@ -90,6 +95,7 @@ def _json(text):
 
 def complete(definition):
     """What the model may leave out, written out: the rest of the harness reads every field the same way."""
+    definition.setdefault('fields', [])      # a summary screen has none of its own
     groups = [definition.get('fields') or []] + ([definition['lines'].get('fields') or []] if isinstance(definition.get('lines'), dict) else [])
     for fields in groups:
         for field in fields:
@@ -191,6 +197,10 @@ def differences(old, new):
         for part, label in (('entity', '모으는 자료'), ('lines', '줄 표를 모으는지'), ('chart', '차트')):
             if (before.get(part) or None) != (after.get(part) or None):
                 note(f'{label}: {json.dumps(before.get(part), ensure_ascii=False)} → {json.dumps(after.get(part), ensure_ascii=False)}', part == 'chart' and bool(before.get(part)) and not after.get(part))
+    if (old.get('print') or None) != (new.get('print') or None):
+        tidy = lambda block: {name: value for name, value in (block or {}).items() if value not in (None, [], '')}
+        if tidy(old.get('print')) != tidy(new.get('print')):
+            note(f"출력 양식: {json.dumps(tidy(old.get('print')), ensure_ascii=False)} → {json.dumps(tidy(new.get('print')), ensure_ascii=False)}", bool(tidy(old.get('print'))) and not tidy(new.get('print')))
     was, now = old.get('rules', []), new.get('rules', [])
     for rule in was:
         if rule not in now:
@@ -233,7 +243,7 @@ def write(request, framework, record_to, trial_prefix='trial_'):
     base = [{'role': 'system', 'content': 'JSON only'},
             {'role': 'user', 'content': PROMPT % {'guide': capabilities.get('guide', ''), 'capabilities': json.dumps(shown, ensure_ascii=False, indent=1), 'existing': _existing(framework), 'request': request,
                                                   'code_screens': ', '.join(code_screens()) or '(없음)'}}]
-    stored = {item['key']: item['definition'] for item in framework.definitions()}
+    stored = {item['key']: item['definition'] for item in real(framework, trial_prefix)}
     messages, error, answer, target, asked_back = list(base), '', '', None, False
     for attempt in range(1, 5):
         answer = llm.ask(messages, record_to, f'define-{attempt}')
@@ -242,7 +252,7 @@ def write(request, framework, record_to, trial_prefix='trial_'):
             if proposal.get('action') == 'other':
                 return {'action': 'other', 'reason': str(proposal.get('reason') or '')[:300]}
             action, key, definition = proposal.get('action'), proposal.get('key'), proposal.get('definition')
-            if action not in ('create', 'change') or not isinstance(key, str):
+            if action not in ('create', 'change') or not isinstance(key, str) or key.startswith(trial_prefix):
                 raise ValueError('action(create|change) 과 key 가 있어야 한다')
             if action == 'change' and key not in stored:
                 raise ValueError(f'change 인데 {key} 라는 자료가 없다. 있는 자료: {sorted(stored)}')

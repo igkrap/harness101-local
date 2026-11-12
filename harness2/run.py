@@ -63,6 +63,7 @@ def run(request=None, definition_file=None, dry=False, force=False):
             result.update(status='other', reason=proposal.get('reason', ''))
             return result
         key, definition, action = proposal['key'], proposal['definition'], proposal['action']
+        result['key'] = key          # known from here on, so the trial copy is removed whatever happens next
         (folder / '1-define').mkdir(exist_ok=True)
         (folder / '1-define' / 'accepted.json').write_text(json.dumps(proposal, ensure_ascii=False, indent=1), encoding='utf-8')
         def label(field):
@@ -80,6 +81,10 @@ def run(request=None, definition_file=None, dry=False, force=False):
             result['actions'] = [action_['label'] for action_ in definition['status']['actions']]
         if definition.get('rules'):
             result['rules'] = [rule['message'] for rule in definition['rules']]
+        if definition.get('print'):
+            form = definition['print']
+            result['print'] = ', '.join(part for part in [f"제목 {form['title']}" if form.get('title') else '', '결재란 ' + '·'.join(form['signers']) if form.get('signers') else '',
+                                                           f"맺음말 \"{form['note']}\"" if form.get('note') else ''] if part)
         if definition.get('summary'):
             part = definition['summary']
             result['summary'] = {'entity': part['entity'] + (' 의 줄 표' if part.get('lines') else ''),
@@ -169,6 +174,8 @@ def say(result):
             lines.append('줄 표 항목: ' + ', '.join(result['lines']) + (f"  [{result['line_limit']}]" if result.get('line_limit') else ''))
         if result.get('statuses'):
             lines.append('상태: ' + ' → '.join(result['statuses']) + ' / 동작: ' + ', '.join(result.get('actions', [])))
+        if result.get('print'):
+            lines.append('출력 양식: ' + result['print'])
         for rule in result.get('rules', []):
             lines.append('규칙: ' + rule)
     if result.get('action') == 'change':
