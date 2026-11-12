@@ -269,6 +269,7 @@ def rule_checks(key, definition, framework):
 
 
 def document_screen_criteria(definition):
+    import standard_contract
     editor, table, toolbar = '[data-ui="document-editor"]', '[data-ui="document-lines"]', '[role="toolbar"][aria-label="업무 버튼"]'
     items = [('화면 틀이 있다', {'op': 'visible', 'selector': '[data-ui="business-workspace"]'}),
              ('조회 조건 영역이 있다', {'op': 'visible', 'selector': 'form[data-ui="query-panel"]'}),
@@ -281,7 +282,7 @@ def document_screen_criteria(definition):
         if field.get('formula') or field.get('sum') or field['type'] == 'serial':
             items.append((f"머리에 {field['label']} 이(가) 보인다", {'op': 'text', 'selector': editor, 'contains': field['label']}))
         else:
-            items.append((f"머리에 {field['label']} 입력칸이 있다", {'op': 'visible', 'selector': f'{editor} >> internal:label="{field["label"]}"i'}))
+            items.append((f"머리에 {field['label']} 입력칸이 있다", {'op': 'visible', 'selector': f'{editor} >> {standard_contract.by_label(field["label"])}'}))
         items.append((f"목록에 {field['label']} 열이 있다", {'op': 'text', 'selector': '[data-ui="record-grid"]', 'contains': field['label']}))
     for field in definition['lines']['fields']:
         items.append((f"명세 표에 {field['label']} 열이 있다", {'op': 'text', 'selector': table, 'contains': field['label']}))

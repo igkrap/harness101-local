@@ -161,6 +161,15 @@ GRID = '[data-ui="record-grid"]'
 TOOLBAR = '[role="toolbar"][aria-label="업무 버튼"]'
 
 
+def label_pattern(label):
+    """A field's label and nothing else (the required mark " *" may follow): '단가' must not also match '단가명'."""
+    return '^\\s*' + re.escape(label).replace('/', '\\/') + '\\s*\\*?\\s*$'
+
+
+def by_label(label):
+    return f'internal:label=/{label_pattern(label)}/'
+
+
 def screen_criteria(sheet):
     required = [field for field in sheet['fields'] if field['required']]
     criteria = [
@@ -174,13 +183,13 @@ def screen_criteria(sheet):
     for field in required:
         label = field['label']
         # The label carries the required mark (" *"), so the field is found by a non-exact label match.
-        criteria.append((f"편집 패널에 필수 항목 {label} 입력칸이 있다", {'op': 'visible', 'selector': f'{EDITOR} >> internal:label="{label}"i'}))
-        criteria.append((f"{label} 은(는) 필수 표시(*)가 있다", {'op': 'text', 'selector': f'{EDITOR} label:has-text("{label}")', 'contains': '*'}))
+        criteria.append((f"편집 패널에 필수 항목 {label} 입력칸이 있다", {'op': 'visible', 'selector': f'{EDITOR} >> {by_label(label)}'}))
+        criteria.append((f"{label} 은(는) 필수 표시(*)가 있다", {'op': 'text', 'selector': f'{EDITOR} >> label >> text=/{label_pattern(label)}/', 'contains': '*'}))
         criteria.append((f"그리드에 {label} 열이 있다", {'op': 'text', 'selector': GRID, 'contains': label}))
     optional = [field for field in sheet['fields'] if not field['required']]
     if optional:
         steps = [{'action': 'click', 'selector': '[data-ui="tabbed-panel"] >> role=tab[name="추가정보"]'}]
-        steps += [{'action': 'expect_visible', 'selector': f'{EDITOR} >> internal:label="{field["label"]}"i'} for field in optional]
+        steps += [{'action': 'expect_visible', 'selector': f'{EDITOR} >> {by_label(field["label"])}'} for field in optional]
         criteria.append(('선택 항목(' + ', '.join(field['label'] for field in optional) + ')은 편집 패널의 추가정보 탭에 있다', {'op': 'scenario', 'steps': steps}))
     return [{'id': f'C{index + 1}', 'requirement_id': 'R1', 'description': description, 'check': check}
             for index, (description, check) in enumerate(criteria)]

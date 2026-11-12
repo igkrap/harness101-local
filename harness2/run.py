@@ -80,6 +80,10 @@ def run(request=None, definition_file=None, dry=False, force=False):
             notes, blocking = impact(framework, key, current['definition'], definition)
             result.update(impact=notes, needs_decision=blocking)
             result['changes'], result['removed'] = define.differences(current['definition'], definition)
+            if not result['changes']:
+                # Asked to change something, and the definition came back the same: that is not a success.
+                result['status'] = 'unchanged'
+                return result
             if blocking and not force:
                 result['status'] = 'needs_decision'
                 return result
@@ -157,6 +161,8 @@ def say(result):
         lines.append(f"검사 {result['checks']}개 통과 → 적용했습니다. ({result['seconds']}초)")
     elif status == 'checked':
         lines.append(f"검사 {result['checks']}개 통과. 적용은 하지 않았습니다(--dry).")
+    elif status == 'unchanged':
+        lines.append('적용하지 않았습니다. 요청을 반영한 변화가 없습니다(이미 그렇게 되어 있거나, 요청을 이해하지 못했습니다).')
     elif status == 'needs_decision':
         lines.append('적용하지 않았습니다. 먼저 정해야 할 것:')
         lines += ['  - ' + item for item in result['needs_decision']]
