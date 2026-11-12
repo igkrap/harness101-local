@@ -24,9 +24,10 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 규칙:
 - 요청이 이미 있는 자료를 고치는 것이면 {"action": "change", "key": "<그 자료의 key>"} 까지만 답한다(그러면 그 자료의 정의 전체를 받아서 고치게 된다).
 - 새 자료면 action 은 "create" 이고 key 는 이미 있는 key 와 겹치지 않게 한다.
-- 요청이 항목을 정해 주지 않았으면 그 업무에서 흔히 쓰는 항목으로 정한다(머리 5~8개, 명세 3~5개).
+- 요청이 항목을 정해 주지 않았으면 그 업무에서 흔히 쓰는 항목으로 정한다(5~8개, 줄 표가 있으면 줄 항목 3~5개).
+- 번호(serial), 줄 표(lines), 상태(status)는 그 업무에 실제로 필요할 때만 붙인다. 요청이 개수나 범위를 말하면("하나만", "0~100") 그대로 적는다.
 - required 는 그 값 없이는 자료가 성립하지 않는 항목에만 true.
-- search 는 조회 조건으로 쓸 머리 항목(1~3개)에 true.
+- search 는 조회 조건으로 쓸 항목(1~3개, 줄 항목 제외)에 true.
 - 다른 자료에서 고르는 항목(거래처, 품목, 부서 ...)은 글자로 받지 말고 ref 로 한다. 이미 있는 자료만 가리킬 수 있고, ref.label 과 fill 의 값은 그 자료에 실제로 있는 항목 name 이어야 한다(위 '이미 있는 자료' 참고).
 - 정해진 값 중에서 고르는 항목은 code 로 하되 있는 공통 코드 그룹만 쓴다. 맞는 그룹이 없으면 글자(text)로 둔다.
 - "~하면 ~못 하게" 같은 요청은 rules 로 적는다. 규칙이 가리키는 자료와 항목은 이미 있어야 한다.
@@ -50,9 +51,9 @@ def _existing(framework):
     lines = []
     for item in framework.definitions():
         definition = item['definition']
-        text = f"- key {item['key']} / {definition.get('type', 'master')} / 화면 이름 {definition['title']} / 항목: {_fields(definition['fields'])}"
+        text = f"- key {item['key']} / 화면 이름 {definition['title']} / 항목: {_fields(definition['fields'])}"
         if definition.get('lines'):
-            text += f" / 명세({definition['lines']['label']}): {_fields(definition['lines']['fields'])}"
+            text += f" / 줄 표({definition['lines']['label']}): {_fields(definition['lines']['fields'])}"
         if definition.get('status'):
             text += ' / 상태: ' + ', '.join(f"{value['code']}={value['label']}" for value in definition['status']['values']) \
                 + ' / 동작: ' + ', '.join(f"{action['name']}({action['label']})" for action in definition['status']['actions'])
@@ -95,11 +96,15 @@ def complete(definition):
 def clean(definition):
     """A stored definition as one would write it: no key, no empty or default entries."""
     def field(item):
-        return {name: value for name, value in item.items() if value not in (None, False, [], {}) or name == 'required'}
-    out = {name: value for name, value in definition.items() if name != 'key' and value not in (None, [], {})}
+        out = {name: value for name, value in item.items() if not (value is None or value is False or value == [] or value == {}) or name == 'required'}
+        if isinstance(out.get('ref'), dict):
+            out['ref'] = {name: value for name, value in out['ref'].items() if value is not None}
+        return out
+    out = {name: value for name, value in definition.items() if name not in ('key', 'type') and value not in (None, [], {})}
     out['fields'] = [field(item) for item in definition.get('fields') or []]
     if definition.get('lines'):
-        out['lines'] = dict(definition['lines'], fields=[field(item) for item in definition['lines']['fields']])
+        out['lines'] = {name: value for name, value in dict(definition['lines'], fields=[field(item) for item in definition['lines']['fields']]).items()
+                        if value is not None and not (name == 'min' and value == 1)}
     return out
 
 
@@ -131,12 +136,15 @@ def differences(old, new):
         for name, item in after.items():
             if name not in before:
                 note(f"{where} 항목 {item['label']}({name}) 이(가) 추가됨")
-    compare('머리' if old.get('lines') or new.get('lines') else '', old['fields'], new['fields'])
+    compare('위쪽' if old.get('lines') or new.get('lines') else '', old['fields'], new['fields'])
     if old.get('lines') or new.get('lines'):
         if not new.get('lines'):
-            note('명세가 통째로 없어짐', True)
+            note('줄 표가 통째로 없어짐', True)
         else:
-            compare('명세', (old.get('lines') or {}).get('fields', []), new['lines']['fields'])
+            compare('줄', (old.get('lines') or {}).get('fields', []), new['lines']['fields'])
+            for part in ('min', 'max'):
+                if old.get('lines') and old['lines'].get(part) != new['lines'].get(part):
+                    note(f"줄 수 {part}: {old['lines'].get(part)} → {new['lines'].get(part)}")
     before, after = old.get('status') or {}, new.get('status') or {}
     if before and not after:
         note('상태와 동작이 통째로 없어짐', True)
@@ -193,7 +201,7 @@ def write(request, framework, record_to, trial_prefix='trial_'):
     entity the request is about, then gets that definition whole. Whatever went missing without being asked
     for goes back to the model once, so a rule or a formula is never dropped silently."""
     capabilities = framework.capabilities()
-    shown = {key: capabilities[key] for key in ('screenTypes', 'fieldTypes', 'builtInRules', 'ruleTypes', 'codeGroups') if key in capabilities}
+    shown = {key: capabilities[key] for key in ('parts', 'fieldTypes', 'builtInRules', 'ruleTypes', 'codeGroups') if key in capabilities}
     base = [{'role': 'system', 'content': 'JSON only'},
             {'role': 'user', 'content': PROMPT % {'guide': capabilities.get('guide', ''), 'capabilities': json.dumps(shown, ensure_ascii=False, indent=1), 'existing': _existing(framework), 'request': request,
                                                   'code_screens': ', '.join(code_screens()) or '(없음)'}}]

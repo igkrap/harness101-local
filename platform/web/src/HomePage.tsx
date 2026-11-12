@@ -20,7 +20,8 @@ function since(start?: string | null, end?: string | null) {
   return s < 60 ? `${s}초` : `${Math.floor(s / 60)}분 ${s % 60}초`;
 }
 function when(iso: string) {
-  return new Date(iso).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  const d = new Date(iso), two = (n: number) => String(n).padStart(2, "0");
+  return `${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}`;
 }
 function examplesFor(screens: string[]) {
   const [a, b] = screens.filter(s => s !== "홈");
@@ -88,7 +89,7 @@ export default function HomePage(props: {
   const [label, tone] = queue ? queueStatus[queue.status] || [queue.status, "muted"] : ["", ""];
   const failedJob = queue?.items.find(i => i.status === "failed")?.job_id;
   const lastJob = [...(queue?.items || [])].reverse().find(i => i.job_id)?.job_id;
-  const others = recent.filter(q => q.id !== queue?.id).slice(0, 8);
+  const others = recent.filter(q => q.id !== queue?.id).slice(0, 40);
 
   return <div className="home">
     <section className="home-ask" aria-label="요청">
@@ -144,14 +145,23 @@ export default function HomePage(props: {
     </section>}
 
     {others.length > 0 && <section className="home-recent" aria-label="최근 요청">
-      <h3>최근 요청</h3>
-      <ul>{others.map(q => { const [l, t] = queueStatus[q.status] || [q.status, "muted"]; const job = [...q.items].reverse().find(i => i.job_id)?.job_id;
-        return <li key={q.id}>
-          <span className={`home-pill tone-${t}`}>{l}</span>
-          <span className="home-recent-goal" title={q.goal}>{q.goal}</span>
-          <span className="home-recent-meta">{q.items.length ? `작업 ${q.items.filter(i => i.status === "succeeded").length}/${q.items.length}` : ""} · {when(q.created_at)}</span>
-          {job && <button type="button" className="home-link" onClick={() => props.onDetail(job)}>기록</button>}
-        </li>; })}</ul>
+      <table className="biz-table">
+        <colgroup><col style={{ width: 62 }} /><col /><col style={{ width: "22%" }} /><col style={{ width: 58 }} /><col style={{ width: 56 }} /><col style={{ width: 84 }} /><col style={{ width: 104 }} /><col style={{ width: 44 }} /></colgroup>
+        <thead><tr><th>상태</th><th>요청</th><th>결과</th><th>구분</th><th className="num">검사</th><th className="num">걸린 시간</th><th>일시</th><th /></tr></thead>
+        <tbody>{others.map(q => { const [l, t] = queueStatus[q.status] || [q.status, "muted"]; const job = [...q.items].reverse().find(i => i.job_id)?.job_id; const r = q.definition_result;
+          const failed = r?.failed?.length || 0;
+          const outcome = r ? (r.status === "applied" ? `${r.title || ""}${r.key ? ` (${r.key})` : ""}` : (q.detail || "").split("\n").filter(Boolean).pop() || "") : (q.detail || "").split("\n")[0] || "";
+          return <tr key={q.id}>
+            <td><span className={`biz-tag tone-${t}`}>{l}</span></td>
+            <td title={q.goal}>{q.goal}</td>
+            <td className="dim" title={q.detail || outcome}>{outcome}</td>
+            <td className="dim">{r ? (r.action === "change" ? "수정" : r.action === "create" ? "신규" : "") : q.items.length ? `작업 ${q.items.filter(i => i.status === "succeeded").length}/${q.items.length}` : ""}</td>
+            <td className="num">{r?.checks ? (failed ? `${r.checks - failed}/${r.checks}` : r.checks) : ""}</td>
+            <td className="num">{r?.seconds ? `${Math.round(r.seconds)}초` : since(q.created_at, q.finished_at)}</td>
+            <td className="dim">{when(q.created_at)}</td>
+            <td>{job && <button type="button" className="biz-link" onClick={() => props.onDetail(job)}>기록</button>}</td>
+          </tr>; })}</tbody>
+      </table>
     </section>}
   </div>;
 }

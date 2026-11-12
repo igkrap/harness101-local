@@ -65,10 +65,16 @@ def run(request=None, definition_file=None, dry=False, force=False):
         key, definition, action = proposal['key'], proposal['definition'], proposal['action']
         (folder / '1-define').mkdir(exist_ok=True)
         (folder / '1-define' / 'accepted.json').write_text(json.dumps(proposal, ensure_ascii=False, indent=1), encoding='utf-8')
-        label = lambda field: f"{field['label']}({field.get('type', 'text')}{', 필수' if field['required'] else ''}{', 계산' if field.get('formula') or field.get('sum') else ''})"
-        result.update(action=action, key=key, title=definition['title'], kind=definition.get('type', 'master'), fields=[label(field) for field in definition['fields']])
+        def label(field):
+            extra = [field.get('type', 'text')] + (['필수'] if field['required'] else []) + (['계산'] if field.get('formula') or field.get('sum') else []) \
+                + ([f"{'' if field.get('min') is None else format(field['min'], 'g')}~{'' if field.get('max') is None else format(field['max'], 'g')}"] if field.get('min') is not None or field.get('max') is not None else []) \
+                + (['중복 불가'] if field.get('unique') else []) + ([{'dropdown': '목록에서 고름', 'search': '입력하며 찾기', 'popup': '검색창'}[field['pick']]] if field.get('pick') else [])
+            return f"{field['label']}({', '.join(str(item) for item in extra)})"
+        result.update(action=action, key=key, title=definition['title'], fields=[label(field) for field in definition['fields']])
         if definition.get('lines'):
             result['lines'] = [label(field) for field in definition['lines']['fields']]
+            limit = definition['lines']
+            result['line_limit'] = (f"{limit.get('min', 1)}줄 이상" if limit.get('max') is None else (f"{limit['max']}줄만" if limit.get('min', 1) == limit['max'] else f"{limit.get('min', 1)}~{limit['max']}줄")) if (limit.get('min', 1) != 1 or limit.get('max') is not None) else ''
         if definition.get('status'):
             result['statuses'] = [value['label'] for value in definition['status']['values']]
             result['actions'] = [action_['label'] for action_ in definition['status']['actions']]
@@ -93,7 +99,7 @@ def run(request=None, definition_file=None, dry=False, force=False):
         # Rules point at other entities by their real keys, so they are checked after publishing (and undone if they fail).
         trial = {name: value for name, value in definition.items() if name != 'rules'}
         framework.save_definition(trial_key, dict(trial, title=trial_title), 'DRAFT')
-        data = (checks.document_checks if definition.get('type') == 'document' else checks.data_checks)(trial_key, definition, framework)
+        data = checks.record_checks(trial_key, definition, framework)
         screen = checks.screen_checks(trial_title, definition, folder / '2-check', APP)
         results = data.results + screen.results
         (folder / '2-check').mkdir(exist_ok=True)
@@ -144,9 +150,9 @@ def say(result):
     status = result.get('status')
     if result.get('title'):
         lines.append(f"{'새 화면' if result.get('action') == 'create' else '화면 수정'}: {result['title']}  ({result['key']})")
-        lines.append(('머리 항목: ' if result.get('lines') else '항목: ') + ', '.join(result.get('fields', [])))
+        lines.append(('위쪽 항목: ' if result.get('lines') else '항목: ') + ', '.join(result.get('fields', [])))
         if result.get('lines'):
-            lines.append('명세 항목: ' + ', '.join(result['lines']))
+            lines.append('줄 표 항목: ' + ', '.join(result['lines']) + (f"  [{result['line_limit']}]" if result.get('line_limit') else ''))
         if result.get('statuses'):
             lines.append('상태: ' + ' → '.join(result['statuses']) + ' / 동작: ' + ', '.join(result.get('actions', [])))
         for rule in result.get('rules', []):
