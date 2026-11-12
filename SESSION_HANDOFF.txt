@@ -808,3 +808,20 @@ Orca CLI selected /Applications/Orca.app/Contents/Resources/bin/orca, skill read
 - Every failure on the way was harness code, not the model: platform still running the old harness2 modules (pkill pattern did not match; kill the 5293 listener by pid), omitted 'required' not defaulted, sample row for a document ref made without a line, sample rows left behind (locked trial documents; a cancelled sample order from the rule check).
 - Fixes: define.complete(), checks.sweep()/LEFTOVER swept again after the trial is removed, rule check asks with ?check=true (new framework mode: judged, nothing changed).
 - Still open: review step before applying a model-drafted definition; document list does not load until 조회 is pressed; platform UI for this route not looked at by eye.
+
+[2026-11-13] Parts instead of screen kinds; picker; summary screens; print form; platform skin
+- 15-request unattended run of the local model (harness2 direct): 12 right (8 made, 1 correctly stopped, 3 correctly refused), 3 wrong - all three mine
+  (the "dropped unasked" guard undid a requested removal; the framework silently dropped an unknown key; a label selector matched two fields). Fixed.
+- Framework: a screen is its parts - serial, status, lines (min/max) attach to any screen; number min/max; unique; unknown definition entries are refused;
+  pick dropdown|search|popup with ref.columns; ref shown as "code name" everywhere (ref.code, default the target's first field), code box + name box in forms;
+  summary screens (/api/summary/{key}: groupBy 1-2, date by day|month|year, sum/count/avg/min/max, filters, chart bar|line|pie in plain SVG);
+  print one record as a paper form (definition.print title/signers/note). UI wording: no "문서".
+- harness2: one part-driven record_checks; summary_checks recompute the numbers independently from /api/data; rule checks ask with ?check=true;
+  a change is written from the current definition; "was this removal asked?" is a separate small question to the model; unchanged result is not success;
+  everything downstream reads the definition as the framework completed it (define.accepted) - three failures came from reading the model's wording;
+  trial copies are always removed and never shown to the model. Replay a model's recorded answer with run.py --definition before spending model time.
+- Local model, all by plain requests: repair request (status only), one-item purchase request, price list (lines only), discount 0~100, unique vendor code,
+  vendor search window with columns, monthly/vendor/item/status summaries with charts, change of a summary, quotation print form.
+- Platform site: business.css (dense, dark side bar, tables); definition runs are in the run history. Other platform pages only shrank.
+- Next: tools for multi-step requests (place in a menu, permissions, register common codes), review step before applying, definition version history/undo,
+  value-comparison rules, the user's own "업무 기준" text in the prompt. Name for the header+lines layer: user is choosing between 업무단/프로세스단.
