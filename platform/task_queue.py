@@ -285,10 +285,57 @@ class QueueManager:
             self._update(queue_id, items=[], status='planning', route='code', route_reason=result.get('reason', ''))
             return False
         ok = status == 'applied'
+        said = definition_run.say(result).rsplit('\n기록:', 1)[0]
+        job_id = self._record_definition_run(queue_id, result, ok, said)
         self._update(queue_id, items=[{'domain': 'definition', 'title': result.get('title') or '화면 정의', 'checks': ['definition'],
-                                       'status': 'succeeded' if ok else 'failed', 'job_id': None, 'attempts': 1}], definition_result=result)
-        self._finish(queue_id, 'succeeded' if ok else 'failed', definition_run.say(result).rsplit('\n기록:', 1)[0])
+                                       'status': 'succeeded' if ok else 'failed', 'job_id': job_id, 'attempts': 1}], definition_result=result)
+        self._finish(queue_id, 'succeeded' if ok else 'failed', said)
         return True
+
+    def _record_definition_run(self, queue_id, result, ok, said, finished=None):
+        """The run as a finished entry of the run history (the same list the code route's jobs are in): what the
+        model was asked and answered, the checks, the outcome. Written once, at the end - nothing watches it."""
+        try:
+            from datetime import datetime, timedelta, timezone
+            queue, folder = self.get(queue_id), Path(result.get('folder') or '')
+            finished = (finished or datetime.now(timezone.utc)).astimezone(timezone.utc)
+            started = finished - timedelta(seconds=float(result.get('seconds') or 0))
+            job = {'id': uuid.uuid4().hex, 'kind': 'agent', 'route': 'definition', 'completion_policy': 'definition-checks-v1', 'goal': queue['goal'], 'checks': ['definition'], 'rounds': 0, 'thinking': False,
+                   'queue': {'id': queue_id, 'index': 1, 'total': 1}, 'project_id': (getattr(self.app, 'metadata', None) or {}).get('id', 'default'),
+                   'status': 'succeeded' if ok else 'failed', 'started_at': started.isoformat(), 'finished_at': finished.isoformat(),
+                   'exit_code': 0 if ok else 1, 'detail': said, 'run_folder': str(folder)}
+            events, clock = [], started
+
+            def event(kind, data, seconds=0.0):
+                nonlocal clock
+                clock = min(finished, clock + timedelta(seconds=seconds))
+                events.append({'seq': len(events) + 1, 'time': clock.isoformat(), 'type': kind, 'data': data})
+            event('run.started', {'goal': queue['goal'], 'checks': ['definition'], 'round_budget': 0, 'thinking': False})
+            for path in sorted((folder / '1-define').glob('define-*.json')) if folder.name else []:
+                call = json.loads(path.read_text(encoding='utf-8'))
+                job.setdefault('model', (call.get('request') or {}).get('model'))
+                event('model.request', {'model': (call.get('request') or {}).get('model'), 'estimated_input_tokens': (call.get('usage') or {}).get('prompt_tokens')})
+                event('model.response', {'text': call.get('answer', ''), 'seconds': call.get('seconds')}, float(call.get('seconds') or 0))
+            results = folder / '2-check' / 'results.json'
+            if folder.name and results.exists():
+                checks = json.loads(results.read_text(encoding='utf-8'))
+                failed = [item for item in checks if not item['passed']]
+                event('check.started', {'mode': 'definition', 'attempt': 1})
+                event('check.finished', {'mode': 'definition', 'attempt': 1, 'success': not failed, 'passed': len(checks) - len(failed), 'total': len(checks),
+                                         'error': '\n'.join(f"{item['description']}: {item['detail']}" for item in failed),
+                                         'stdout': '\n'.join(('O ' if item['passed'] else 'X ') + item['description'] for item in checks)})
+            clock = finished
+            event('run.finished', {'success': ok, 'detail': said, 'error': '' if ok else said})
+            directory = self.app.state / job['id']
+            directory.mkdir(parents=True, exist_ok=True)
+            (directory / 'events.jsonl').write_text(''.join(json.dumps(item, ensure_ascii=False) + '\n' for item in events), encoding='utf-8')
+            (directory / 'output.log').write_text(said + '\n', encoding='utf-8')
+            with self.app.lock:
+                self.app.jobs[job['id']] = job
+                self.app.save(job)
+            return job['id']
+        except Exception:      # the history entry is a record of the run, never a reason for it to fail
+            return None
 
     def _plan(self, queue_id):
         queue = self.get(queue_id)
