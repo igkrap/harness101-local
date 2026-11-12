@@ -79,6 +79,7 @@ def run(request=None, definition_file=None, dry=False, force=False):
         if current and action == 'change':
             notes, blocking = impact(framework, key, current['definition'], definition)
             result.update(impact=notes, needs_decision=blocking)
+            result['changes'], result['removed'] = define.differences(current['definition'], definition)
             if blocking and not force:
                 result['status'] = 'needs_decision'
                 return result
@@ -146,6 +147,10 @@ def say(result):
             lines.append('상태: ' + ' → '.join(result['statuses']) + ' / 동작: ' + ', '.join(result.get('actions', [])))
         for rule in result.get('rules', []):
             lines.append('규칙: ' + rule)
+    if result.get('action') == 'change':
+        lines.append('바뀐 점:' if result.get('changes') else '바뀐 점: 없음')
+        for note in result.get('changes', []):
+            lines.append('  - ' + note)
     for note in result.get('impact', []):
         lines.append('· ' + note)
     if status == 'applied':
