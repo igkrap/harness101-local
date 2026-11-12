@@ -238,6 +238,113 @@ def record_checks(key, definition, framework):
     return report
 
 
+def _summary(part, source, rows):
+    """A summary's numbers worked out here, independently of the framework, from the source rows as the data API gives them."""
+    line_names = {field['name'] for field in (source.get('lines') or {}).get('fields', [])} if part.get('lines') else set()
+    dates = {field['name'] for field in source['fields'] + (source.get('lines') or {}).get('fields', []) if field.get('type') == 'date'}
+    groups, everything = {}, [[] for _ in part['values']]
+    counts, total_units = {}, 0
+    for row in rows:
+        for unit in (row.get('lines') or []) if part.get('lines') else [row]:
+            keys = []
+            for group in part['groupBy']:
+                value = row.get('status') if group['field'] == 'status' and group['field'] not in line_names and not any(f['name'] == 'status' for f in source['fields']) \
+                    else (unit if group['field'] in line_names else row).get(group['field'])
+                text = '' if value is None else str(value)
+                if group['field'] in dates and text:
+                    text = text[:4] if group.get('by') == 'year' else text[:7] if (group.get('by') or 'month') == 'month' else text
+                keys.append(text)
+            key = tuple(keys)
+            numbers = groups.setdefault(key, [[] for _ in part['values']])
+            counts[key] = counts.get(key, 0) + 1
+            total_units += 1
+            for index, value in enumerate(part['values']):
+                if value.get('field'):
+                    number = (unit if value['field'] in line_names else row).get(value['field'])
+                    if isinstance(number, (int, float)):
+                        numbers[index].append(number)
+                        everything[index].append(number)
+
+    def result(op, numbers, units):
+        if op == 'count':
+            return units
+        if op == 'sum':
+            return sum(numbers)          # nothing to add up is 0, not "no value"
+        if not numbers:
+            return None
+        return {'sum': sum(numbers), 'avg': sum(numbers) / len(numbers), 'min': min(numbers), 'max': max(numbers)}[op]
+    table = {key: [result(value['op'], numbers[index], counts[key]) for index, value in enumerate(part['values'])] for key, numbers in groups.items()}
+    totals = [result(value['op'], everything[index], total_units) for index, value in enumerate(part['values'])]
+    return table, totals
+
+
+def _same(expected, got):
+    return (expected is None and got is None) or (expected is not None and got is not None and abs(expected - got) < 0.001)
+
+
+def summary_checks(key, definition, framework):
+    """A summary screen: its groups, computed values, total line and conditions against the same numbers worked out here."""
+    report, made, part = Report(), [], definition['summary']
+    source = next(item['definition'] for item in framework.definitions() if item['key'] == part['entity'])
+    try:
+        # Two rows of the source made for the occasion, so there is something to gather even in an empty system.
+        for _ in range(2):
+            body = {field['name']: sample(field, framework, made) for field in source['fields'] if not _computed(field)}
+            if source.get('lines'):
+                body['lines'] = [_line(source['lines']['fields'], framework, made, 3), _line(source['lines']['fields'], framework, made, 2)][:source['lines'].get('max') or 2]
+            row = framework.ok('POST', f"/api/data/{part['entity']}", body)
+            made.append((part['entity'], row['id']))
+        rows = framework.ok('GET', f"/api/data/{part['entity']}")
+
+        def compare(label, query, chosen):
+            code, answer = framework.call('GET', f'/api/summary/{key}' + query)
+            if not report.add(f'{label}: 조회된다', code == 200, f'{code} {answer}'):
+                return
+            table, totals = _summary(part, source, chosen)
+            groups = len(part['groupBy'])
+            got = {tuple(item.get(f'g{index}Key', '') for index in range(groups)): [item.get(f'v{index}') for index in range(len(part['values']))] for item in answer['rows']}
+            report.add(f'{label}: 묶음이 같다 ({len(table)}개)', set(got) == set(table), f'기대 {sorted(table)}, 실제 {sorted(got)}')
+            for index, value in enumerate(part['values']):
+                wrong = [(group, table[group][index], got[group][index]) for group in table if group in got and not _same(table[group][index], got[group][index])]
+                report.add(f"{label}: {value['label']}({value['op']}) 값이 묶음마다 맞다", not wrong, f'(묶음, 기대, 실제) {wrong[:5]}')
+                report.add(f"{label}: {value['label']} 의 합계 줄이 맞다", _same(totals[index], answer['totals'].get(f'v{index}')), f"기대 {totals[index]}, 실제 {answer['totals'].get(f'v{index}')}")
+            if not query:
+                names = [column['label'] for column in answer['columns']]
+                report.add('열 이름이 정의와 같다', names == [group['label'] for group in part['groupBy']] + [value['label'] for value in part['values']], f'{names}')
+        compare('전체', '', rows)
+        fields = {field['name']: field for field in source['fields']}
+        for name in part.get('filters', []):
+            if name == 'status':
+                code = (source.get('status') or {}).get('initial')
+                if code:
+                    compare('조회 조건 상태', f'?status={code}', [row for row in rows if row.get('status') == code])
+            elif fields.get(name, {}).get('type') == 'date':
+                compare(f"조회 조건 {fields[name]['label']} 기간(지난 날짜만)", f'?{name}_to=2000-01-01', [row for row in rows if (row.get(name) or '9') <= '2000-01-01'])
+                compare(f"조회 조건 {fields[name]['label']} 기간(전체)", f'?{name}_from=2000-01-01', [row for row in rows if (row.get(name) or '') >= '2000-01-01'])
+            elif name in fields and fields[name].get('type') in ('ref', 'code'):
+                value = rows[-1].get(name)
+                if value is not None:
+                    compare(f"조회 조건 {fields[name]['label']}", f'?{name}={value}', [row for row in rows if row.get(name) == value])
+    finally:
+        report.leftover = sweep(framework, made)
+    return report
+
+
+def summary_screen_criteria(definition):
+    part, toolbar, grid = definition['summary'], '[role="toolbar"][aria-label="업무 버튼"]', '[data-ui="record-grid"]'
+    items = [('화면 틀이 있다', {'op': 'visible', 'selector': '[data-ui="business-workspace"]'}),
+             ('조회 조건 영역이 있다', {'op': 'visible', 'selector': 'form[data-ui="query-panel"]'}),
+             ('집계 표가 있다', {'op': 'visible', 'selector': grid})]
+    for label in ('조회', '엑셀', '출력'):
+        items.append((f'공통 버튼 {label} 이(가) 있다', {'op': 'visible', 'selector': f'{toolbar} >> role=button[name="{label}"]'}))
+    for column in part['groupBy'] + part['values']:
+        items.append((f"표에 {column['label']} 열이 있다", {'op': 'text', 'selector': grid, 'contains': column['label']}))
+    if part.get('chart'):
+        kind = part['chart']['type']
+        items.append((f"{part['chart']['value']} 차트({kind})가 있다", {'op': 'visible', 'selector': f'[data-ui="chart"][data-kind="{kind}"] svg'}))
+    return [{'id': f'C{index + 1}', 'requirement_id': 'R1', 'description': description, 'check': check} for index, (description, check) in enumerate(items)]
+
+
 def rule_checks(key, definition, framework):
     """Each blocking rule, on the published entity: blocked while a row points here, allowed once it is gone."""
     report, made, api = Report(), [], f'/api/data/{key}'
@@ -314,7 +421,9 @@ def screen_checks(title, definition, record_to, app):
     """Open the screen in a real browser (read-only) and look for what the definition promises."""
     sys.path.insert(0, str(HARNESS))
     import standard_contract
-    if rich(definition):
+    if definition.get('summary'):
+        criteria = summary_screen_criteria(definition)
+    elif rich(definition):
         criteria = document_screen_criteria(definition)
     else:
         sheet = {'path': '/api/x', 'fields': [{'name': field['name'], 'label': field['label'], 'required': field['required'], 'sample': 'x'} for field in definition['fields']]}

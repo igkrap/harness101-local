@@ -80,10 +80,16 @@ def run(request=None, definition_file=None, dry=False, force=False):
             result['actions'] = [action_['label'] for action_ in definition['status']['actions']]
         if definition.get('rules'):
             result['rules'] = [rule['message'] for rule in definition['rules']]
+        if definition.get('summary'):
+            part = definition['summary']
+            result['summary'] = {'entity': part['entity'] + (' 의 줄 표' if part.get('lines') else ''),
+                                 'groups': [group.get('label') or group['field'] for group in part['groupBy']],
+                                 'values': [f"{value['label']}({ {'sum': '합계', 'count': '건수', 'avg': '평균', 'min': '최소', 'max': '최대'}[value['op']] })" for value in part['values']],
+                                 'filters': part.get('filters', []), 'chart': ({'bar': '막대', 'line': '선', 'pie': '원'}[part['chart']['type']] + ' 차트 - ' + part['chart'].get('value', '')) if part.get('chart') else ''}
 
         current = next((item for item in framework.definitions() if item['key'] == key), None)
         if current and action == 'change':
-            notes, blocking = impact(framework, key, current['definition'], definition)
+            notes, blocking = ([], []) if definition.get('summary') or current['definition'].get('summary') else impact(framework, key, current['definition'], definition)
             result.update(impact=notes, needs_decision=blocking)
             result['changes'], result['removed'] = define.differences(current['definition'], definition)
             if not result['changes']:
@@ -99,7 +105,7 @@ def run(request=None, definition_file=None, dry=False, force=False):
         # Rules point at other entities by their real keys, so they are checked after publishing (and undone if they fail).
         trial = {name: value for name, value in definition.items() if name != 'rules'}
         framework.save_definition(trial_key, dict(trial, title=trial_title), 'DRAFT')
-        data = checks.record_checks(trial_key, definition, framework)
+        data = (checks.summary_checks if definition.get('summary') else checks.record_checks)(trial_key, definition, framework)
         screen = checks.screen_checks(trial_title, definition, folder / '2-check', APP)
         results = data.results + screen.results
         (folder / '2-check').mkdir(exist_ok=True)
@@ -150,7 +156,15 @@ def say(result):
     status = result.get('status')
     if result.get('title'):
         lines.append(f"{'새 화면' if result.get('action') == 'create' else '화면 수정'}: {result['title']}  ({result['key']})")
-        lines.append(('위쪽 항목: ' if result.get('lines') else '항목: ') + ', '.join(result.get('fields', [])))
+        if result.get('summary'):
+            part = result['summary']
+            lines.append(f"집계 화면: {part['entity']} 을(를) {', '.join(part['groups'])}(으)로 묶어 {', '.join(part['values'])}")
+            if part['filters']:
+                lines.append('조회 조건: ' + ', '.join(part['filters']))
+            if part['chart']:
+                lines.append('차트: ' + part['chart'])
+        else:
+            lines.append(('위쪽 항목: ' if result.get('lines') else '항목: ') + ', '.join(result.get('fields', [])))
         if result.get('lines'):
             lines.append('줄 표 항목: ' + ', '.join(result['lines']) + (f"  [{result['line_limit']}]" if result.get('line_limit') else ''))
         if result.get('statuses'):

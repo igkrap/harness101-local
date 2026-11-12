@@ -24,6 +24,7 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 규칙:
 - 요청이 이미 있는 자료를 고치는 것이면 {"action": "change", "key": "<그 자료의 key>"} 까지만 답한다(그러면 그 자료의 정의 전체를 받아서 고치게 된다).
 - 새 자료면 action 은 "create" 이고 key 는 이미 있는 key 와 겹치지 않게 한다.
+- 현황·합계·통계·차트처럼 이미 있는 자료를 모아서 보는 요청은 새 자료를 만들지 말고 집계 화면(summary)으로 한다. 모을 자료는 이미 있어야 한다.
 - 요청이 항목을 정해 주지 않았으면 그 업무에서 흔히 쓰는 항목으로 정한다(5~8개, 줄 표가 있으면 줄 항목 3~5개).
 - 번호(serial), 줄 표(lines), 상태(status)는 그 업무에 실제로 필요할 때만 붙인다. 요청이 개수나 범위를 말하면("하나만", "0~100") 그대로 적는다.
 - required 는 그 값 없이는 자료가 성립하지 않는 항목에만 true.
@@ -32,7 +33,7 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 - 정해진 값 중에서 고르는 항목은 code 로 하되 있는 공통 코드 그룹만 쓴다. 맞는 그룹이 없으면 글자(text)로 둔다.
 - "~하면 ~못 하게" 같은 요청은 rules 로 적는다. 규칙이 가리키는 자료와 항목은 이미 있어야 한다.
 - id, 상태, 등록·수정자/일시는 프레임워크가 관리하므로 항목으로 넣지 않는다(상태는 definition.status 로).
-- 정의로 할 수 없는 요청이면 {"action": "other", "reason": "<이유 한 줄>"} 로만 답한다. 해당하는 경우: 아래 '코드로 만든 화면'을 고치는 요청, 로그인·메뉴·권한·디자인 같은 시스템 요청, 집계·보고서.
+- 정의로 할 수 없는 요청이면 {"action": "other", "reason": "<이유 한 줄>"} 로만 답한다. 해당하는 경우: 아래 '코드로 만든 화면'을 고치는 요청, 로그인·메뉴·권한·디자인 같은 시스템 요청, 프레임워크 안내에 없는 동작.
 
 코드로 만든 화면(정의가 아니라서 여기서 고칠 수 없음): %(code_screens)s
 
@@ -59,6 +60,12 @@ def _existing(framework):
                 + ' / 동작: ' + ', '.join(f"{action['name']}({action['label']})" for action in definition['status']['actions'])
         if definition.get('rules'):
             text += ' / 규칙: ' + '; '.join(rule['message'] for rule in definition['rules'])
+        if definition.get('summary'):
+            part = definition['summary']
+            text = f"- key {item['key']} / 화면 이름 {definition['title']} / 집계 화면: {part['entity']}" + (' 의 줄 표' if part.get('lines') else '') + ' 을(를) ' \
+                + ', '.join(group['field'] + (f"({group['by']})" if group.get('by') else '') for group in part['groupBy']) + ' (으)로 묶어 ' \
+                + ', '.join(f"{value['label']}={value['op']}" + (f"({value['field']})" if value.get('field') else '') for value in part['values']) \
+                + (f" / 차트 {part['chart']['type']}" if part.get('chart') else '')
         lines.append(text)
     return '\n'.join(lines) or '(없음)'
 
@@ -163,6 +170,27 @@ def differences(old, new):
             note(f"수정·삭제를 막는 상태: {before.get('locked', [])} → {after.get('locked', [])}", bool(set(before.get('locked', [])) - set(after.get('locked', []))))
         if before.get('initial') != after.get('initial') and before:
             note(f"처음 상태: {before.get('initial')} → {after.get('initial')}")
+    before, after = old.get('summary') or {}, new.get('summary') or {}
+    if before or after:
+        for part, name, label in (('groupBy', 'field', '묶는 기준'), ('values', 'label', '계산 열')):
+            was, now = {item[name]: item for item in before.get(part, [])}, {item[name]: item for item in after.get(part, [])}
+            for item in was:
+                if item not in now:
+                    note(f'{label} {item} 이(가) 없어짐', True)
+                elif {k: v for k, v in was[item].items() if v is not None} != {k: v for k, v in now[item].items() if v is not None}:
+                    note(f'{label} {item} 이(가) 바뀜: {json.dumps(was[item], ensure_ascii=False)} → {json.dumps(now[item], ensure_ascii=False)}')
+            for item in now:
+                if item not in was:
+                    note(f'{label} {item} 이(가) 추가됨')
+        for item in before.get('filters', []):
+            if item not in after.get('filters', []):
+                note(f'조회 조건 {item} 이(가) 없어짐', True)
+        for item in after.get('filters', []):
+            if item not in before.get('filters', []):
+                note(f'조회 조건 {item} 이(가) 추가됨')
+        for part, label in (('entity', '모으는 자료'), ('lines', '줄 표를 모으는지'), ('chart', '차트')):
+            if (before.get(part) or None) != (after.get(part) or None):
+                note(f'{label}: {json.dumps(before.get(part), ensure_ascii=False)} → {json.dumps(after.get(part), ensure_ascii=False)}', part == 'chart' and bool(before.get(part)) and not after.get(part))
     was, now = old.get('rules', []), new.get('rules', [])
     for rule in was:
         if rule not in now:
