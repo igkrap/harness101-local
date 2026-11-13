@@ -66,35 +66,36 @@ def _fields(fields):
     return ', '.join(one(field) for field in fields)
 
 
+def describe(key, definition):
+    """One screen in words: what it holds and how it behaves (the line the model reads for an existing screen)."""
+    text = f"- key {key} / 화면 이름 {definition['title']} / 항목: {_fields(definition['fields'])}"
+    if definition.get('lines'):
+        text += f" / 줄 표({definition['lines']['label']}): {_fields(definition['lines']['fields'])}"
+    if definition.get('status'):
+        text += ' / 상태: ' + ', '.join(f"{value['code']}={value['label']}" for value in definition['status']['values']) \
+            + ' / 동작: ' + ', '.join(f"{action['name']}({action['label']})" for action in definition['status']['actions'])
+    if definition.get('rules'):
+        text += ' / 규칙: ' + '; '.join(rule['message'] for rule in definition['rules'])
+    for part, label in (('checks', '비교 규칙'), ('limits', '한도')):
+        if definition.get(part):
+            text += f' / {label}: ' + '; '.join(rule['message'] for rule in definition[part])
+    if definition.get('effects'):
+        text += ' / 자동 처리: ' + '; '.join(('등록할 때' if effect['on'] == 'create' else f"{effect['on']} 동작을 할 때") + ' → ' + (f"{effect['create']['entity']} 한 건을 만든다" if effect.get('create') else f"{effect['act']['via']} 이(가) 가리키는 자료에 {effect['act']['action']} 동작을 한다") for effect in definition['effects'])
+    if definition.get('dashboard'):
+        text = f"- key {key} / 화면 이름 {definition['title']} / 현황판: 패널 " + ', '.join(f"{panel['summary']}({panel['chart']})" for panel in definition['dashboard']['panels'])
+    if definition.get('summary'):
+        part = definition['summary']
+        text = f"- key {key} / 화면 이름 {definition['title']} / 집계 화면: {part['entity']}" + (' 의 줄 표' if part.get('lines') else '') + ' 을(를) ' \
+            + ', '.join(group['field'] + (f"({group['by']})" if group.get('by') else '') for group in part['groupBy']) + ' (으)로 묶어 ' \
+            + ', '.join(f"{value['label']}={value['op']}" + (f"({value['field']})" if value.get('field') else '') for value in part['values']) \
+            + (f" / 차트 {part['chart']['type']}" if part.get('chart') else '') \
+            + (f" / 계획 대비({part['compare']['entity']})" if (part.get('compare') or {}).get('type') == 'plan' else f" / {part['compare'].get('balance')}(− {part['compare']['entity']})" if (part.get('compare') or {}).get('type') == 'minus' else f" / 전기 대비({part['compare']['by']})" if part.get('compare') else '') \
+            + (' / 구성비' if part.get('share') else '') + (f" / 상위 {part['top']}" if part.get('top') else '')
+    return text
+
+
 def _existing(framework):
-    lines = []
-    for item in real(framework):
-        definition = item['definition']
-        text = f"- key {item['key']} / 화면 이름 {definition['title']} / 항목: {_fields(definition['fields'])}"
-        if definition.get('lines'):
-            text += f" / 줄 표({definition['lines']['label']}): {_fields(definition['lines']['fields'])}"
-        if definition.get('status'):
-            text += ' / 상태: ' + ', '.join(f"{value['code']}={value['label']}" for value in definition['status']['values']) \
-                + ' / 동작: ' + ', '.join(f"{action['name']}({action['label']})" for action in definition['status']['actions'])
-        if definition.get('rules'):
-            text += ' / 규칙: ' + '; '.join(rule['message'] for rule in definition['rules'])
-        for part, label in (('checks', '비교 규칙'), ('limits', '한도')):
-            if definition.get(part):
-                text += f' / {label}: ' + '; '.join(rule['message'] for rule in definition[part])
-        if definition.get('effects'):
-            text += ' / 자동 처리: ' + '; '.join(f"{effect['on']}→" + (f"{effect['create']['entity']} 생성" if effect.get('create') else f"{effect['act']['via']}.{effect['act']['action']}") for effect in definition['effects'])
-        if definition.get('dashboard'):
-            text = f"- key {item['key']} / 화면 이름 {definition['title']} / 현황판: 패널 " + ', '.join(f"{panel['summary']}({panel['chart']})" for panel in definition['dashboard']['panels'])
-        if definition.get('summary'):
-            part = definition['summary']
-            text = f"- key {item['key']} / 화면 이름 {definition['title']} / 집계 화면: {part['entity']}" + (' 의 줄 표' if part.get('lines') else '') + ' 을(를) ' \
-                + ', '.join(group['field'] + (f"({group['by']})" if group.get('by') else '') for group in part['groupBy']) + ' (으)로 묶어 ' \
-                + ', '.join(f"{value['label']}={value['op']}" + (f"({value['field']})" if value.get('field') else '') for value in part['values']) \
-                + (f" / 차트 {part['chart']['type']}" if part.get('chart') else '') \
-                + (f" / 계획 대비({part['compare']['entity']})" if (part.get('compare') or {}).get('type') == 'plan' else f" / {part['compare'].get('balance')}(− {part['compare']['entity']})" if (part.get('compare') or {}).get('type') == 'minus' else f" / 전기 대비({part['compare']['by']})" if part.get('compare') else '') \
-                + (' / 구성비' if part.get('share') else '') + (f" / 상위 {part['top']}" if part.get('top') else '')
-        lines.append(text)
-    return '\n'.join(lines) or '(없음)'
+    return '\n'.join(describe(item['key'], item['definition']) for item in real(framework)) or '(없음)'
 
 
 def code_screens():
@@ -269,6 +270,28 @@ def accepted(saved, written):
     return complete(definition)
 
 
+def _mismatch(request, key, definition, before, record_to):
+    """Does the result say what the request said? Put to the model as a reading task (easier than writing): the request
+    beside the result in words. Returns '' when they agree, else one line naming the difference."""
+    made = describe(key, complete(json.loads(json.dumps(definition))))
+    if before is not None:
+        notes, _ = differences(before, definition)
+        made = '바뀐 점:\n' + ('\n'.join('- ' + note for note in notes) or '- (없음)') + '\n\n고친 뒤의 화면:\n' + made
+    question = ('사용자의 요청과, 그 요청으로 만든 결과다. 결과가 요청과 어긋나는지 본다.\n\n요청: ' + request + '\n\n결과:\n' + made + '''
+
+어긋남으로 보는 것:
+- 요청이 말한 때·조건·대상·숫자를 다른 것으로 바꿨다 (예: "등록하면"을 "확정하면"으로, "하나만"을 제한 없음으로).
+- 요청이 말한 것을 빠뜨렸다.
+- 요청에 없는 조건이나 동작을 덧붙였다.
+어긋남이 아닌 것: 요청이 정해 주지 않은 세부(항목 구성, 이름, 조회 조건, 차트 모양 등)를 알아서 정한 것, 요청과 무관하게 원래 있던 것.
+형식: {"ok": true} 또는 {"ok": false, "problem": "<무엇이 어떻게 다른지 한 줄>"}''')
+    try:
+        verdict = _json(llm.ask([{'role': 'system', 'content': 'JSON only'}, {'role': 'user', 'content': question}], record_to, 'matches-request', max_tokens=200))
+    except Exception:
+        return ''
+    return '' if verdict.get('ok') is not False else str(verdict.get('problem') or '요청과 다른 점이 있다')[:300]
+
+
 def _unasked(request, lost, record_to):
     """Of the things that went missing, the ones the request did not ask to remove. Whether a sentence asks for a
     removal is a question of meaning, so it is put to the model as its own small question - not as a refusal of
@@ -296,7 +319,7 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
             {'role': 'user', 'content': PROMPT % {'guide': capabilities.get('guide', ''), 'capabilities': json.dumps(shown, ensure_ascii=False, indent=1), 'existing': _existing(framework), 'request': request,
                                                   'code_screens': ', '.join(code_screens()) or '(없음)'}}]
     stored = {item['key']: item['definition'] for item in real(framework, trial_prefix)}
-    messages, error, answer, target, asked_back = list(base), '', '', None, False
+    messages, error, answer, target, asked_back, compared, doubt = list(base), '', '', None, False, False, ''
     trials = set()       # trial copies saved along the way; only the accepted one is left for the checks
     for attempt in range(1, 5):
         answer = llm.ask(messages, record_to, f'define-{attempt}')
@@ -341,9 +364,16 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
             # Rules and effects name real entities, so they are judged under the real key (nothing is stored): a refusal goes back to the model like any other.
             if definition.get('rules') or definition.get('effects'):
                 framework.validate_definition(key, definition)
+            # Read once against the request; a difference goes back to the model once. If it is still there, the result carries
+            # the doubt instead of stopping - the person is told only when there is something to look at.
+            taken = accepted(saved, definition)
+            doubt = _mismatch(request, key, taken, stored.get(key) if action == 'change' else None, record_to)
+            if doubt and not compared:
+                compared = True
+                raise ValueError('요청과 다르다: ' + doubt + '\n요청의 말 그대로 되게 고친다 (요청이 맞고 이 지적이 틀렸다고 보면 그대로 다시 답한다)')
             for other in trials - {trial_name(key, trial_prefix)}:
                 framework.delete_definition(other, force=True)
-            return {'action': action, 'key': key, 'definition': accepted(saved, definition)}
+            return {'action': action, 'key': key, 'definition': taken, 'doubt': doubt}
         except Exception as problem:  # a refusal of any kind goes back to the model once more
             error = str(problem)
             messages = base + [{'role': 'assistant', 'content': answer[:4000]},

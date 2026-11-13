@@ -80,6 +80,8 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
             return result
         key, definition, action = proposal['key'], proposal['definition'], proposal['action']
         result['key'] = key          # known from here on, so the trial copy is removed whatever happens next
+        if proposal.get('doubt'):
+            result['doubt'] = proposal['doubt']
         (folder / '1-define').mkdir(exist_ok=True)
         (folder / '1-define' / 'accepted.json').write_text(json.dumps(proposal, ensure_ascii=False, indent=1), encoding='utf-8')
         def label(field):
@@ -246,6 +248,8 @@ def say(result):
         lines.append('바뀐 점:' if result.get('changes') else '바뀐 점: 없음')
         for note in result.get('changes', []):
             lines.append('  - ' + note)
+    if result.get('doubt'):
+        lines.append('⚠ 확인해 볼 점: ' + result['doubt'])
     for note in result.get('impact', []):
         lines.append('· ' + note)
     if status == 'applied':
