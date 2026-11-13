@@ -83,6 +83,10 @@ class Framework:
     def save_definition(self, key, definition, status):
         return self.ok('PUT', f'/api/system/definitions/{key}', {'definition': definition, 'status': status})
 
+    def validate_definition(self, key, definition):
+        """The framework's judgement of a definition as it would be saved under this key; nothing is stored."""
+        return self.ok('PUT', f'/api/system/definitions/{key}?validate=true', {'definition': definition})
+
     def delete_definition(self, key, force=False):
         return self.call('DELETE', f'/api/system/definitions/{key}' + ('?force=true' if force else ''))
 

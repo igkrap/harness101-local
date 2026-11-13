@@ -323,6 +323,9 @@ def write(request, framework, record_to, trial_prefix='trial_'):
                     raise ValueError('요청하지 않은 것이 사라졌다:\n- ' + '\n- '.join(unasked) + '\n이것들만 원래대로 되살리고, 나머지 고친 것은 그대로 둔다')
             # The framework is the judge: the definition is saved as a trial draft; a refusal is its message.
             saved = framework.save_definition(trial_name(key, trial_prefix), {name: value for name, value in definition.items() if name not in ('rules', 'effects')}, 'DRAFT')
+            # Rules and effects name real entities, so they are judged under the real key (nothing is stored): a refusal goes back to the model like any other.
+            if definition.get('rules') or definition.get('effects'):
+                framework.validate_definition(key, definition)
             return {'action': action, 'key': key, 'definition': accepted(saved, definition)}
         except Exception as problem:  # a refusal of any kind goes back to the model once more
             error = str(problem)
