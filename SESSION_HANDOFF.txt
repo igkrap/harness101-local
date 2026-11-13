@@ -841,3 +841,20 @@ Orca CLI selected /Applications/Orca.app/Contents/Resources/bin/orca, skill read
   item order balance, per-order balance, un-received purchase quantity, repair days, cumulative. "구매 현황판" answered "make the summaries first" - the multi-step case.
 - Next: tools for multi-step requests (create the missing summaries, place in menus, permissions, common codes); a common period on dashboards; cross-tab table;
   review step before applying; definition history/undo. Unplaced programs are piling up (30+).
+
+[2026-11-14] Rules that compare, limits, effects; looks; home backdrop
+- Framework: checks (two dates/numbers inside a record), limits (sum of this entity <= sum of another, by paired keys; "id" pairs with the ref that points at it),
+  effects (on create or a status action: create a record of another entity with fields/lines carried over, or act = a status action on the record a ref points at;
+  carried values must fit; refusal rolls the whole request back; depth 4). Force delete for administrators (?force=true). "today" and serial year-month use
+  APP_TIMEZONE (default Asia/Seoul) - the container clock is UTC and gave yesterday's date between 00:00 and 09:00.
+  PUT /api/system/definitions/{key}?validate=true judges without storing.
+- harness2: fit() makes samples obey checks and limits; checks for comparisons, limits (over by one is refused, exactly the allowance is stored), effect_checks after
+  publishing; sweep forces locked rows; rules/effects are validated under the real key before the checks so the model can correct them.
+- Local model, plain requests: date order on project and repair request, shipped <= ordered, received <= ordered, "출하 완료" status on orders, shipment confirm completes
+  the order, quotation confirm makes an order (with lines). "구매 요청 승인 → 발주 생성" correctly answered impossible (no lines / no vendor on the request).
+  Walked by API: quotation confirm -> order; shipment of 8 against 7 refused; 7 stored; confirming the shipment completed the order.
+- Still: one request changes one screen (a two-screen request applied only its first half and said "applied"); wording drift is not checked
+  ("출하를 등록하면" became "출하를 확정하면"); no review step before applying.
+- Looks: screen style setting (solid = default: grey page, white panels, light grey rounded table headings; tint; plain). User rejected pastel tint ("AI 느낌") and
+  navy heading rows ("촌스럽다"). Home backdrop: canvas dot field reacting to the pointer and clicks. No drag text selection in the app. Explanatory sentences
+  removed from the permission screens on request.
