@@ -296,6 +296,52 @@ def summary_checks(key, definition, framework):
             made.append((part['entity'], row['id']))
         rows = framework.ok('GET', f"/api/data/{part['entity']}")
 
+        plan = (part.get('compare') or {}).get('type') == 'plan' and part['compare']
+        planned = {}
+        if plan:      # one plan row made for the occasion, then every plan row added up by the matching fields
+            target = next(item['definition'] for item in framework.definitions() if item['key'] == plan['entity'])
+            body = {field['name']: sample(field, framework, made) for field in target['fields'] if not _computed(field)}
+            made.append((plan['entity'], framework.ok('POST', f"/api/data/{plan['entity']}", body)['id']))
+            for item in framework.ok('GET', f"/api/data/{plan['entity']}"):
+                keys = []
+                for group, mine in zip(part['groupBy'], plan['groupBy']):
+                    text = '' if item.get(mine) is None else str(item[mine])
+                    keys.append(text[:4] if group.get('by') == 'year' else text[:7] if group.get('by') == 'month' else text)
+                if isinstance(item.get(plan['field']), (int, float)):
+                    planned[tuple(keys)] = planned.get(tuple(keys), 0) + item[plan['field']]
+
+        def earlier(key, by):
+            if len(key) == 4:
+                return str(int(key) - 1)
+            year, month = int(key[:4]), int(key[5:7])
+            return f'{year - 1}-{month:02d}' if by == 'year' else (f'{year - 1}-12' if month == 1 else f'{year}-{month - 1:02d}')
+
+        def analysis(answer, table):
+            """The comparison, share and ranking columns of the unfiltered answer."""
+            mark, labels = part.get('compare'), [value['label'] for value in part['values']]
+            of = labels.index(mark['value']) if mark and mark.get('value') in labels else 0
+            groups = len(part['groupBy'])
+            listed = {tuple(item.get(f'g{index}Key', '') for index in range(groups)): item for item in answer['rows']}
+            actual = lambda key: (table[key][of] if key in table else 0) or 0
+            if mark:
+                wrong = []
+                for key, item in listed.items():
+                    base = planned.get(key) if plan else ((table[(earlier(key[0], mark['by']),) + key[1:]][of]) if (earlier(key[0], mark['by']),) + key[1:] in table else None)
+                    expected = (None, None, None) if base is None else (base, actual(key) - base, None if base == 0 else (actual(key) / base * 100 if plan else (actual(key) - base) / base * 100))
+                    got = (item.get('c0'), item.get('c1'), item.get('c2'))
+                    if not all((e is None and g is None) or (e is not None and g is not None and abs(e - g) < 0.02) for e, g in zip(expected, got)):
+                        wrong.append((key, expected, got))
+                kind = '계획·차이·달성률' if plan else f"{mark.get('label') or '이전'}·증감·증감률"
+                report.add(f'분석 틀: {kind} 이(가) 줄마다 맞다', not wrong, f'(묶음, 기대, 실제) {wrong[:4]}')
+            if part.get('share'):
+                whole = sum(actual(key) for key in set(table) | set(planned))
+                wrong = [(key, item.get('s0')) for key, item in listed.items() if whole and abs((item.get('s0') or 0) - actual(key) / whole * 100) > 0.02]
+                report.add('분석 틀: 구성비가 줄마다 맞다 (전체 대비 %)', not wrong, f'{wrong[:4]}')
+            if part.get('top'):
+                order = [item.get('v0') or 0 for item in answer['rows']]
+                best = sorted(((table[key][0] or 0) for key in table), reverse=True)[:part['top']]
+                report.add(f"분석 틀: 큰 순서로 {part['top']}개까지만 나온다", len(order) <= part['top'] and order == sorted(order, reverse=True) and all(abs(a - b) < 0.001 for a, b in zip(order, best)), f'실제 {order}, 기대 {best}')
+
         def compare(label, query, chosen):
             code, answer = framework.call('GET', f'/api/summary/{key}' + query)
             if not report.add(f'{label}: 조회된다', code == 200, f'{code} {answer}'):
@@ -303,14 +349,22 @@ def summary_checks(key, definition, framework):
             table, totals = _summary(part, source, chosen)
             groups = len(part['groupBy'])
             got = {tuple(item.get(f'g{index}Key', '') for index in range(groups)): [item.get(f'v{index}') for index in range(len(part['values']))] for item in answer['rows']}
-            report.add(f'{label}: 묶음이 같다 ({len(table)}개)', set(got) == set(table), f'기대 {sorted(table)}, 실제 {sorted(got)}')
+            if not query:
+                analysis(answer, table)
+            if part.get('top') or (plan and query):
+                # A ranking shows only its largest groups, and a plan under a condition is judged above: here, what is listed must be right.
+                report.add(f'{label}: 나온 묶음이 모두 실제 자료에 있다', all(group in table or group in planned for group in got), f'{sorted(set(got) - set(table) - set(planned))}')
+            else:
+                wanted = set(table) | (set(planned) if plan else set())
+                report.add(f'{label}: 묶음이 같다 ({len(wanted)}개)', set(got) == wanted, f'기대 {sorted(wanted)}, 실제 {sorted(got)}')
             for index, value in enumerate(part['values']):
                 wrong = [(group, table[group][index], got[group][index]) for group in table if group in got and not _same(table[group][index], got[group][index])]
                 report.add(f"{label}: {value['label']}({value['op']}) 값이 묶음마다 맞다", not wrong, f'(묶음, 기대, 실제) {wrong[:5]}')
                 report.add(f"{label}: {value['label']} 의 합계 줄이 맞다", _same(totals[index], answer['totals'].get(f'v{index}')), f"기대 {totals[index]}, 실제 {answer['totals'].get(f'v{index}')}")
             if not query:
                 names = [column['label'] for column in answer['columns']]
-                report.add('열 이름이 정의와 같다', names == [group['label'] for group in part['groupBy']] + [value['label'] for value in part['values']], f'{names}')
+                wanted = [group['label'] for group in part['groupBy']] + [value['label'] for value in part['values']]
+                report.add('열 이름이 정의와 같다', names[:len(wanted)] == wanted, f'{names}')
         compare('전체', '', rows)
         fields = {field['name']: field for field in source['fields']}
         for name in part.get('filters', []):

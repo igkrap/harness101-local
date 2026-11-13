@@ -25,6 +25,7 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 - 요청이 이미 있는 자료를 고치는 것이면 {"action": "change", "key": "<그 자료의 key>"} 까지만 답한다(그러면 그 자료의 정의 전체를 받아서 고치게 된다).
 - 새 자료면 action 은 "create" 이고 key 는 이미 있는 key 와 겹치지 않게 한다.
 - 현황·합계·통계·차트처럼 이미 있는 자료를 모아서 보는 요청은 새 자료를 만들지 말고 집계 화면(summary)으로 한다. 모을 자료는 이미 있어야 한다.
+- 계획 대비·목표 대비·달성률은 compare plan 으로, 전월 대비·전년 대비·증감은 compare previous 로, 비중·점유율은 share 로, 순위·상위 N 은 top 으로 한다. 계획을 담은 자료가 없으면 이 요청으로는 그 등록 화면(예: 수주 계획 등록)부터 만든다.
 - 요청이 항목을 정해 주지 않았으면 그 업무에서 흔히 쓰는 항목으로 정한다(5~8개, 줄 표가 있으면 줄 항목 3~5개).
 - 번호(serial), 줄 표(lines), 상태(status)는 그 업무에 실제로 필요할 때만 붙인다. 요청이 개수나 범위를 말하면("하나만", "0~100") 그대로 적는다.
 - required 는 그 값 없이는 자료가 성립하지 않는 항목에만 true.
@@ -70,7 +71,9 @@ def _existing(framework):
             text = f"- key {item['key']} / 화면 이름 {definition['title']} / 집계 화면: {part['entity']}" + (' 의 줄 표' if part.get('lines') else '') + ' 을(를) ' \
                 + ', '.join(group['field'] + (f"({group['by']})" if group.get('by') else '') for group in part['groupBy']) + ' (으)로 묶어 ' \
                 + ', '.join(f"{value['label']}={value['op']}" + (f"({value['field']})" if value.get('field') else '') for value in part['values']) \
-                + (f" / 차트 {part['chart']['type']}" if part.get('chart') else '')
+                + (f" / 차트 {part['chart']['type']}" if part.get('chart') else '') \
+                + (f" / 계획 대비({part['compare']['entity']})" if (part.get('compare') or {}).get('type') == 'plan' else f" / 전기 대비({part['compare']['by']})" if part.get('compare') else '') \
+                + (' / 구성비' if part.get('share') else '') + (f" / 상위 {part['top']}" if part.get('top') else '')
         lines.append(text)
     return '\n'.join(lines) or '(없음)'
 
@@ -194,9 +197,9 @@ def differences(old, new):
         for item in after.get('filters', []):
             if item not in before.get('filters', []):
                 note(f'조회 조건 {item} 이(가) 추가됨')
-        for part, label in (('entity', '모으는 자료'), ('lines', '줄 표를 모으는지'), ('chart', '차트')):
+        for part, label in (('entity', '모으는 자료'), ('lines', '줄 표를 모으는지'), ('chart', '차트'), ('compare', '견주는 대상(계획·전기)'), ('share', '구성비'), ('top', '순위')):
             if (before.get(part) or None) != (after.get(part) or None):
-                note(f'{label}: {json.dumps(before.get(part), ensure_ascii=False)} → {json.dumps(after.get(part), ensure_ascii=False)}', part == 'chart' and bool(before.get(part)) and not after.get(part))
+                note(f'{label}: {json.dumps(before.get(part), ensure_ascii=False)} → {json.dumps(after.get(part), ensure_ascii=False)}', part in ('chart', 'compare', 'share', 'top') and bool(before.get(part)) and not after.get(part))
     if (old.get('print') or None) != (new.get('print') or None):
         tidy = lambda block: {name: value for name, value in (block or {}).items() if value not in (None, [], '')}
         if tidy(old.get('print')) != tidy(new.get('print')):

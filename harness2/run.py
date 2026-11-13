@@ -92,7 +92,12 @@ def run(request=None, definition_file=None, dry=False, force=False):
             result['summary'] = {'entity': part['entity'] + (' 의 줄 표' if part.get('lines') else ''),
                                  'groups': [group.get('label') or group['field'] for group in part['groupBy']],
                                  'values': [f"{value['label']}({ {'sum': '합계', 'count': '건수', 'avg': '평균', 'min': '최소', 'max': '최대'}[value['op']] })" for value in part['values']],
-                                 'filters': part.get('filters', []), 'chart': ({'bar': '막대', 'line': '선', 'pie': '원'}[part['chart']['type']] + ' 차트 - ' + part['chart'].get('value', '')) if part.get('chart') else ''}
+                                 'filters': part.get('filters', []),
+                                 'analysis': [text for text in [
+                                     f"계획 대비 실적({part['compare']['entity']} 의 {part['compare']['field']})" if (part.get('compare') or {}).get('type') == 'plan' else '',
+                                     {'month': '전월 대비', 'year': '전년 대비'}[part['compare']['by']] if (part.get('compare') or {}).get('type') == 'previous' else '',
+                                     '구성비' if part.get('share') else '', f"상위 {part['top']}개" if part.get('top') else ''] if text],
+                                 'chart': ({'bar': '막대', 'line': '선', 'pie': '원'}[part['chart']['type']] + ' 차트 - ' + part['chart'].get('value', '')) if part.get('chart') else ''}
 
         current = next((item for item in framework.definitions() if item['key'] == key), None)
         if current and action == 'change':
@@ -168,6 +173,8 @@ def say(result):
             lines.append(f"집계 화면: {part['entity']} 을(를) {', '.join(part['groups'])}(으)로 묶어 {', '.join(part['values'])}")
             if part['filters']:
                 lines.append('조회 조건: ' + ', '.join(part['filters']))
+            if part.get('analysis'):
+                lines.append('분석 틀: ' + ', '.join(part['analysis']))
             if part['chart']:
                 lines.append('차트: ' + part['chart'])
         else:
