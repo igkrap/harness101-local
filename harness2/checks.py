@@ -52,10 +52,62 @@ def sample(field, framework, made):
         body = {item['name']: sample(item, framework, made) for item in definition['fields'] if item.get('required') and not _computed(item)}
         if definition.get('lines') and definition['lines'].get('min', 1) > 0:      # it cannot exist without a line
             body['lines'] = [_line(definition['lines']['fields'], framework, made, 1)]
-        row = framework.ok('POST', f'/api/data/{target}', body)
+        row = framework.ok('POST', f'/api/data/{target}', fit(body, definition, framework, made))
         made.append((target, row['id']))
         return row['id']
     return f"{field['label']} 시험" + (str(next(_serial)) if field.get('unique') else '')
+
+
+def _shift(value, by):
+    """A date or a number moved by some days / units."""
+    if isinstance(value, str):
+        import datetime
+        return (datetime.date.fromisoformat(value) + datetime.timedelta(days=by)).isoformat()
+    return value + by
+
+
+def _units(body, in_lines):
+    return (body.get('lines') or []) if in_lines else [body]
+
+
+def fit(body, definition, framework, made, break_check=None):
+    """Make a sample body obey the definition's own checks and limits (a sample of plain values would not: every date is
+    the same day, and a limit allows nothing until the other entity holds a matching row). break_check: the one check to violate."""
+    import datetime
+    today = datetime.date.today().isoformat()
+    for check in definition.get('checks') or []:
+        for unit in _units(body, check.get('lines')):
+            right = today if check['right'] == 'today' else unit.get(check['right'])
+            if right is None:
+                right = unit[check['right']] = '2026-01-15' if isinstance(unit.get(check['left']), str) or unit.get(check['left']) is None else 10
+            keep = {'>': 1, '>=': 0, '<': -1, '<=': 0, '==': 0, '!=': 1}[check['op']]
+            wrong = {'>': 0, '>=': -1, '<': 0, '<=': 1, '==': 1, '!=': 0}[check['op']]
+            unit[check['left']] = _shift(right, wrong if check is break_check else keep)
+    line_names = {field['name'] for field in (definition.get('lines') or {}).get('fields', [])}
+    for limit in definition.get('limits') or []:
+        other = next(item['definition'] for item in framework.definitions() if item['key'] == limit['entity'])
+        pairs = list(zip(limit['by'], limit['entityBy']))
+        if limit.get('lines'):
+            if not body.get('lines'):
+                continue
+            body['lines'] = body['lines'][:1]         # one line, so the whole allowance can go to it
+        unit = body['lines'][0] if limit.get('lines') else body
+        via = next((mine for mine, theirs in pairs if theirs == 'id'), None)
+        holder = lambda name: unit if limit.get('lines') and name in line_names else body
+        if via and holder(via).get(via):
+            row = framework.ok('GET', f"/api/data/{limit['entity']}/{holder(via)[via]}")
+        else:                                           # nothing points at the other entity: make the row that gives the allowance
+            given = {item['name']: sample(item, framework, made) for item in other['fields'] if item.get('required') and not _computed(item)}
+            if other.get('lines') and (other['lines'].get('min', 1) > 0 or limit.get('entityLines')):
+                given['lines'] = [_line(other['lines']['fields'], framework, made, 1)]
+            row = framework.ok('POST', f"/api/data/{limit['entity']}", fit(given, other, framework, made))
+            made.append((limit['entity'], row['id']))
+        theirs_unit = (row.get('lines') or [{}])[0] if limit.get('entityLines') else row
+        value_of = lambda name: row['id'] if name == 'id' else theirs_unit.get(name) if name in theirs_unit else row.get(name)
+        for mine, theirs in pairs:
+            holder(mine)[mine] = value_of(theirs)
+        unit[limit['field']] = value_of(limit['entityField']) or 0
+    return body
 
 
 def _computed(field):
@@ -71,6 +123,8 @@ def sweep(framework, made):
     left = []
     for entity, record in reversed(made):
         code, _ = framework.call('DELETE', f'/api/data/{entity}/{record}')
+        if code == 409:      # locked, or held by a rule: the checks' own rows may be removed all the same (what others point at still may not)
+            code, _ = framework.call('DELETE', f'/api/data/{entity}/{record}?force=true')
         if code not in (204, 404):
             left.append((entity, record))
     left.reverse()
@@ -128,7 +182,7 @@ def record_checks(key, definition, framework):
         body = {field['name']: sample(field, framework, made) for field in plain}
         if lines:
             body['lines'] = [_line(line_fields, framework, made, 3 - index % 2) for index in range(usual if count is None else count)]
-        return body
+        return fit(body, definition, framework, made) if count is None else body      # the line-count tests keep their count
 
     def post(body):
         code, answer = framework.call('POST', api, body)
@@ -182,7 +236,7 @@ def record_checks(key, definition, framework):
         minimal = {field['name']: value for field, value in ((field, sample(field, framework, made)) for field in plain if field['required'])}
         if lines and low > 0:
             minimal['lines'] = [{field['name']: value for field, value in ((field, _line([field], framework, made, 2)[field['name']]) for field in line_fields if field['required'])} for _ in range(low)]
-        code, answer = post(minimal)
+        code, answer = post(fit(minimal, definition, framework, made))
         report.add('선택 항목은 모두 비워도 저장된다', code == 201, f'{code} {answer}')
         wrong_values = {'number': '열 개', 'date': '1월 15일', 'code': '없는코드zz', 'ref': 999999999}
         for field in [item for item in plain if item.get('type', 'text') in wrong_values]:
@@ -195,6 +249,21 @@ def record_checks(key, definition, framework):
                     broken = new_body()
                     (broken['lines'][0] if where else broken)[field['name']] = value
                     refused(f"{where}{field['label']}: {field[edge]:g} {word} 값({value:g})은 거절된다", broken)
+        for check in definition.get('checks') or []:
+            broken = fit(new_body(), definition, framework, made, break_check=check)
+            code, answer = post(broken)
+            report.add(f"비교 규칙: {check['left']} {check['op']} {check['right']} 을(를) 어기면 거절되고 안내가 나온다 ({check['message']})", code == 400 and (answer or {}).get('detail') == check['message'], f'{code} {answer}')
+        for limit in definition.get('limits') or []:
+            over = new_body()
+            unit = over['lines'][0] if limit.get('lines') else over
+            allowed = unit[limit['field']]
+            unit[limit['field']] = allowed + 1
+            code, answer = post(over)
+            report.add(f"한도: {limit['field']} 이(가) {limit['entity']} 의 {limit['entityField']}({allowed:g}) 을(를) 넘으면 거절된다 ({limit['message']})",
+                       code == 400 and str((answer or {}).get('detail', '')).startswith(limit['message']), f'{code} {answer}')
+            within = new_body()
+            code, answer = post(within)
+            report.add(f"한도: 꼭 그만큼({(within['lines'][0] if limit.get('lines') else within)[limit['field']]:g})은 저장된다", code == 201, f'{code} {answer}')
         for field in [item for item in plain if item.get('unique')]:
             refused(f"{field['label']}: 이미 있는 값은 거절된다", dict(new_body(), **{field['name']: row[field['name']]}))
         if lines:
@@ -302,7 +371,7 @@ def summary_checks(key, definition, framework):
             body = {field['name']: sample(field, framework, made) for field in source['fields'] if not _computed(field)}
             if source.get('lines'):
                 body['lines'] = [_line(source['lines']['fields'], framework, made, 3), _line(source['lines']['fields'], framework, made, 2)][:source['lines'].get('max') or 2]
-            row = framework.ok('POST', f"/api/data/{part['entity']}", body)
+            row = framework.ok('POST', f"/api/data/{part['entity']}", fit(body, source, framework, made))
             made.append((part['entity'], row['id']))
         rows = framework.ok('GET', f"/api/data/{part['entity']}")
 
@@ -314,7 +383,7 @@ def summary_checks(key, definition, framework):
             body = {field['name']: sample(field, framework, made) for field in target['fields'] if not _computed(field)}
             if target.get('lines'):
                 body['lines'] = [_line(target['lines']['fields'], framework, made, 2)]
-            made.append((plan['entity'], framework.ok('POST', f"/api/data/{plan['entity']}", body)['id']))
+            made.append((plan['entity'], framework.ok('POST', f"/api/data/{plan['entity']}", fit(body, target, framework, made))['id']))
             for item in framework.ok('GET', f"/api/data/{plan['entity']}"):
                 for unit in (item.get('lines') or []) if plan.get('lines') else [item]:
                     keys = []
@@ -465,7 +534,7 @@ def rule_checks(key, definition, framework):
                     body['lines'] = [_line(definition['lines']['fields'], framework, made, 2)]
                 else:
                     body = {field['name']: sample(field, framework, made) for field in definition['fields'] if field['required'] and not _computed(field)}
-                row = framework.ok('POST', api, body)
+                row = framework.ok('POST', api, fit(body, definition, framework, made))
                 made.append((key, row['id']))
                 return row
 
@@ -481,7 +550,7 @@ def rule_checks(key, definition, framework):
                        for field in other['fields'] if (field['required'] or field['name'] == rule['field']) and not _computed(field)}
             if other.get('lines') and other['lines'].get('min', 1) > 0:
                 pointer['lines'] = [_line(other['lines']['fields'], framework, made, 1)]
-            user = framework.ok('POST', f"/api/data/{rule['entity']}", pointer)
+            user = framework.ok('POST', f"/api/data/{rule['entity']}", fit(pointer, other, framework, made))
             made.append((rule['entity'], user['id']))
             code, answer = attempt(row)
             report.add(f"규칙: {other['title']} 이(가) 있으면 {rule['action']} 이(가) 거절되고 안내가 나온다 ({rule['message']})",
@@ -489,6 +558,80 @@ def rule_checks(key, definition, framework):
             framework.call('DELETE', f"/api/data/{rule['entity']}/{user['id']}")
             code, answer = attempt(row)
             report.add(f"규칙: {other['title']} 을(를) 지우면 {rule['action']} 이(가) 다시 된다", code in (200, 204), f'{code} {answer}')
+    finally:
+        report.leftover = sweep(framework, made)
+    return report
+
+
+def effect_checks(key, definition, framework):
+    """What follows by itself, on the published entity: the record that should appear does, with the values carried over;
+    the record pointed at changes status. Everything made here is removed again (by force where a status locks it)."""
+    report, made, api = Report(), [], f'/api/data/{key}'
+    known = {item['key']: item['definition'] for item in framework.definitions()}
+    status = definition.get('status') or {}
+    line_names = [field['name'] for field in (definition.get('lines') or {}).get('fields', [])]
+
+    def source(extra=None):
+        body = {field['name']: sample(field, framework, made) for field in definition['fields'] if not _computed(field)}
+        if definition.get('lines'):
+            body['lines'] = [_line(definition['lines']['fields'], framework, made, 2)]
+        body = fit(dict(body, **(extra or {})), definition, framework, made)
+        row = framework.ok('POST', api, body)
+        made.append((key, row['id']))
+        return row
+
+    def trigger(row, on):
+        if on == 'create':
+            return 201, row
+        action = next(item for item in status['actions'] if item['name'] == on)
+        if row.get('status') not in action['from']:        # one step first, when the action does not start from the first status
+            step = next((item for item in status['actions'] if row.get('status') in item['from'] and item['to'] in action['from']), None)
+            if step:
+                framework.call('POST', f"{api}/{row['id']}/actions/{step['name']}")
+        return framework.call('POST', f"{api}/{row['id']}/actions/{on}")
+    try:
+        for effect in definition.get('effects') or []:
+            when = '등록하면' if effect['on'] == 'create' else next((item['label'] for item in status.get('actions', []) if item['name'] == effect['on']), effect['on']) + ' 하면'
+            if effect.get('create'):
+                make, other = effect['create'], known[effect['create']['entity']]
+                before = {item['id'] for item in framework.ok('GET', f"/api/data/{make['entity']}")}
+                row = source()
+                code, answer = trigger(row, effect['on'])
+                new = [item for item in framework.ok('GET', f"/api/data/{make['entity']}") if item['id'] not in before]
+                for item in new:
+                    made.append((make['entity'], item['id']))
+                if not report.add(f"자동 처리: {when} {other['title']} 이(가) 한 건 만들어진다", code in (200, 201) and len(new) == 1, f'{code} {answer} / 새로 생긴 {len(new)}건'):
+                    continue
+                today = __import__('datetime').date.today().isoformat()
+                wrong = [(into, new[0].get(into)) for into, come in make['set'].items()
+                         if new[0].get(into) != (row['id'] if come == 'id' else today if come == 'today' else row.get(come))]
+                report.add(f"자동 처리: 만들어진 {other['title']} 에 값이 그대로 옮겨진다 ({', '.join(make['set'])})", not wrong, f'다른 값 {wrong}')
+                if make.get('lines'):
+                    got = [[line.get(into) for into in make['lines']['set']] for line in new[0].get('lines', [])]
+                    want = [[line.get(come) for come in make['lines']['set'].values()] for line in row.get('lines', [])]
+                    report.add('자동 처리: 줄 표도 줄마다 옮겨진다', got == want, f'기대 {want}, 실제 {got}')
+            else:
+                act = effect['act']
+                pointer = next(field for field in definition['fields'] if field['name'] == act['via'])
+                other = known[pointer['ref']['entity']]
+                wanted = next(item for item in other['status']['actions'] if item['name'] == act['action'])
+                row = source()
+                target = f"/api/data/{pointer['ref']['entity']}/{row[act['via']]}"
+                if effect['on'] == 'create':
+                    # The record pointed at must stand where the action starts before a new record arrives: make another one for that.
+                    fresh = framework.ok('GET', target)
+                    if fresh.get('status') not in wanted['from'] and fresh.get('status') != wanted['to']:
+                        step = next((item for item in other['status']['actions'] if fresh.get('status') in item['from'] and item['to'] in wanted['from']), None)
+                        if step:
+                            framework.call('POST', f"{target}/actions/{step['name']}")
+                            again = source({act['via']: row[act['via']]}) if not definition.get('limits') else None
+                    code, answer = 201, row
+                else:
+                    code, answer = trigger(row, effect['on'])
+                after = framework.ok('GET', target)
+                names = {value['code']: value['label'] for value in other['status']['values']}
+                report.add(f"자동 처리: {when} 가리키는 {other['title']} 이(가) {names.get(wanted['to'], wanted['to'])} 상태가 된다 (그 동작을 할 수 있는 상태일 때)",
+                           code in (200, 201) and (after.get('status') == wanted['to'] or after.get('status') not in wanted['from']), f"{code} / 지금 상태 {after.get('status')}")
     finally:
         report.leftover = sweep(framework, made)
     return report

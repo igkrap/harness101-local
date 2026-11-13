@@ -35,6 +35,7 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 - 다른 자료에서 고르는 항목(거래처, 품목, 부서 ...)은 글자로 받지 말고 ref 로 한다. 이미 있는 자료만 가리킬 수 있고, ref.label 과 fill 의 값은 그 자료에 실제로 있는 항목 name 이어야 한다(위 '이미 있는 자료' 참고).
 - 정해진 값 중에서 고르는 항목은 code 로 하되 있는 공통 코드 그룹만 쓴다. 맞는 그룹이 없으면 글자(text)로 둔다.
 - "~하면 ~못 하게" 같은 요청은 rules 로 적는다. 규칙이 가리키는 자료와 항목은 이미 있어야 한다.
+- 한 건 안에서 두 값을 견주는 조건(날짜 순서 등)은 checks 로, 다른 자료의 수량을 넘지 못하게 하는 것(초과 출하·재고 부족 방지)은 limits 로, "~하면 자동으로 ~된다/만들어진다"는 effects 로 적는다. 그 규칙은 저장이 거절되어야 하는 자료, 일이 시작되는 자료의 정의에 붙인다(출하 수량 제한은 출하에, 수주 확정 시 출하 생성은 수주에).
 - id, 상태, 등록·수정자/일시는 프레임워크가 관리하므로 항목으로 넣지 않는다(상태는 definition.status 로).
 - 정의로 할 수 없는 요청이면 {"action": "other", "reason": "<이유 한 줄>"} 로만 답한다. 해당하는 경우: 아래 '코드로 만든 화면'을 고치는 요청, 로그인·메뉴·권한·디자인 같은 시스템 요청, 프레임워크 안내에 없는 동작.
 
@@ -73,6 +74,11 @@ def _existing(framework):
                 + ' / 동작: ' + ', '.join(f"{action['name']}({action['label']})" for action in definition['status']['actions'])
         if definition.get('rules'):
             text += ' / 규칙: ' + '; '.join(rule['message'] for rule in definition['rules'])
+        for part, label in (('checks', '비교 규칙'), ('limits', '한도')):
+            if definition.get(part):
+                text += f' / {label}: ' + '; '.join(rule['message'] for rule in definition[part])
+        if definition.get('effects'):
+            text += ' / 자동 처리: ' + '; '.join(f"{effect['on']}→" + (f"{effect['create']['entity']} 생성" if effect.get('create') else f"{effect['act']['via']}.{effect['act']['action']}") for effect in definition['effects'])
         if definition.get('dashboard'):
             text = f"- key {item['key']} / 화면 이름 {definition['title']} / 현황판: 패널 " + ', '.join(f"{panel['summary']}({panel['chart']})" for panel in definition['dashboard']['panels'])
         if definition.get('summary'):
@@ -224,6 +230,15 @@ def differences(old, new):
         tidy = lambda block: {name: value for name, value in (block or {}).items() if value not in (None, [], '')}
         if tidy(old.get('print')) != tidy(new.get('print')):
             note(f"출력 양식: {json.dumps(tidy(old.get('print')), ensure_ascii=False)} → {json.dumps(tidy(new.get('print')), ensure_ascii=False)}", bool(tidy(old.get('print'))) and not tidy(new.get('print')))
+    for part, label in (('checks', '비교 규칙'), ('limits', '한도'), ('effects', '자동 처리')):
+        tidy = lambda item: json.dumps({name: value for name, value in item.items() if value not in (None, [], False)}, ensure_ascii=False, sort_keys=True)
+        was, now = [tidy(item) for item in old.get(part) or []], [tidy(item) for item in new.get(part) or []]
+        for item in was:
+            if item not in now:
+                note(f'{label} 없어지거나 바뀜: {item}', len(now) < len(was))
+        for item in now:
+            if item not in was:
+                note(f'{label} 생기거나 바뀜: {item}')
     was, now = old.get('rules', []), new.get('rules', [])
     for rule in was:
         if rule not in now:
@@ -244,8 +259,9 @@ def accepted(saved, written):
     """The definition as the framework took it: everything that may be left out is written out by the framework itself
     (a field's required, a group's label, the lines' minimum ...), so nothing downstream reads the model's own wording."""
     definition = {name: value for name, value in saved['definition'].items() if name != 'key'}
-    if written.get('rules'):
-        definition['rules'] = written['rules']        # the trial copy is saved without them (they are checked after publishing)
+    for part in ('rules', 'effects'):
+        if written.get(part):
+            definition[part] = written[part]          # the trial copy is saved without them (they are checked after publishing)
     return complete(definition)
 
 
@@ -306,7 +322,7 @@ def write(request, framework, record_to, trial_prefix='trial_'):
                     asked_back = True
                     raise ValueError('요청하지 않은 것이 사라졌다:\n- ' + '\n- '.join(unasked) + '\n이것들만 원래대로 되살리고, 나머지 고친 것은 그대로 둔다')
             # The framework is the judge: the definition is saved as a trial draft; a refusal is its message.
-            saved = framework.save_definition(trial_name(key, trial_prefix), {name: value for name, value in definition.items() if name != 'rules'}, 'DRAFT')
+            saved = framework.save_definition(trial_name(key, trial_prefix), {name: value for name, value in definition.items() if name not in ('rules', 'effects')}, 'DRAFT')
             return {'action': action, 'key': key, 'definition': accepted(saved, definition)}
         except Exception as problem:  # a refusal of any kind goes back to the model once more
             error = str(problem)

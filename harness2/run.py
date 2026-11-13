@@ -83,6 +83,15 @@ def run(request=None, definition_file=None, dry=False, force=False):
             result['actions'] = [action_['label'] for action_ in definition['status']['actions']]
         if definition.get('rules'):
             result['rules'] = [rule['message'] for rule in definition['rules']]
+        if definition.get('checks'):
+            result['checks_rules'] = [rule['message'] for rule in definition['checks']]
+        if definition.get('limits'):
+            result['limits'] = [rule['message'] for rule in definition['limits']]
+        if definition.get('effects'):
+            names = {action['name']: action['label'] for action in (definition.get('status') or {}).get('actions', [])}
+            result['effects'] = [('등록하면 ' if effect['on'] == 'create' else names.get(effect['on'], effect['on']) + ' 하면 ')
+                                 + (f"{effect['create']['entity']} 을(를) 자동으로 만든다" if effect.get('create') else f"{effect['act']['via']} 이(가) 가리키는 자료에 {effect['act']['action']} 을(를) 한다")
+                                 for effect in definition['effects']]
         if definition.get('dashboard'):
             words = {'bar': '막대', 'line': '선', 'pie': '원', 'figures': '핵심 숫자'}
             result['panels'] = [f"{panel['title']} - {words[panel['chart']]}" + ('' if panel['chart'] == 'figures' else f"({panel['value']})") + f", 너비 {panel['width']}/3" for panel in definition['dashboard']['panels']]
@@ -121,7 +130,8 @@ def run(request=None, definition_file=None, dry=False, force=False):
         # Checks run on a trial copy: a draft with its own key and title, which the menus never show.
         trial_key, trial_title = define.trial_name(key, TRIAL), definition['title'] + ' (시험)'
         # Rules point at other entities by their real keys, so they are checked after publishing (and undone if they fail).
-        trial = {name: value for name, value in definition.items() if name != 'rules'}
+        # Effects are left out of the trial as well: they would make and change records of real entities while the trial is checked.
+        trial = {name: value for name, value in definition.items() if name not in ('rules', 'effects')}
         framework.save_definition(trial_key, dict(trial, title=trial_title), 'DRAFT')
         data = (checks.dashboard_checks if definition.get('dashboard') else checks.summary_checks if definition.get('summary') else checks.record_checks)(trial_key, definition, framework)
         screen = checks.screen_checks(trial_title, definition, folder / '2-check', APP)
@@ -136,8 +146,10 @@ def run(request=None, definition_file=None, dry=False, force=False):
             result['status'] = 'checked'
             return result
         saved = framework.save_definition(key, definition, 'PUBLISHED')
-        if definition.get('rules'):
-            ruled = checks.rule_checks(key, definition, framework)
+        if definition.get('rules') or definition.get('effects'):
+            ruled = checks.rule_checks(key, definition, framework) if definition.get('rules') else checks.Report()
+            if definition.get('effects') and ruled.passed:
+                ruled.results += checks.effect_checks(key, definition, framework).results
             results += ruled.results
             (folder / '2-check' / 'results.json').write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding='utf-8')
             result.update(checks=len(results), failed=[item for item in results if not item['passed']])
@@ -194,6 +206,12 @@ def say(result):
             lines.append('상태: ' + ' → '.join(result['statuses']) + ' / 동작: ' + ', '.join(result.get('actions', [])))
         if result.get('print'):
             lines.append('출력 양식: ' + result['print'])
+        for rule in result.get('checks_rules', []):
+            lines.append('비교 규칙: ' + rule)
+        for rule in result.get('limits', []):
+            lines.append('한도: ' + rule)
+        for rule in result.get('effects', []):
+            lines.append('자동 처리: ' + rule)
         for rule in result.get('rules', []):
             lines.append('규칙: ' + rule)
     if result.get('action') == 'change':
