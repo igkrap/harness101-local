@@ -248,6 +248,9 @@ def _summary(part, source, rows):
         for unit in (row.get('lines') or []) if part.get('lines') else [row]:
             keys = []
             for group in part['groupBy']:
+                if group['field'] == 'id':
+                    keys.append(str(row['id']))
+                    continue
                 value = row.get('status') if group['field'] == 'status' and group['field'] not in line_names and not any(f['name'] == 'status' for f in source['fields']) \
                     else (unit if group['field'] in line_names else row).get(group['field'])
                 text = '' if value is None else str(value)
@@ -259,7 +262,14 @@ def _summary(part, source, rows):
             counts[key] = counts.get(key, 0) + 1
             total_units += 1
             for index, value in enumerate(part['values']):
-                if value.get('field'):
+                if value.get('between'):
+                    import datetime
+                    start, end = row.get(value['between'][0]), row.get(value['between'][1])
+                    number = (datetime.date.fromisoformat(end) - datetime.date.fromisoformat(start)).days if start and end else None
+                    if number is not None:
+                        numbers[index].append(number)
+                        everything[index].append(number)
+                elif value.get('field'):
                     number = (unit if value['field'] in line_names else row).get(value['field'])
                     if isinstance(number, (int, float)):
                         numbers[index].append(number)
@@ -296,19 +306,27 @@ def summary_checks(key, definition, framework):
             made.append((part['entity'], row['id']))
         rows = framework.ok('GET', f"/api/data/{part['entity']}")
 
-        plan = (part.get('compare') or {}).get('type') == 'plan' and part['compare']
+        plan = (part.get('compare') or {}).get('type') in ('plan', 'minus') and part['compare']
+        minus = bool(plan) and plan['type'] == 'minus'
         planned = {}
         if plan:      # one plan row made for the occasion, then every plan row added up by the matching fields
             target = next(item['definition'] for item in framework.definitions() if item['key'] == plan['entity'])
             body = {field['name']: sample(field, framework, made) for field in target['fields'] if not _computed(field)}
+            if target.get('lines'):
+                body['lines'] = [_line(target['lines']['fields'], framework, made, 2)]
             made.append((plan['entity'], framework.ok('POST', f"/api/data/{plan['entity']}", body)['id']))
             for item in framework.ok('GET', f"/api/data/{plan['entity']}"):
-                keys = []
-                for group, mine in zip(part['groupBy'], plan['groupBy']):
-                    text = '' if item.get(mine) is None else str(item[mine])
-                    keys.append(text[:4] if group.get('by') == 'year' else text[:7] if group.get('by') == 'month' else text)
-                if isinstance(item.get(plan['field']), (int, float)):
-                    planned[tuple(keys)] = planned.get(tuple(keys), 0) + item[plan['field']]
+                for unit in (item.get('lines') or []) if plan.get('lines') else [item]:
+                    keys = []
+                    for group, mine in zip(part['groupBy'], plan['groupBy']):
+                        value = unit.get(mine) if plan.get('lines') and mine in unit else item.get(mine)
+                        text = '' if value is None else str(value)
+                        keys.append(text[:4] if group.get('by') == 'year' else text[:7] if group.get('by') == 'month' else text)
+                    number = unit.get(plan['field']) if plan.get('lines') and plan['field'] in unit else item.get(plan['field'])
+                    if isinstance(number, (int, float)):
+                        planned[tuple(keys)] = planned.get(tuple(keys), 0) + number
+
+        rows = framework.ok('GET', f"/api/data/{part['entity']}")      # read again: making the other side's sample may have made source rows too
 
         def earlier(key, by):
             if len(key) == 4:
@@ -327,12 +345,20 @@ def summary_checks(key, definition, framework):
                 wrong = []
                 for key, item in listed.items():
                     base = planned.get(key) if plan else ((table[(earlier(key[0], mark['by']),) + key[1:]][of]) if (earlier(key[0], mark['by']),) + key[1:] in table else None)
-                    expected = (None, None, None) if base is None else (base, actual(key) - base, None if base == 0 else (actual(key) / base * 100 if plan else (actual(key) - base) / base * 100))
+                    rate = (None if actual(key) == 0 else base / actual(key) * 100) if minus and base is not None else None if not base else (actual(key) / base * 100 if plan else (actual(key) - base) / base * 100)
+                    expected = (None, None, None) if base is None else (base, actual(key) - base, rate)
                     got = (item.get('c0'), item.get('c1'), item.get('c2'))
                     if not all((e is None and g is None) or (e is not None and g is not None and abs(e - g) < 0.02) for e, g in zip(expected, got)):
                         wrong.append((key, expected, got))
-                kind = '계획·차이·달성률' if plan else f"{mark.get('label') or '이전'}·증감·증감률"
+                kind = f"{mark.get('label')}·{mark.get('balance')}·진행률" if minus else '계획·차이·달성률' if plan else f"{mark.get('label') or '이전'}·증감·증감률"
                 report.add(f'분석 틀: {kind} 이(가) 줄마다 맞다', not wrong, f'(묶음, 기대, 실제) {wrong[:4]}')
+            if part.get('cumulative') and not part.get('top'):
+                running, wrong = 0, []
+                for item in answer['rows']:
+                    running += item.get('v0') or 0
+                    if abs((item.get('r0') or 0) - running) > 0.02:
+                        wrong.append((item.get('g0'), running, item.get('r0')))
+                report.add('분석 틀: 누계가 위에서부터 더한 값과 같다', not wrong, f'{wrong[:4]}')
             if part.get('share'):
                 whole = sum(actual(key) for key in set(table) | set(planned))
                 wrong = [(key, item.get('s0')) for key, item in listed.items() if whole and abs((item.get('s0') or 0) - actual(key) / whole * 100) > 0.02]
@@ -355,7 +381,7 @@ def summary_checks(key, definition, framework):
                 # A ranking shows only its largest groups, and a plan under a condition is judged above: here, what is listed must be right.
                 report.add(f'{label}: 나온 묶음이 모두 실제 자료에 있다', all(group in table or group in planned for group in got), f'{sorted(set(got) - set(table) - set(planned))}')
             else:
-                wanted = set(table) | (set(planned) if plan else set())
+                wanted = set(table) | (set(planned) if plan and not minus else set())
                 report.add(f'{label}: 묶음이 같다 ({len(wanted)}개)', set(got) == wanted, f'기대 {sorted(wanted)}, 실제 {sorted(got)}')
             for index, value in enumerate(part['values']):
                 wrong = [(group, table[group][index], got[group][index]) for group in table if group in got and not _same(table[group][index], got[group][index])]
@@ -412,8 +438,9 @@ def dashboard_screen_criteria(definition):
 def summary_screen_criteria(definition):
     part, toolbar, grid = definition['summary'], '[role="toolbar"][aria-label="업무 버튼"]', '[data-ui="record-grid"]'
     items = [('화면 틀이 있다', {'op': 'visible', 'selector': '[data-ui="business-workspace"]'}),
-             ('조회 조건 영역이 있다', {'op': 'visible', 'selector': 'form[data-ui="query-panel"]'}),
              ('집계 표가 있다', {'op': 'visible', 'selector': grid})]
+    if part.get('filters'):
+        items.append(('조회 조건 영역이 있다', {'op': 'visible', 'selector': 'form[data-ui="query-panel"]'}))
     for label in ('조회', '엑셀', '출력'):
         items.append((f'공통 버튼 {label} 이(가) 있다', {'op': 'visible', 'selector': f'{toolbar} >> role=button[name="{label}"]'}))
     for column in part['groupBy'] + part['values']:

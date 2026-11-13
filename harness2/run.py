@@ -99,6 +99,9 @@ def run(request=None, definition_file=None, dry=False, force=False):
                                  'analysis': [text for text in [
                                      f"계획 대비 실적({part['compare']['entity']} 의 {part['compare']['field']})" if (part.get('compare') or {}).get('type') == 'plan' else '',
                                      {'month': '전월 대비', 'year': '전년 대비'}[part['compare']['by']] if (part.get('compare') or {}).get('type') == 'previous' else '',
+                                     f"{part['compare'].get('balance')} = {part['compare']['value']} − {part['compare']['entity']} 의 {part['compare']['field']}" if (part.get('compare') or {}).get('type') == 'minus' else '',
+                                     '누계' if part.get('cumulative') else '',
+                                     ', '.join(f"{value['label']}: {value['between'][0]}→{value['between'][1]} 일수" for value in part['values'] if value.get('between')),
                                      '구성비' if part.get('share') else '', f"상위 {part['top']}개" if part.get('top') else ''] if text],
                                  'chart': ({'bar': '막대', 'line': '선', 'pie': '원'}[part['chart']['type']] + ' 차트 - ' + part['chart'].get('value', '')) if part.get('chart') else ''}
 
