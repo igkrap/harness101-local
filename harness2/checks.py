@@ -615,18 +615,20 @@ def effect_checks(key, definition, framework):
                 pointer = next(field for field in definition['fields'] if field['name'] == act['via'])
                 other = known[pointer['ref']['entity']]
                 wanted = next(item for item in other['status']['actions'] if item['name'] == act['action'])
-                row = source()
-                target = f"/api/data/{pointer['ref']['entity']}/{row[act['via']]}"
                 if effect['on'] == 'create':
-                    # The record pointed at must stand where the action starts before a new record arrives: make another one for that.
+                    # The record pointed at must already stand where the action starts, so it is made and brought there first.
+                    pointed = sample(pointer, framework, made)
+                    target = f"/api/data/{pointer['ref']['entity']}/{pointed}"
                     fresh = framework.ok('GET', target)
-                    if fresh.get('status') not in wanted['from'] and fresh.get('status') != wanted['to']:
+                    if fresh.get('status') not in wanted['from']:
                         step = next((item for item in other['status']['actions'] if fresh.get('status') in item['from'] and item['to'] in wanted['from']), None)
                         if step:
                             framework.call('POST', f"{target}/actions/{step['name']}")
-                            again = source({act['via']: row[act['via']]}) if not definition.get('limits') else None
+                    row = source({act['via']: pointed})
                     code, answer = 201, row
                 else:
+                    row = source()
+                    target = f"/api/data/{pointer['ref']['entity']}/{row[act['via']]}"
                     code, answer = trigger(row, effect['on'])
                 after = framework.ok('GET', target)
                 names = {value['code']: value['label'] for value in other['status']['values']}
