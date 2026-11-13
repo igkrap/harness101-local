@@ -344,7 +344,7 @@ def summary_checks(key, definition, framework):
             if mark:
                 wrong = []
                 for key, item in listed.items():
-                    base = planned.get(key) if plan else ((table[(earlier(key[0], mark['by']),) + key[1:]][of]) if (earlier(key[0], mark['by']),) + key[1:] in table else None)
+                    base = planned.get(key, 0) if minus else planned.get(key) if plan else ((table[(earlier(key[0], mark['by']),) + key[1:]][of]) if (earlier(key[0], mark['by']),) + key[1:] in table else None)
                     rate = (None if actual(key) == 0 else base / actual(key) * 100) if minus and base is not None else None if not base else (actual(key) / base * 100 if plan else (actual(key) - base) / base * 100)
                     expected = (None, None, None) if base is None else (base, actual(key) - base, rate)
                     got = (item.get('c0'), item.get('c1'), item.get('c2'))

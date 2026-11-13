@@ -56,7 +56,7 @@ def run(request=None, definition_file=None, dry=False, force=False):
         if definition_file:
             proposal = json.loads(Path(definition_file).read_text(encoding='utf-8'))
             written = proposal['definition']             # goes the same way as a model's answer: the framework takes it first
-            saved = framework.save_definition(TRIAL + proposal['key'], {name: value for name, value in written.items() if name != 'rules'}, 'DRAFT')
+            saved = framework.save_definition(define.trial_name(proposal['key'], TRIAL), {name: value for name, value in written.items() if name != 'rules'}, 'DRAFT')
             proposal['definition'] = define.accepted(saved, written)
         else:
             (folder / 'request.txt').write_text(request, encoding='utf-8')
@@ -71,7 +71,7 @@ def run(request=None, definition_file=None, dry=False, force=False):
         def label(field):
             extra = [field.get('type', 'text')] + (['필수'] if field['required'] else []) + (['계산'] if field.get('formula') or field.get('sum') else []) \
                 + ([f"{'' if field.get('min') is None else format(field['min'], 'g')}~{'' if field.get('max') is None else format(field['max'], 'g')}"] if field.get('min') is not None or field.get('max') is not None else []) \
-                + (['중복 불가'] if field.get('unique') else []) + ([{'dropdown': '목록에서 고름', 'search': '입력하며 찾기', 'popup': '검색창'}[field['pick']]] if field.get('pick') else [])
+                + (['중복 불가'] if field.get('unique') else []) + ([{'dropdown': '목록에서 고름', 'search': '검색창', 'popup': '검색창'}[field['pick']]] if field.get('pick') else [])
             return f"{field['label']}({', '.join(str(item) for item in extra)})"
         result.update(action=action, key=key, title=definition['title'], fields=[label(field) for field in definition['fields']])
         if definition.get('lines'):
@@ -119,7 +119,7 @@ def run(request=None, definition_file=None, dry=False, force=False):
                 return result
 
         # Checks run on a trial copy: a draft with its own key and title, which the menus never show.
-        trial_key, trial_title = TRIAL + key, definition['title'] + ' (시험)'
+        trial_key, trial_title = define.trial_name(key, TRIAL), definition['title'] + ' (시험)'
         # Rules point at other entities by their real keys, so they are checked after publishing (and undone if they fail).
         trial = {name: value for name, value in definition.items() if name != 'rules'}
         framework.save_definition(trial_key, dict(trial, title=trial_title), 'DRAFT')
@@ -158,7 +158,7 @@ def run(request=None, definition_file=None, dry=False, force=False):
         return result
     finally:
         if result.get('key'):
-            framework.delete_definition(TRIAL + result['key'], force=True)   # the trial copy never outlives the run
+            framework.delete_definition(define.trial_name(result['key'], TRIAL), force=True)   # the trial copy never outlives the run
         pending, checks.LEFTOVER[:] = list(checks.LEFTOVER), []
         still = [item for item in checks.sweep(framework, pending) if not item[0].startswith(TRIAL)]
         checks.LEFTOVER[:] = []

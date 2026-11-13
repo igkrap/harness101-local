@@ -11,7 +11,7 @@ import llm
 
 PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰지 않는다. 아래 요청을 읽고 답을 JSON 하나로만 하라(설명, 코드 블록 표시 없이).
 
-답의 형식: {"action": "create" 또는 "change", "key": "<자료 이름: 영문 소문자, 단수형, 예 customer, sales_order>", "definition": <정의>}
+답의 형식: {"action": "create" 또는 "change", "key": "<자료 이름: 영문 소문자·밑줄, 30자 이내, 예 customer, sales_order, order_balance_summary>", "definition": <정의>}
 
 프레임워크 안내 (정의의 모양과 쓸 수 있는 것):
 %(guide)s
@@ -41,6 +41,11 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 코드로 만든 화면(정의가 아니라서 여기서 고칠 수 없음): %(code_screens)s
 
 요청: %(request)s'''
+
+
+def trial_name(key, prefix='trial_'):
+    """The key of a trial copy: the prefix and the key, cut to the framework's 40 characters."""
+    return (prefix + key)[:40]
 
 
 def real(framework, trial_prefix='trial_'):
@@ -301,7 +306,7 @@ def write(request, framework, record_to, trial_prefix='trial_'):
                     asked_back = True
                     raise ValueError('요청하지 않은 것이 사라졌다:\n- ' + '\n- '.join(unasked) + '\n이것들만 원래대로 되살리고, 나머지 고친 것은 그대로 둔다')
             # The framework is the judge: the definition is saved as a trial draft; a refusal is its message.
-            saved = framework.save_definition(trial_prefix + key, {name: value for name, value in definition.items() if name != 'rules'}, 'DRAFT')
+            saved = framework.save_definition(trial_name(key, trial_prefix), {name: value for name, value in definition.items() if name != 'rules'}, 'DRAFT')
             return {'action': action, 'key': key, 'definition': accepted(saved, definition)}
         except Exception as problem:  # a refusal of any kind goes back to the model once more
             error = str(problem)
