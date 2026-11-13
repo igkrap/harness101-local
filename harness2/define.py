@@ -297,11 +297,14 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
                                                   'code_screens': ', '.join(code_screens()) or '(없음)'}}]
     stored = {item['key']: item['definition'] for item in real(framework, trial_prefix)}
     messages, error, answer, target, asked_back = list(base), '', '', None, False
+    trials = set()       # trial copies saved along the way; only the accepted one is left for the checks
     for attempt in range(1, 5):
         answer = llm.ask(messages, record_to, f'define-{attempt}')
         try:
             proposal = _json(answer)
             if proposal.get('action') == 'other':
+                for other in trials:
+                    framework.delete_definition(other, force=True)
                 return {'action': 'other', 'reason': str(proposal.get('reason') or '')[:300]}
             if proposal.get('action') == 'steps':
                 steps = [str(step).strip() for step in proposal.get('steps') or [] if str(step).strip()]
@@ -333,13 +336,18 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
                     asked_back = True
                     raise ValueError('요청하지 않은 것이 사라졌다:\n- ' + '\n- '.join(unasked) + '\n이것들만 원래대로 되살리고, 나머지 고친 것은 그대로 둔다')
             # The framework is the judge: the definition is saved as a trial draft; a refusal is its message.
+            trials.add(trial_name(key, trial_prefix))
             saved = framework.save_definition(trial_name(key, trial_prefix), {name: value for name, value in definition.items() if name not in ('rules', 'effects')}, 'DRAFT')
             # Rules and effects name real entities, so they are judged under the real key (nothing is stored): a refusal goes back to the model like any other.
             if definition.get('rules') or definition.get('effects'):
                 framework.validate_definition(key, definition)
+            for other in trials - {trial_name(key, trial_prefix)}:
+                framework.delete_definition(other, force=True)
             return {'action': action, 'key': key, 'definition': accepted(saved, definition)}
         except Exception as problem:  # a refusal of any kind goes back to the model once more
             error = str(problem)
             messages = base + [{'role': 'assistant', 'content': answer[:4000]},
                                {'role': 'user', 'content': f'받아들여지지 않았다: {error}\n고쳐서 JSON 전체를 다시 답하라.'}]
+    for other in trials:          # nothing was accepted: no trial copy stays behind
+        framework.delete_definition(other, force=True)
     raise RuntimeError('정의를 만들지 못했습니다: ' + error)
