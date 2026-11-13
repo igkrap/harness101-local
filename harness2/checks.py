@@ -384,6 +384,31 @@ def summary_checks(key, definition, framework):
     return report
 
 
+def dashboard_checks(key, definition, framework):
+    """A dashboard stores nothing and computes nothing of its own: every panel must point at a summary that answers."""
+    report = Report()
+    known = {item['key']: item['definition'] for item in framework.definitions()}
+    for panel in definition['dashboard']['panels']:
+        code, answer = framework.call('GET', f"/api/summary/{panel['summary']}")
+        report.add(f"패널 {panel['title']}: 집계 {panel['summary']} 이(가) 조회된다", code == 200, f'{code} {answer}')
+        labels = [value['label'] for value in (known.get(panel['summary'], {}).get('summary') or {}).get('values', [])]
+        report.add(f"패널 {panel['title']}: 그릴 값 {panel['value']} 이(가) 그 집계에 있다", panel['value'] in labels, f'{labels}')
+    return report
+
+
+def dashboard_screen_criteria(definition):
+    panels = definition['dashboard']['panels']
+    items = [('현황판 틀이 있다', {'op': 'visible', 'selector': '[data-ui="dashboard"]'}),
+             ('새로 고침 버튼이 있다', {'op': 'visible', 'selector': '[data-ui="dashboard"] >> role=button[name="새로 고침"]'}),
+             ('표가 없다 (차트 패널만 있다)', {'op': 'absent', 'selector': '[data-ui="dashboard"] [data-ui="record-grid"]'})]
+    for index, panel in enumerate(panels):
+        one = f'[data-ui="dashboard-panel"] >> nth={index}'
+        items.append((f"패널 {index + 1}: 제목 {panel['title']} 이(가) 보인다", {'op': 'text', 'selector': one, 'contains': panel['title']}))
+        inside = '[data-ui="stat-tiles"]' if panel['chart'] == 'figures' else f'[data-ui="chart"][data-kind="{panel["chart"]}"]'
+        items.append((f"패널 {index + 1}: {'핵심 숫자' if panel['chart'] == 'figures' else panel['chart'] + ' 차트'}가 그려져 있다", {'op': 'visible', 'selector': f'{one} >> {inside}'}))
+    return [{'id': f'C{index + 1}', 'requirement_id': 'R1', 'description': description, 'check': check} for index, (description, check) in enumerate(items)]
+
+
 def summary_screen_criteria(definition):
     part, toolbar, grid = definition['summary'], '[role="toolbar"][aria-label="업무 버튼"]', '[data-ui="record-grid"]'
     items = [('화면 틀이 있다', {'op': 'visible', 'selector': '[data-ui="business-workspace"]'}),
@@ -475,14 +500,16 @@ def screen_checks(title, definition, record_to, app):
     """Open the screen in a real browser (read-only) and look for what the definition promises."""
     sys.path.insert(0, str(HARNESS))
     import standard_contract
-    if definition.get('summary'):
+    if definition.get('dashboard'):
+        criteria = dashboard_screen_criteria(definition)
+    elif definition.get('summary'):
         criteria = summary_screen_criteria(definition)
     elif rich(definition):
         criteria = document_screen_criteria(definition)
     else:
         sheet = {'path': '/api/x', 'fields': [{'name': field['name'], 'label': field['label'], 'required': field['required'], 'sample': 'x'} for field in definition['fields']]}
         criteria = standard_contract.screen_criteria(sheet)
-    if not definition.get('summary'):
+    if not definition.get('summary') and not definition.get('dashboard'):
         criteria.append({'id': f'C{len(criteria) + 1}', 'requirement_id': 'R1', 'description': '한 건을 양식으로 뽑는 출력 버튼이 있다',
                          'check': {'op': 'visible', 'selector': '[role="toolbar"][aria-label="업무 버튼"] >> role=button[name="출력"]'}})
     out = Path(record_to) / 'browser'
