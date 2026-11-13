@@ -24,8 +24,10 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 규칙:
 - 요청이 이미 있는 자료를 고치는 것이면 {"action": "change", "key": "<그 자료의 key>"} 까지만 답한다(그러면 그 자료의 정의 전체를 받아서 고치게 된다).
 - 새 자료면 action 은 "create" 이고 key 는 이미 있는 key 와 겹치지 않게 한다.
+- 정의 하나는 화면 하나다. 요청을 다 하려면 화면을 둘 이상 만들거나 고쳐야 할 때는 정의를 쓰지 말고 {"action": "steps", "steps": ["<첫 화면에 대한 요청 문장>", "<다음 화면에 대한 요청 문장>", ...]} 로만 답한다.
+  먼저 있어야 하는 것부터 차례로 적는다(가리킬 자료 → 그것을 쓰는 화면, 집계 화면 → 그것을 담는 현황판, 상태·동작 추가 → 그 동작을 쓰는 자동 처리). 각 문장은 화면 하나에 대한 것이고, 앞뒤 문장 없이도 뜻이 통하게 화면 이름과 할 일을 다 적는다.
 - 현황·합계·통계·차트처럼 이미 있는 자료를 모아서 보는 요청은 새 자료를 만들지 말고 집계 화면(summary)으로 한다. 모을 자료는 이미 있어야 한다.
-- 현황판·대시보드처럼 차트만 모아 보는 요청은 dashboard 로 한다. 패널은 이미 있는 집계 화면만 가리킬 수 있으므로, 맞는 집계 화면이 있으면 그것을 쓰고 없으면 먼저 집계 화면을 만들어 달라고 한다(other 로 이유를 답한다).
+- 현황판·대시보드처럼 차트만 모아 보는 요청은 dashboard 로 한다. 패널은 이미 있는 집계 화면만 가리킬 수 있으므로, 맞는 집계 화면이 있으면 그것을 쓰고, 없으면 steps 로 필요한 집계 화면들을 먼저 만들고 마지막에 현황판을 만든다.
 - 잔량·미출하·미입고·재고처럼 한 자료에서 다른 자료를 뺀 나머지는 compare minus 로, 처리 기간·소요 일수는 values 의 between 으로, 누계는 cumulative 로 한다.
 - 계획 대비·목표 대비·달성률은 compare plan 으로, 전월 대비·전년 대비·증감은 compare previous 로, 비중·점유율은 share 로, 순위·상위 N 은 top 으로 한다. 계획을 담은 자료가 없으면 이 요청으로는 그 등록 화면(예: 수주 계획 등록)부터 만든다.
 - 요청이 항목을 정해 주지 않았으면 그 업무에서 흔히 쓰는 항목으로 정한다(5~8개, 줄 표가 있으면 줄 항목 3~5개).
@@ -280,7 +282,7 @@ def _unasked(request, lost, record_to):
     return [item for index, item in enumerate(lost, 1) if verdict.get(str(index)) is not True]
 
 
-def write(request, framework, record_to, trial_prefix='trial_'):
+def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True):
     """Returns {'action', 'key', 'definition'} that the framework has accepted (as a trial draft).
 
     A change is written from the current definition itself, not from the summary: the model first says which
@@ -299,6 +301,13 @@ def write(request, framework, record_to, trial_prefix='trial_'):
             proposal = _json(answer)
             if proposal.get('action') == 'other':
                 return {'action': 'other', 'reason': str(proposal.get('reason') or '')[:300]}
+            if proposal.get('action') == 'steps':
+                steps = [str(step).strip() for step in proposal.get('steps') or [] if str(step).strip()]
+                if not allow_steps:
+                    raise ValueError('이 요청은 화면 하나에 대한 것이다. steps 로 나누지 말고 그 화면의 정의를 답하라')
+                if not 2 <= len(steps) <= 6:
+                    raise ValueError('steps 는 2~6개의 요청 문장이어야 한다 (화면 하나면 steps 를 쓰지 않는다)')
+                return {'action': 'steps', 'steps': steps}
             action, key, definition = proposal.get('action'), proposal.get('key'), proposal.get('definition')
             if action not in ('create', 'change') or not isinstance(key, str) or key.startswith(trial_prefix):
                 raise ValueError('action(create|change) 과 key 가 있어야 한다')

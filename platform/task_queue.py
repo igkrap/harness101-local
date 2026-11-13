@@ -287,8 +287,14 @@ class QueueManager:
         ok = status == 'applied'
         said = definition_run.say(result).rsplit('\n기록:', 1)[0]
         job_id = self._record_definition_run(queue_id, result, ok, said)
-        self._update(queue_id, items=[{'domain': 'definition', 'title': result.get('title') or '화면 정의', 'checks': ['definition'],
-                                       'status': 'succeeded' if ok else 'failed', 'job_id': job_id, 'attempts': 1}], definition_result=result)
+        if result.get('planned'):      # one line per step, so it shows which were done and where it stopped
+            done = {item['step']: item for item in result.get('steps', [])}
+            items = [{'domain': 'definition', 'title': (done[index].get('title') if index in done and done[index].get('title') else text)[:80], 'checks': ['definition'],
+                      'status': 'pending' if index not in done else 'succeeded' if done[index].get('status') == 'applied' else 'failed', 'job_id': job_id, 'attempts': 1}
+                     for index, text in enumerate(result['planned'], 1)]
+        else:
+            items = [{'domain': 'definition', 'title': result.get('title') or '화면 정의', 'checks': ['definition'], 'status': 'succeeded' if ok else 'failed', 'job_id': job_id, 'attempts': 1}]
+        self._update(queue_id, items=items, definition_result=result)
         self._finish(queue_id, 'succeeded' if ok else 'failed', said)
         return True
 

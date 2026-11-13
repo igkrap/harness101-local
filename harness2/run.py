@@ -46,7 +46,7 @@ def impact(framework, key, old, new):
     return notes, blocking
 
 
-def run(request=None, definition_file=None, dry=False, force=False):
+def run(request=None, definition_file=None, dry=False, force=False, part_of=None):
     folder = RUNS / time.strftime('%Y%m%d-%H%M%S')
     folder.mkdir(parents=True)
     framework = Framework()
@@ -60,9 +60,23 @@ def run(request=None, definition_file=None, dry=False, force=False):
             proposal['definition'] = define.accepted(saved, written)
         else:
             (folder / 'request.txt').write_text(request, encoding='utf-8')
-            proposal = define.write(request, framework, folder / '1-define', TRIAL)
+            proposal = define.write(request, framework, folder / '1-define', TRIAL, allow_steps=part_of is None)
         if proposal['action'] == 'other':
             result.update(status='other', reason=proposal.get('reason', ''))
+            return result
+        if proposal['action'] == 'steps':
+            # More than one screen: each step is a request of its own, done in order; a later step sees what the earlier ones made.
+            (folder / '1-define' / 'steps.json').write_text(json.dumps(proposal['steps'], ensure_ascii=False, indent=1), encoding='utf-8')
+            done = []
+            for index, step in enumerate(proposal['steps'], 1):
+                time.sleep(1.1)                                   # run folders are named by the second
+                outcome = run(step, dry=dry, force=force, part_of=request)
+                done.append(dict(outcome, step=index, request=step))
+                if outcome.get('status') not in ('applied', 'checked'):
+                    break
+            finished = len(done) == len(proposal['steps']) and done[-1].get('status') in ('applied', 'checked')
+            result.update(status=('checked' if dry else 'applied') if finished else 'partial', steps=done, planned=proposal['steps'],
+                          checks=sum(item.get('checks') or 0 for item in done), title=' → '.join(item.get('title') or '?' for item in done if item.get('title')))
             return result
         key, definition, action = proposal['key'], proposal['definition'], proposal['action']
         result['key'] = key          # known from here on, so the trial copy is removed whatever happens next
@@ -182,6 +196,20 @@ def run(request=None, definition_file=None, dry=False, force=False):
 
 def say(result):
     """The outcome in plain words."""
+    if result.get('planned'):
+        steps, planned = result.get('steps', []), result['planned']
+        applied = [item for item in steps if item.get('status') in ('applied', 'checked')]
+        lines = [f"{len(planned)}단계로 나눠 처리했습니다." if result['status'] in ('applied', 'checked') else f"{len(planned)}단계 중 {len(applied)}단계까지 됐고, {len(applied) + 1}단계에서 멈췄습니다."]
+        for index, text in enumerate(planned, 1):
+            item = next((one for one in steps if one['step'] == index), None)
+            mark = '하지 않음' if item is None else {'applied': '적용', 'checked': '검사 통과'}.get(item.get('status'), '멈춤')
+            lines.append(f'\n[{index}단계: {mark}] {text}')
+            if item is not None:
+                lines += ['  ' + line for line in say(item).split('\n') if line and not line.startswith('기록:')]
+        if result['status'] == 'partial' and applied:
+            lines.append('\n앞 단계에서 적용된 것은 그대로 남아 있습니다.')
+        lines.append(f"\n기록: {result['folder']}")
+        return '\n'.join(lines)
     lines = []
     status = result.get('status')
     if result.get('title'):
