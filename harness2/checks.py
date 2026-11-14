@@ -286,6 +286,10 @@ def record_checks(key, definition, framework):
                 if status['initial'] not in action['from']:
                     continue                          # reached only through another action; that chain is not walked here
                 _, fresh = post(new_body())
+                if action.get('separate'):            # kept for a work screen: the entity's own screen must refuse it
+                    code, answer = framework.call('POST', f"{api}/{fresh['id']}/actions/{action['name']}")
+                    report.add(f"동작 {action['label']}: 등록 화면에서는 거절된다 (업무 화면에서만 한다)", code == 403, f'{code} {answer}')
+                    continue
                 code, after = framework.call('POST', f"{api}/{fresh['id']}/actions/{action['name']}")
                 report.add(f"동작 {action['label']}: {names.get(status['initial'])} 상태에서 되고 {names.get(action['to'], action['to'])} 상태가 된다", code == 200 and after.get('status') == action['to'], f'{code} {after}')
                 if action['to'] not in action['from']:
