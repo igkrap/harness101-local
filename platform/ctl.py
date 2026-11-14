@@ -8,6 +8,7 @@ the thing asked for was done.
 
   ctl.py projects                                   the projects and the kinds a new one can be
   ctl.py create <slug> "<name>" [--kind business]   a new project with the base framework
+  ctl.py rename <slug> [--title "<name>"] [--slug <new>]   another name: the one people see, and/or the English one (folder, database, server, packs)
   ctl.py remove <slug> --confirm <slug>             a project away for good (its packs are kept)
   ctl.py status [-p slug]                           git (work space, remote, unrecorded changes), packs, what the newest pack lacks
   ctl.py screens [-p slug]                          the screens the development site holds (key, title, fields)
@@ -92,12 +93,14 @@ def show(queue):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('command', choices=['projects', 'create', 'remove', 'status', 'screens', 'screen', 'records', 'server-log', 'apply', 'ask', 'commit', 'undo', 'branch', 'sync', 'remote', 'push', 'log', 'pack', 'undo-request'])
+    parser.add_argument('command', choices=['projects', 'create', 'rename', 'remove', 'status', 'screens', 'screen', 'records', 'server-log', 'apply', 'ask', 'commit', 'undo', 'branch', 'sync', 'remote', 'push', 'log', 'pack', 'undo-request'])
     parser.add_argument('values', nargs='*')
     parser.add_argument('-p', '--project')
     parser.add_argument('-m', '--message')
     parser.add_argument('--kind', default='business')
     parser.add_argument('--confirm')
+    parser.add_argument('--title')
+    parser.add_argument('--slug')
     parser.add_argument('--create', action='store_true')
     parser.add_argument('--sha')
     parser.add_argument('--rev')
@@ -114,6 +117,12 @@ def main():
             need(2, 'create <slug> "<name>"')
             made = platform.call('POST', '/api/projects/create', {'slug': args.values[0], 'title': args.values[1], 'kind': args.kind})
             print(json.dumps({'ok': True, 'project': made}, ensure_ascii=False, indent=1))
+            return 0
+        if args.command == 'rename':
+            need(1, 'rename <slug> [--title ...] [--slug ...]')
+            target = Platform(args.values[0])
+            done = platform.call('POST', '/api/projects/rename', {'id': target.project_id or 'default', 'title': args.title, 'slug': args.slug})
+            print(json.dumps({'ok': True, 'project': done}, ensure_ascii=False, indent=1))
             return 0
         if args.command == 'remove':
             need(1, 'remove <slug> --confirm <slug>')

@@ -1096,3 +1096,14 @@ print = standard form adjusted by definition, calendar and tree both)
   menus), docker being down, first start of the model server from the app.
 - window.prompt does not exist in Electron: project deletion (platform) and kept-condition names (framework QueryPanel) now use boxes on the page.
 - Step 2 (installer: electron-builder, bundled Python or a check for it; Mac first) is NOT started - waiting for the user.
+
+[2026-11-15] Renaming a project (user: "프로젝트 명 바꾸는 기능도")
+- projects.rename(hub, id, title, slug): title = the name people see (record.site.title, or record.title for the first project; the project's own
+  system_name follows when it still was the old title). slug = English name, only for projects made here and while idle: stops preview and API
+  container, renames both databases, moves the folder, the state folder (the id is sha(root), so it changes), artifacts/backups/prod/packs, updates
+  the record, starts the server again through first_setup.Setup; earlier steps are undone if a later one fails.
+- Ways in: 프로젝트 page (이름 바꾸기 form on each card; the English box is absent for local-only), sentence "프로젝트 이름을 X(으)로 바꿔줘" (title only,
+  order kind project-rename, handled in task_queue), ctl rename <slug> [--title] [--slug], POST /api/projects/rename.
+- control_check.py now renames its project (title, then slug) mid-way and goes on working in it: 27/27. Sentence and page form tried on a throwaway
+  project (removed after).
+- Pack file names made before a slug rename keep the old slug in their names (the packs folder is moved).

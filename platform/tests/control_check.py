@@ -55,10 +55,12 @@ def definition(extra=()):
 
 
 def main():
+    global SLUG
     with_pack, with_ui = '--pack' in sys.argv, '--ui' in sys.argv
     work = Path(tempfile.mkdtemp(prefix='control-check-'))
-    if any(item['slug'] == SLUG for item in ctl('projects', project=False).get('projects', [])):
-        ctl('remove', SLUG, '--confirm', SLUG, project=False)
+    for stale in ('ctl-check', 'ctl-moved'):
+        if any(item['slug'] == stale for item in ctl('projects', project=False).get('projects', [])):
+            ctl('remove', stale, '--confirm', stale, project=False)
     try:
         made = ctl('create', SLUG, TITLE, project=False)
         if not check('프로젝트 만들기', made.get('ok'), made):
@@ -127,6 +129,26 @@ def main():
         check('원격 저장소 연결과 올리기: 기록이 원격에 있다', linked.get('ok') and pushed.get('ok') and there == git('log', '-1', '--format=%s'), pushed.get('said') or pushed)
         check('변경 이력을 읽을 수 있다', ctl('log').get('ok') and '작업 공간 main' in ctl('log').get('said', ''))
 
+        # another name: the one people see, then the English one (folder, database and server move with it)
+        titled = ctl('rename', SLUG, '--title', '점검 새 이름', project=False)
+        seen = subprocess.run(['docker', 'exec', 'mdi-db', 'psql', '-U', 'mdi', '-d', site['db'], '-Atc', "select setting_value from sys_settings where setting_key='system_name'"], capture_output=True, text=True).stdout.strip()
+        check('보이는 이름 바꾸기: 플랫폼과 그 프로젝트의 화면 이름이 바뀐다', titled.get('ok') and titled['project']['site']['title'] == '점검 새 이름' and seen == '점검 새 이름', titled)
+        commits = git('rev-list', '--count', 'HEAD')
+        moved = ctl('rename', SLUG, '--slug', 'ctl-moved', project=False)
+        if check('영문 이름 바꾸기', moved.get('ok') and moved['project']['name'] == 'ctl-moved', moved):
+            SLUG = 'ctl-moved'
+            made = {'project': moved['project']}
+            site = moved['project']['site']
+            names = subprocess.run(['docker', 'ps', '--format', '{{.Names}}'], capture_output=True, text=True).stdout
+            bases = subprocess.run(['docker', 'exec', 'mdi-db', 'psql', '-U', 'mdi', '-d', 'postgres', '-Atc', "select string_agg(datname, ',' order by datname) from pg_database where datname like 'mdi_ctl_%'"], capture_output=True, text=True).stdout.strip()
+            check('폴더·데이터베이스·서버가 새 이름으로 옮겨졌다', (ROOT / 'projects/ctl-moved/.git').is_dir() and not (ROOT / 'projects/ctl-check').exists() and 'mdi-ctl-moved-api' in names and 'mdi-ctl-check-api' not in names
+                  and bases == 'mdi_ctl_moved,mdi_ctl_moved_test', f'{names.split()} {bases}')
+            check('깃 기록과 화면은 그대로다', git('rev-list', '--count', 'HEAD') == commits and ctl('status').get('ok') and isinstance(ctl('screens').get('screens'), list), ctl('status'))
+            fifth = work / 'fifth.json'
+            fifth.write_text(json.dumps(definition(), ensure_ascii=False))
+            after = ctl('apply', '점검 품목 등록 화면 만들어줘', '--file', str(fifth))
+            check('이름을 바꾼 뒤에도 요청이 그 프로젝트에서 진행된다', after.get('ok') and fields() == ['품목 코드', '품목명', '단가'], after.get('said') or after)
+
         if with_ui:
             # The same controls from the change-history page, clicked in a browser; judged here by what git and the database then hold.
             ui_remote = work / 'ui-remote.git'
@@ -161,7 +183,7 @@ def main():
     finally:
         removed = ctl('remove', SLUG, '--confirm', SLUG, project=False)
         left = subprocess.run(['docker', 'ps', '-a', '--format', '{{.Names}}'], capture_output=True, text=True).stdout
-        bases = subprocess.run(['docker', 'exec', 'mdi-db', 'psql', '-U', 'mdi', '-d', 'postgres', '-Atc', "select count(*) from pg_database where datname like 'mdi_ctl_check%'"], capture_output=True, text=True).stdout.strip()
+        bases = subprocess.run(['docker', 'exec', 'mdi-db', 'psql', '-U', 'mdi', '-d', 'postgres', '-Atc', "select count(*) from pg_database where datname like 'mdi_ctl_%'"], capture_output=True, text=True).stdout.strip()
         check('프로젝트 지우기: 폴더, 서버, 데이터베이스가 남지 않는다', removed.get('ok') and not (ROOT / 'projects' / SLUG).exists() and f'mdi-{SLUG}-api' not in left and bases == '0', removed)
         shutil.rmtree(Path.home() / '.local/share/local-workshop/packs' / SLUG, ignore_errors=True)
         shutil.rmtree(work, ignore_errors=True)

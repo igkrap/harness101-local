@@ -315,7 +315,11 @@ class QueueManager:
             self._update(queue_id, items=[dict(item, note=str(step)[:60])])
         try:
             project, state = self.app.project, self.app.state
-            result = release.carry_out(kind, named, project, state, note)
+            if kind == 'project-rename':        # the project itself, which the platform keeps (not its git or packs)
+                import projects
+                result = projects.rename(self.app.coordinator, self.app.metadata['id'], named.get('title'), named.get('slug'))
+            else:
+                result = release.carry_out(kind, named, project, state, note)
             ok = bool(result.get('success', True))
             said = release.say(kind, result)
         except Exception as error:

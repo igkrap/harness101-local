@@ -7,15 +7,16 @@ import { Button } from '@astryxdesign/core/Button';
 import { Card } from '@astryxdesign/core/Card';
 import { Collapsible } from '@astryxdesign/core/Collapsible';
 import { apiFetch, forgetProject, projectId } from './api';
-type Project={id:string;name:string;root:string;preview_url:string;available:boolean;active?:{status:string}|null;site?:{title:string;slug:string;kind:string}};
+type Project={id:string;name:string;root:string;preview_url:string;available:boolean;active?:{status:string}|null;title?:string;site?:{title:string;slug:string;kind:string}};
 type Kind={id:string;label:string;description:string;enabled:boolean};
-const shown=(p:Project)=>p.site?.title?`${p.site.title} (${p.name})`:p.name;
+const titleOf=(p:Project)=>p.site?.title||p.title||p.name;
+const shown=(p:Project)=>titleOf(p)!==p.name?`${titleOf(p)} (${p.name})`:p.name;
 export function switchProject(id:string){if(id===projectId)return;const url=new URL(window.location.href);url.searchParams.set('project',id);window.location.assign(url);}
 export function ProjectPicker(){
   const [projects,setProjects]=useState<Project[]>([]);
   useEffect(()=>{const c=new AbortController();apiFetch('/api/projects',{signal:c.signal}).then(async r=>{if(r.ok)return r.json();if(projectId!=='default')forgetProject();return {};}).then(d=>{if(c.signal.aborted)return;const list:Project[]=d.projects||[];
     if(list.length&&projectId!=='default'&&!list.some(p=>p.id===projectId)){forgetProject();return;}setProjects(list);}).catch(()=>{});return()=>c.abort();},[]);
-  return <Selector label="프로젝트" size="sm" isLabelHidden value={projectId} options={projects.map(p=>({value:p.id,label:p.site?.title||p.name,disabled:!p.available}))} onChange={switchProject}/>;
+  return <Selector label="프로젝트" size="sm" isLabelHidden value={projectId} options={projects.map(p=>({value:p.id,label:titleOf(p),disabled:!p.available}))} onChange={switchProject}/>;
 }
 export default function ProjectManager({token}:{token:string}){
   const [projects,setProjects]=useState<Project[]>([]),[modelUrl,setModelUrl]=useState('http://127.0.0.1:8099/v1'),[db,setDb]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
@@ -28,6 +29,19 @@ export default function ProjectManager({token}:{token:string}){
     const response=await apiFetch('/api/projects',{method:'POST',headers,body:JSON.stringify({root:folder.root,model_url:modelUrl,test_db_url:db})});const result=await response.json();if(!response.ok)throw Error(result.error);switchProject(result.id);
   }catch(e){setError(String(e));}finally{setBusy(false);}}
   const [removing,setRemoving]=useState<Project|null>(null),[typedName,setTypedName]=useState('');
+  const [renaming,setRenaming]=useState<Project|null>(null),[newTitle,setNewTitle]=useState(''),[newSlug,setNewSlug]=useState('');
+  async function rename(p:Project){
+    setBusy(true);setError('');try{
+      const body:{id:string;title?:string;slug?:string}={id:p.id};
+      if(newTitle.trim()&&newTitle.trim()!==titleOf(p))body.title=newTitle.trim();
+      if(p.site&&newSlug&&newSlug!==p.name)body.slug=newSlug;
+      const response=await apiFetch('/api/projects/rename',{method:'POST',headers:{'Content-Type':'application/json','X-Platform-Token':token},body:JSON.stringify(body)});
+      const result=await response.json();if(!response.ok)throw Error(result.error||'이름을 바꾸지 못했습니다.');
+      setRenaming(null);
+      // The English name is part of the project's identity here: with it the address of the project changes too.
+      if(result.id!==p.id&&p.id===projectId){switchProject(result.id);return;}
+      setProjects(list=>list.map(item=>item.id===p.id?{...item,...result}:item));
+    }catch(e){setError(String(e instanceof Error?e.message:e));}finally{setBusy(false);}}
   async function remove(p:Project){
     setBusy(true);setError('');try{
       const response=await apiFetch('/api/projects/remove',{method:'POST',headers:{'Content-Type':'application/json','X-Platform-Token':token},body:JSON.stringify({id:p.id,confirm:typedName.trim()})});
@@ -55,7 +69,15 @@ export default function ProjectManager({token}:{token:string}){
       <Text color="secondary">기본 프레임워크(공통 화면, 권한·메뉴, 화면 정의 엔진)를 그대로 담은 새 프로젝트를 만들고, 전용 개발 DB·서버·미리보기를 준비합니다. 화면은 0개에서 시작하며 셋업 팩도 이 이름으로 만들어집니다.</Text>
       {makeError&&<Text role="alert">{makeError}</Text>}
     </VStack></Card>
-    {projects.map(p=><Card key={p.id} padding={4}><HStack hAlign="between" gap={3}><VStack gap={2}><Text weight="bold">{shown(p)}{p.id===projectId?' · 현재 프로젝트':''}</Text><Text color="secondary" style={{overflowWrap:'anywhere'}}>{p.root}</Text>{p.active&&<Text>실행 중</Text>}{!p.available&&<Text>프로젝트 폴더를 찾을 수 없습니다.</Text>}</VStack><HStack gap={2}>{p.site&&<Button label={`${p.name} 지우기`} variant="ghost" isDisabled={busy||making} onClick={()=>{setRemoving(p);setTypedName('');setError('');}}/>}<Button label={`${p.name} 열기`} isDisabled={!p.available||p.id===projectId} onClick={()=>switchProject(p.id)}/></HStack></HStack>
+    {projects.map(p=><Card key={p.id} padding={4}><HStack hAlign="between" gap={3}><VStack gap={2}><Text weight="bold">{shown(p)}{p.id===projectId?' · 현재 프로젝트':''}</Text><Text color="secondary" style={{overflowWrap:'anywhere'}}>{p.root}</Text>{p.active&&<Text>실행 중</Text>}{!p.available&&<Text>프로젝트 폴더를 찾을 수 없습니다.</Text>}</VStack><HStack gap={2}><Button label={`${p.name} 이름 바꾸기`} variant="ghost" isDisabled={busy||making} onClick={()=>{setRenaming(p);setRemoving(null);setNewTitle(titleOf(p));setNewSlug(p.name);setError('');}}/>{p.site&&<Button label={`${p.name} 지우기`} variant="ghost" isDisabled={busy||making} onClick={()=>{setRemoving(p);setRenaming(null);setTypedName('');setError('');}}/>}<Button label={`${p.name} 열기`} isDisabled={!p.available||p.id===projectId} onClick={()=>switchProject(p.id)}/></HStack></HStack>
+      {renaming?.id===p.id&&<VStack gap={2} style={{marginTop:12}}>
+        <HStack gap={2} vAlign="end" style={{flexWrap:'wrap'}}>
+          <div style={{flex:'1 1 260px'}}><TextInput label="프로젝트 이름 (보이는 이름)" value={newTitle} onChange={setNewTitle}/></div>
+          {p.site&&<div style={{flex:'1 1 220px'}}><TextInput label="영문 이름 (폴더·DB·서버·팩 파일 이름)" value={newSlug} onChange={v=>setNewSlug(v.toLowerCase().replace(/[^a-z0-9-]/g,''))}/></div>}
+          <Button label={busy?'바꾸는 중…':'바꾸기'} variant="primary" isDisabled={busy||!newTitle.trim()||(newTitle.trim()===titleOf(p)&&newSlug===p.name)||(!!p.site&&!/^[a-z][a-z0-9-]{1,23}[a-z0-9]$/.test(newSlug))} onClick={()=>void rename(p)}/>
+          <Button label="그만두기" variant="secondary" onClick={()=>setRenaming(null)}/></HStack>
+        <Text color="secondary">{p.site?'영문 이름을 바꾸면 폴더, 개발 DB, 서버가 새 이름으로 옮겨지고 서버가 다시 켜집니다 (30초쯤). 자료와 깃 기록은 그대로입니다.':'처음부터 있던 프로젝트는 보이는 이름만 바꿀 수 있습니다.'}</Text>
+      </VStack>}
       {removing?.id===p.id&&<VStack gap={2} style={{marginTop:12}}><Text>이 프로젝트의 폴더, 개발 DB, 서버, 실행 기록이 사라지고 되돌릴 수 없습니다 (이미 만든 셋업 팩은 남습니다). 지우려면 영문 이름 <b>{p.name}</b> 을(를) 그대로 적으세요.</Text>
         <HStack gap={2} vAlign="end"><div style={{flex:'0 1 280px'}}><TextInput label="영문 이름 확인" value={typedName} onChange={setTypedName} placeholder={p.name}/></div>
           <Button label="지우기" variant="destructive" isDisabled={busy||typedName.trim()!==p.name} onClick={()=>void remove(p)}/><Button label="그만두기" variant="secondary" onClick={()=>setRemoving(null)}/></HStack></VStack>}

@@ -151,3 +151,96 @@ def remove(hub, project_id, confirm):
     for folder in (hub.state / 'projects' / project_id, sites.SHARE / 'artifacts' / slug, sites.SHARE / 'backups' / slug, sites.SHARE / 'prod' / slug):
         shutil.rmtree(folder, ignore_errors=True)
     return {'removed': slug, 'packs_kept': str(sites.SHARE / 'packs' / slug) if (sites.SHARE / 'packs' / slug).is_dir() else None}
+
+
+def rename(hub, project_id, title=None, slug=None):
+    """Give a project another name. title: the name people see (on the platform, on the project's own screens when it still
+    carried the old one, on the setup packs made from now on). slug: the English name - the folder, the development
+    database, the server and the pack files are renamed with it; only for projects made here, and only while nothing runs in them.
+    Returns the project's record (its id changes with the English name)."""
+    title = None if title is None else str(title).strip()
+    slug = None if slug is None else str(slug).strip().lower()
+    with hub.lock:
+        record = next((item for item in hub.records if item['id'] == project_id), None)
+        if record is None:
+            raise ValueError('등록된 프로젝트가 아닙니다.')
+        own = record.get('site')
+        if title is not None and (not title or len(title) > 40 or any(ord(char) < 32 for char in title)):
+            raise ValueError('프로젝트 이름을 1~40자로 적으세요.')
+        if slug is not None and own and slug == own['slug']:
+            slug = None
+        if slug is not None:
+            if not own or record is hub.records[0]:
+                raise ValueError('이 프로젝트는 영문 이름을 바꿀 수 없습니다 (처음부터 있던 프로젝트입니다). 보이는 이름만 바꿀 수 있습니다.')
+            if not sites.SLUG.fullmatch(slug):
+                raise ValueError('영문 이름은 영문 소문자로 시작하는 3~25자의 소문자·숫자·하이픈입니다 (예: acme-erp).')
+            if slug == sites.DEFAULT.slug or any((item.get('site') or {}).get('slug') == slug or Path(item['root']).name == slug for item in hub.records) or (HOME / slug).exists():
+                raise ValueError(f'{slug} 은(는) 이미 있는 프로젝트 이름입니다.')
+            app = hub.apps.get(project_id)
+            if app is not None and (any(process.poll() is None for process in app.processes.values()) or (getattr(app, 'queues', None) and app.queues.active())):
+                raise RuntimeError('이 프로젝트에서 진행 중인 작업이 있습니다. 끝난 뒤 바꾸세요.')
+    old_title = (own or {}).get('title') or record.get('title') or record['name']
+    if title is not None and title != old_title:
+        database = own['db'] if own else sites.DEFAULT.db
+        # The project's own screens say its name too: they follow when they still carried the old one (a name set there on purpose stays).
+        subprocess.run(['docker', 'exec', '-i', sites.DB_CONTAINER, 'psql', '-U', sites.DB_USER, '-d', database, '-q'], capture_output=True, text=True, timeout=60,
+                       input="UPDATE sys_settings SET setting_value = '" + title.replace("'", "''") + "' WHERE setting_key = 'system_name' AND setting_value = '" + old_title.replace("'", "''") + "';")
+        with hub.lock:
+            if own:
+                own['title'] = title
+            else:
+                record['title'] = title
+            hub.persist()
+    if slug is None:
+        return record
+
+    old, root, database = own['slug'], Path(record['root']), own['db']
+    new_root, new_database, new_api = HOME / slug, 'mdi_' + slug.replace('-', '_'), f'mdi-{slug}-api'
+    state = hub.state / 'projects' / record['id'] / 'runs'
+    item = hub.previews.items.pop(project_id, None)
+    process = (item or {}).get('process')
+    if process is not None and process.poll() is None:
+        import os, signal
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    subprocess.run(['docker', 'rm', '-f', own['api_container']], capture_output=True)
+
+    def sql(text):
+        done = subprocess.run(['docker', 'exec', '-i', sites.DB_CONTAINER, 'psql', '-U', sites.DB_USER, '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-q'], input=text, capture_output=True, text=True, timeout=120)
+        if done.returncode != 0:
+            raise RuntimeError('데이터베이스 이름을 바꾸지 못했습니다: ' + done.stderr[-300:])
+    moved = []        # what was done, to be taken back in reverse if a later step fails
+    try:
+        for was, now in ((database, new_database), (database + '_test', new_database + '_test')):
+            sql(f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{was}'; ALTER DATABASE \"{was}\" RENAME TO \"{now}\";")
+            moved.append(lambda was=was, now=now: sql(f'ALTER DATABASE "{now}" RENAME TO "{was}";'))
+        root.rename(new_root)
+        moved.append(lambda: new_root.rename(root))
+        new_id = hashlib.sha256(str(new_root.resolve()).encode()).hexdigest()[:16]
+        new_state = hub.state / 'projects' / new_id
+        (hub.state / 'projects' / record['id']).rename(new_state)
+        moved.append(lambda: new_state.rename(hub.state / 'projects' / record['id']))
+        for part in ('artifacts', 'backups', 'prod', 'packs'):
+            source = sites.SHARE / part / old
+            if source.is_dir() and not (sites.SHARE / part / slug).exists():
+                source.rename(sites.SHARE / part / slug)
+                moved.append(lambda part=part: (sites.SHARE / part / slug).rename(sites.SHARE / part / old))
+    except Exception:
+        for back in reversed(moved):
+            try:
+                back()
+            except Exception:
+                pass
+        # the server is started again under its old name, so the project is as it was
+        Setup(sites.ROOT, api_port=own['api_port'], state=state, project=root, database=database, api=own['api_container'], slug=old).run()
+        raise
+    with hub.lock:
+        hub.apps.pop(project_id, None)
+        own.update(slug=slug, db=new_database, api_container=new_api)
+        record.update(id=new_id, name=slug, root=str(new_root.resolve()), test_db_url=f'jdbc:postgresql://{sites.DB_CONTAINER}:5432/{new_database}_test')
+        hub.persist()
+    Setup(sites.ROOT, api_port=own['api_port'], state=new_state / 'runs', project=new_root, database=new_database, api=new_api, slug=slug).run()
+    hub.previews.ensure(record)
+    return record

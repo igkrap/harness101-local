@@ -858,7 +858,7 @@ COMMANDS = (('platform-pack', re.compile(r'플랫폼.*(팩|패키지|꾸러미)'
 ORDER_KINDS = {'record': '변경 기록 (깃)', 'git-undo': '기록한 변경 취소 (깃)', 'git-branch': '작업 공간 옮기기 (깃)', 'git-push': '원격에 올리기 (깃)', 'git-remote': '원격 저장소 연결 (깃)',
                'git-log': '변경 이력 (깃)', 'git-sync': '깃 상태로 맞추기', 'pack': '운영 셋업 팩 만들기',
                'platform-pack': '플랫폼 셋업 팩 만들기', 'model-pack': '모델 팩 만들기',
-               'replay': '적어 둔 화면 정의 적용'}       # a definition already written (a recorded answer of the model, or a tool's own): checked and applied like any request, without asking the model
+               'replay': '적어 둔 화면 정의 적용', 'project-rename': '프로젝트 이름 바꾸기'}       # a definition already written (a recorded answer of the model, or a tool's own): checked and applied like any request, without asking the model
 
 
 def given_order(order):
@@ -878,6 +878,10 @@ def given_order(order):
         if not isinstance(order.get('file'), str) or not Path(order['file']).is_file():
             raise ValueError('적용할 화면 정의 파일을 찾지 못했습니다.')
         named = {'file': order['file']}
+    elif kind == 'project-rename':
+        named = {key: str(order[key]) for key in ('title', 'slug') if order.get(key)}
+        if not named:
+            raise ValueError('바꿀 이름이 없습니다.')
     elif kind == 'record' and order.get('message'):
         named = {'message': str(order['message'])[:2000]}
     return kind, named
@@ -919,6 +923,9 @@ def git_order(goal):
     text = ' '.join((goal or '').split())
     if not text or len(text) > 400:
         return None
+    renamed = re.search(r'프로젝트\s*(?:이름|명)(?:을|를|은|는)?\s*["\'“”‘’]?(.{1,40}?)["\'“”‘’]?\s*(?:으로|로)\s*(?:바꿔|변경|고쳐)', text)
+    if renamed and not re.search(r'화면|항목', text):
+        return 'project-rename', {'title': renamed.group(1).strip()}
     kind = next((name for name, pattern in GIT_ORDERS if pattern.search(text)), None)
     if not kind or (kind != 'git-remote' and (len(text) > 60 or re.search(r'화면|항목|집계|현황', text))):
         return None
@@ -961,6 +968,8 @@ def say(kind, result):
                  '공통 코드' if result.get('codes') else '', '메뉴 편성' if result.get('menus') else '', f"소스 파일 {result['source_files']}개" if result.get('source_files') else '']
         tail = ' 원격 저장소에도 올렸습니다.' if result.get('pushed') is True else f" 원격 저장소에는 올리지 못했습니다: {result['pushed']}" if result.get('pushed') else ''
         return f"기록했습니다 ({result['commit'][:7]}): " + ', '.join(filter(None, parts)) + '.' + tail
+    if kind == 'project-rename':
+        return f"프로젝트 이름을 바꿨습니다: {(result.get('site') or {}).get('title') or result.get('title') or result.get('name')}" + (f" (영문 이름 {result['name']})" if result.get('site') else '')
     if kind.startswith('git-'):
         return '\n'.join(result.get('lines') or ['했습니다.'])
     if kind == 'platform-pack':

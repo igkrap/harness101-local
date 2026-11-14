@@ -106,8 +106,9 @@ def use(chosen):
 def of(record, state):
     """The working set of a registered project (its record in projects.json). A project without one of its own is the first project."""
     own = (record or {}).get('site')
-    if not own:
-        return DEFAULT
+    if not own:        # the first project: its names are fixed, the name people see may be given
+        import dataclasses
+        return dataclasses.replace(DEFAULT, title=record['title']) if (record or {}).get('title') else DEFAULT
     return Site(own['slug'], own.get('title') or own['slug'], own.get('kind', 'business'), Path(record['root']), Path(state), own['db'], own['api_container'],
                 int(own['api_port']), f"http://127.0.0.1:{int(own['preview_port'])}", int(own['ops_port']))
 

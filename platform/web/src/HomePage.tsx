@@ -124,10 +124,10 @@ export default function HomePage(props: {
   // The project every request here goes to, said out loud beside the request box.
   const [project, setProject] = useState<{ title: string; name: string; kind: string } | null>(null);
   useEffect(() => { const c = new AbortController();
-    apiFetch("/api/projects", { signal: c.signal }).then(r => r.json()).then(d => { type P = { id: string; name: string; site?: { title?: string; kind?: string } };
+    apiFetch("/api/projects", { signal: c.signal }).then(r => r.json()).then(d => { type P = { id: string; name: string; title?: string; site?: { title?: string; kind?: string } };
       const list: P[] = d.projects || [], mine = list.find(p => p.id === projectId) || (projectId === "default" ? list[0] : undefined);
       const kind = (d.kinds || []).find((k: { id: string; label: string }) => k.id === (mine?.site?.kind || "business"))?.label || "";
-      if (mine) setProject({ title: mine.site?.title || mine.name, name: mine.name, kind }); }).catch(() => {});
+      if (mine) setProject({ title: mine.site?.title || mine.title || mine.name, name: mine.name, kind }); }).catch(() => {});
     return () => c.abort(); }, []);
   useEffect(() => { area.current?.focus(); }, [props.focusKey]);
   const [, tick] = useState(0);

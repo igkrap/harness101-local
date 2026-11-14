@@ -711,6 +711,7 @@ class Handler(BaseHTTPRequestHandler):
                     with hub.lock:hub.testing_model=False
                 self.send_json(result);return
             if parsed.path=='/api/projects/pick' and hasattr(hub,'pick'):self.send_json(hub.pick());return
+            if parsed.path=='/api/projects/rename' and hasattr(hub,'rename'):self.send_json(hub.rename(body));return
             if parsed.path=='/api/projects/remove' and hasattr(hub,'remove'):self.send_json(hub.remove(body));return
             if parsed.path=='/api/projects/create' and hasattr(hub,'create'):self.send_json(hub.create(body),201);return
             if parsed.path=='/api/projects' and hasattr(hub,'add'):self.send_json(hub.add(body),201);return

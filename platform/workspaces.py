@@ -143,6 +143,10 @@ class Workspaces:
         import projects
         return projects.create(self, body)
 
+    def rename(self, body):
+        import projects
+        return projects.rename(self, body.get('id'), body.get('title'), body.get('slug'))
+
     def remove(self, body):
         import projects
         return projects.remove(self, body.get('id'), body.get('confirm'))
