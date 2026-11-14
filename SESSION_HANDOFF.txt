@@ -900,3 +900,13 @@ Orca CLI selected /Applications/Orca.app/Contents/Resources/bin/orca, skill read
 - Display standard (user's rule): numbers right; dates yyyy/mm/dd, date-times yyyy/mm/dd HH:MM:SS, common codes and statuses centre; variable text left.
   GridColumn.align 'right'|'center'; showDate/storeDate/isDate/formatDateTime in gridExport; inputs show and accept slashes (also dots, digits only); API.txt updated.
   There is no time-only field type yet; print forms and summary group labels use the same date form.
+
+[2026-11-14, night] Basic formats in one place
+- local-only frontend/src/framework/format.ts is the only place values are formatted: showNumber (separators, decimals as stored), showAmount (computed, 2 places),
+  showPercent (45.0%), showDate, formatDateTime, showTime, storeDate, readNumber, alignOf, showValue. Fixed 'en-US' digits - nothing depends on the browser's language.
+- NumberInput (right, separators when not typing, typed commas dropped) and DateInput (rewrites 20261114 -> 2026/11/14 on leaving) in framework/ui;
+  FieldDefinition type 'integer'|'decimal'|'date' use them; line tables too (and a common code in a line is now a drop-down, it was a plain text box).
+- Grid copy/export/print use what the cells read; print keeps align; exported numbers lose their separators. Master lists show numbers with separators;
+  line-table lists show code names. Summary group columns are placed by kind (date/month/code/status centre). Dashboard period boxes are yyyy/mm/dd text boxes.
+- Server: limit and min/max messages print 1,234,567; date messages say 2026/01/15; sign-up time is sent as a moment and shown in local time.
+- Verified in a browser (master, order, summaries, dashboard) and with harness2 screen checks on three existing screens (all pass). Not looked at: paper print output by eye.
