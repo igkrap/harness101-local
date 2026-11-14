@@ -58,10 +58,10 @@ function Operation({ refreshKey, busy, onAsk }: { refreshKey: string; busy: bool
     {status.exists && <span className="dim">이 맥의 운영 <a href={status.url} target="_blank" rel="noreferrer">{status.url.replace("http://", "")}</a>{status.last ? ` · ${when(status.last.started_at)} 설치` : ""}</span>}
     {status.error && <span className="dim" title={status.error}>상태를 읽지 못함</span>}
     <span style={{ flex: 1 }} />
-    <button type="button" className="home-btn" disabled={busy} onClick={() => onAsk("지금까지 만든 것을 커밋해줘")}>기록(커밋)</button>
-    {installs > 1 && <button type="button" className="home-btn" disabled={busy} onClick={() => onAsk("이전 배포로 되돌려줘")}>이전 팩으로</button>}
-    <button type="button" className="home-btn" disabled={busy} onClick={() => onAsk("운영에 배포해줘")}>이 맥의 운영에 설치</button>
-    <button type="button" className="home-btn primary" disabled={busy} onClick={() => onAsk("운영 셋업 팩 만들어줘")}>셋업 팩 만들기</button>
+    <button type="button" className="home-btn" disabled={busy} title="지금까지 만든 화면을 깃에 기록합니다" onClick={() => onAsk("지금까지 만든 것을 커밋해줘")}>커밋</button>
+    {installs > 1 && <button type="button" className="home-btn" disabled={busy} onClick={() => { if (window.confirm("이 맥의 운영을 이전 팩으로 되돌릴까요? (운영에 입력된 자료는 그대로 둡니다)")) onAsk("이전 배포로 되돌려줘"); }}>이전 팩으로</button>}
+    <button type="button" className="home-btn" disabled={busy} title="셋업 팩을 만들어 이 맥의 운영 한 벌에 설치합니다" onClick={() => onAsk("운영에 배포해줘")}>이 맥의 운영에 설치</button>
+    <button type="button" className="home-btn primary" disabled={busy} title="커밋한 뒤 최초 셋업 팩과 업데이트 팩을 만듭니다" onClick={() => onAsk("운영 셋업 팩 만들어줘")}>셋업 팩 만들기</button>
   </section>;
 }
 
@@ -103,6 +103,7 @@ export default function HomePage(props: {
   onStopQueue: (id: string) => void; onResumeQueue: (id: string) => void; onStopJob: () => void;
   onOpenApp: () => void; onOpenHistory: () => void; onDetail: (jobId: string) => void; focusKey: number;
   /** Take back what a request applied; resolves when done. */ onUndo: (id: string) => Promise<void>;
+  /** Carry out an order at once (record, make a setup pack, install it here) - the same as typing it into the box and pressing 만들기. */ onOrder: (goal: string) => Promise<void>;
   events: RunEvent[]; eventsJob?: string;
 }) {
   const { goal, setGoal, queue } = props;
@@ -168,7 +169,7 @@ export default function HomePage(props: {
           <button key={t} type="button" onClick={() => { setGoal(t); area.current?.focus(); }}>{t}</button>)}</div>}
     </section>
 
-    <Operation refreshKey={`${queue?.id}:${queue?.status}`} busy={props.busy || live} onAsk={text => { setGoal(text); area.current?.focus(); }} />
+    <Operation refreshKey={`${queue?.id}:${queue?.status}`} busy={props.busy || live} onAsk={text => { void props.onOrder(text); }} />
 
     {queue && <section className={`home-card tone-${tone}`} aria-label="진행 상황">
       <header className="home-card-head">

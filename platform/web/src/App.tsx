@@ -618,6 +618,7 @@ export default function App() {
             onUndo={async id => { const r = await apiFetch(`/api/queues/${id}/undo`, { method: "POST", headers: { "Content-Type": "application/json", "X-Platform-Token": data?.token || "" }, body: "{}" });
               const d = await r.json(); if (!r.ok) throw Error(d.error || `HTTP ${r.status}`); if (d.undone === false) throw Error(String(d.undo_note || "되돌리지 못했습니다.")); }}
             canStart={!disabled&&!!goal.trim()&&(useQueue||!!checks.length)&&!!data?.model.online&&!!effectiveModel} blockedReason={blockedReason} onStart={start}
+            onOrder={async order => { await post("/api/queues", { goal: order, rounds, thinking, model: effectiveModel }); }}
             screens={data?.screens||[]} models={modelChoices} model={effectiveModel} setModel={value=>{setModel(value);localStorage.setItem("model:"+projectId,value);}}
             useQueue={useQueue} setUseQueue={next=>{setUseQueue(next);localStorage.setItem('use-queue',next?'1':'0');}} thinking={thinking} setThinking={setThinking}
             queue={data?.queue} active={data?.active||null} phase={data?.phase||"idle"} events={data?.events||[]} eventsJob={data?.jobs[0]?.id}
