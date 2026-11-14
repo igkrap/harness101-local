@@ -814,6 +814,28 @@ def take_checks(key, definition, framework):
         for into, come in (part.get('set') or {}).items():
             if come not in ('id', 'today'):
                 report.add(f'함께 넘긴 값: {into} 에 앞 단계의 {come} 이(가) 들어 있다', new.get(into) == source.get(come), f'{new.get(into)} / {source.get(come)}')
+        if shape.get('combinable'):          # two earlier records alike above their lines: one record for both, or one each
+            def twin():
+                row = framework.ok('POST', f"/api/data/{part['from']}", {name: value for name, value in source.items() if name not in ('id', 'status', 'statusLabel', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt', '_names', '_files')})
+                made.append((part['from'], row['id']))
+                for _ in range(4):
+                    if not wanted or row.get('status') in wanted:
+                        break
+                    step = next((action for action in status.get('actions', []) if row.get('status') in action['from'] and action['to'] in wanted), None)
+                    if not step:
+                        break
+                    row = framework.ok('POST', f"/api/data/{part['from']}/{row['id']}/actions/{step['name']}")
+                return row
+            for way, expected, words in (('same', 1, '위쪽 값이 같은 두 건의 줄을 함께 넘기면 한 건으로 묶인다'), ('source', 2, '앞 단계 한 건마다 따로 넘기면 두 건이 만들어진다')):
+                pair = [twin(), twin()]
+                chosen = [row for row in framework.ok('GET', api) if row.get('sourceId') in (pair[0]['id'], pair[1]['id']) and row['line'] == 0]
+                code, both = framework.call('POST', api, {'values': values, 'per': way, 'rows': [{'sourceId': row['sourceId'], 'line': row['line'], 'quantity': 1} for row in chosen]})
+                for item in (both.get('created') or []) if isinstance(both, dict) else []:
+                    made.append((part['entity'], item['id']))
+                report.add(f'묶는 기준: {words}', code in (200, 201) and len(chosen) == 2 and both.get('count') == expected, f'{code} {both}')
+        else:
+            code, answer2 = framework.call('POST', api, {'values': values, 'per': 'same', 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': 1}]})
+            report.add('묶는 기준: 앞 단계를 위쪽에서 가리키는 자료는 여러 건을 한 건으로 묶을 수 없다고 거절한다', code == 400, f'{code} {answer2}')
         now = framework.ok('GET', f"/api/data/{part['from']}/{source['id']}")
         if wanted and now.get('status') not in wanted:
             report.add('넘긴 뒤 앞 단계 자료의 상태가 바뀌어 목록에서 빠진다', not mine(framework.ok('GET', api)), '')

@@ -1154,3 +1154,14 @@ print = standard form adjusted by definition, calendar and tree both)
   inbound_from_purchase_order made by the local model from one sentence (445 s, 19 checks). Both left in local-only.
 - Not done: the case where the limit is "lines against a header quantity"; choosing which target header a row goes to beyond "same values";
   after saving, the earlier record's status is not moved by this screen (the target's own effects do that, as before).
+
+== 2026-11-15: take-over grouping both ways; instruction-based flow ==
+- take.group: "source" (one new record per earlier record, default) | "same" (rows with the same header values share a record across earlier
+  records). "same" only when the new entity keeps its pointer to the earlier record in its LINES (AppDefinitions.combinable); the screen then
+  offers the choice (묶는 기준) per save ("per" in the POST). With the pointer above the lines a record belongs to one earlier record - inherent.
+- User's rule (memory instruction-based-flow): "웬만한 행위는 지시 기반" - 수주 → 출하지시 → 출하. define.py tells the model so.
+- Made: shipping_instruction (출하지시 등록: 수주 in the lines, limit against sales_order) and shipping_instruction_from_order (수주 기준 출하지시 등록,
+  52 + 21 checks, both grouping checks passed). The old shipment (pointer to 수주 above its lines) and shipment_from_order still exist.
+- OPEN, waiting for the user: "기존건 없애도됨" - I read it as the old 출하 등록 may go, but did not delete: replacing it with a shipment registered from
+  출하지시 also takes down what hangs on it (shipment_from_order, 수주별 출하 잔량 현황 and whatever shows that summary, the confirm effect on the order).
+- ctl.py undo without --sha undoes the newest record - run twice it undoes the undo. Use --sha to take back two things.
