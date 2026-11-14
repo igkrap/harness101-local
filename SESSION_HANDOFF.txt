@@ -941,3 +941,17 @@ Orca CLI selected /Applications/Orca.app/Contents/Resources/bin/orca, skill read
 - All of it deployed to operation with "운영에 배포해줘" (10 s; V35 and the new jar are live on 5300).
 - Not done / not checked: history of a deleted record has no screen; attachments are not carried by a release (operation's own data, as intended);
   xlsx import; calendar/tree screens (only if asked); paper print not checked by eye; 39 test screens are also in operation.
+
+[2026-11-14, late night] Setup packs replace direct deployment (user: "그냥 운영 배포를 하는게 아니고 운영 셋업 팩을 구성할수있게")
+- A setup pack = one folder/zip with app/app.jar, web/, release/ (definitions, codes, menus, settings), docker-compose.yml (own postgres + eclipse-temurin:17-jre),
+  .env.example, install.sh, update.sh, backup.sh, restore.sh, wait.sh, README.md, VERSION.json. Kept in ~/.local/share/local-workshop/packs/local-only (newest five).
+- The server applies release/ itself at start (app/ReleaseLoader.java: once per content, in one transaction, all or nothing; marks in sys_settings release_*).
+  First administrator password may be given as WORKSPACE_ADMIN_PASSWORD. No Python or psql is needed on the target, only Docker.
+- platform/release.py rewritten: record / pack / deploy / rollback. pack() tries every pack by installing it from nothing in a throwaway compose project
+  (port 5390) and checking screens count and admin sign-in - this caught a real bug on the first run (savepoints not allowed by the JPA transaction manager).
+  "셋업 팩 만들어줘" -> pack; "운영에 배포해줘" -> pack + install on this Mac's copy (compose project local-only-ops, port 5300, folder
+  ~/.local/share/local-workshop/prod/local-only/copy, DB dump into its backups/ before each update); "이전 배포로 되돌려줘" -> install the previous pack.
+  Home strip: pack download link (/api/release/packs/<name>), 셋업 팩 만들기, 이 맥의 운영에 설치.
+- install.sh and update.sh were run by hand on an unpacked zip (port 5391) and removed again.
+- Leftovers from the first approach: database mdi_prod in mdi-db (no records) and platform/state/auth/prod-deployer.json are unused; not deleted (ask the user).
+  This Mac's docker has a broken credential helper; release._compose uses its own DOCKER_CONFIG.

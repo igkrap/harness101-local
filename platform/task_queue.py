@@ -284,7 +284,7 @@ class QueueManager:
             self._finish(queue_id, 'failed', '큐 실행 오류: ' + str(error)[:300])
 
     def _release_route(self, queue_id):
-        """An order to record or deploy ("커밋해줘", "운영에 배포해줘", "이전 배포로 되돌려줘") is carried out by the
+        """An order to record, pack or deploy ("커밋해줘", "셋업 팩 만들어줘", "운영에 배포해줘", "이전 배포로 되돌려줘") is carried out by the
         platform itself - no model is asked. Returns False for every other request."""
         if os.environ.get('PLATFORM_DEFINITION_ROUTE') == '0' or not getattr(self.app, 'definition_route', False):
             return False
@@ -293,7 +293,7 @@ class QueueManager:
         kind = release.command(goal)
         if not kind:
             return False
-        title = {'record': '변경 기록 (깃)', 'deploy': '운영 배포', 'rollback': '이전 배포로 되돌리기'}[kind]
+        title = {'record': '변경 기록 (깃)', 'pack': '운영 셋업 팩 만들기', 'deploy': '셋업 팩을 만들어 이 맥의 운영에 설치', 'rollback': '이전 팩으로 되돌리기'}[kind]
         item = {'domain': 'release', 'title': title, 'checks': [], 'status': 'running', 'job_id': None, 'attempts': 1}
         self._update(queue_id, items=[item], status='running', route='release')
 
@@ -301,7 +301,8 @@ class QueueManager:
             self._update(queue_id, items=[dict(item, note=str(step)[:60])])
         try:
             project, state = self.app.project, self.app.state
-            result = release.record(project) if kind == 'record' else release.rollback(project, state, note) if kind == 'rollback' else release.deploy(project, state, note)
+            result = (release.record(project) if kind == 'record' else release.pack(project, state, note) if kind == 'pack'
+                      else release.rollback(project, state, note) if kind == 'rollback' else release.deploy(project, state, note))
             ok = bool(result.get('success', True))
             said = release.say(kind, result)
         except Exception as error:

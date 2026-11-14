@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
+import shutil
 import mimetypes
 import os
 from pathlib import Path
@@ -593,6 +594,15 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path=='/api/release':
                 import release
                 self.send_json({'status':release.status(app.project,app.state),'history':release.history(app.state,10)});return
+            match=re.fullmatch(r'/api/release/packs/([A-Za-z0-9.-]+)',parsed.path)
+            if match:
+                import release
+                path=release.pack_file(app.state,match.group(1));size=path.stat().st_size
+                self.send_response(200);self.send_header('Content-Type','application/zip');self.send_header('Content-Length',str(size))
+                self.send_header('Content-Disposition',f'attachment; filename="{path.name}"');self.send_header('X-Content-Type-Options','nosniff');self.end_headers()
+                with path.open('rb') as data:
+                    shutil.copyfileobj(data,self.wfile)
+                return
             if parsed.path=='/api/models':self.send_json(app.models());return
             if parsed.path=='/api/preview' and hasattr(self.server.platform,'previews'):
                 self.send_json(self.server.platform.previews.status(app.metadata));return

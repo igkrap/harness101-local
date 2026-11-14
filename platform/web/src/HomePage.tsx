@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { apiFetch } from "./api";
+import { apiFetch, apiUrl } from "./api";
 import type { TaskQueue, QueueItem } from "./QueuePanel";
 import "./home.css";
 import { activities, type RunEvent } from "./activity";
@@ -29,9 +29,10 @@ function examplesFor(screens: string[]) {
   return [`${a} 화면에 비고 칸 추가해줘`, `${b || a} 화면 결과 목록에 등록일 열 추가해줘`, "거래처 등록 화면 만들어줘"];
 }
 
-type Release = { stamp: string; started_at: string; success?: boolean; tag?: string; rollback_of?: string | null; screens?: { new: string[]; changed: string[] } };
-type ReleaseStatus = { url: string; exists: boolean; last: Release | null; pending: { new: string[]; changed: string[]; program: boolean } | null; error?: string };
-/** The operating copy in one line: where it is, when it last received a release, and what has been made since. */
+type Release = { stamp: string; started_at: string; success?: boolean; kind?: string };
+type Pack = { name: string; size: number; started_at: string; screens: number };
+type ReleaseStatus = { url: string; exists: boolean; last: Release | null; pack: Pack | null; pending: { new: string[]; changed: string[] } | null; error?: string };
+/** Operation in one line: the newest setup pack (to take to any server), what has been made since, and this machine's own operating copy. */
 function Operation({ refreshKey, busy, onAsk }: { refreshKey: string; busy: boolean; onAsk: (goal: string) => void }) {
   const [state, setState] = useState<{ status: ReleaseStatus; history: Release[] } | null>(null);
   useEffect(() => {
@@ -40,21 +41,23 @@ function Operation({ refreshKey, busy, onAsk }: { refreshKey: string; busy: bool
     return () => c.abort();
   }, [refreshKey]);
   if (!state) return null;
-  const { status } = state, pending = status.pending;
+  const { status } = state, pending = status.pending, pack = status.pack;
   const waiting = pending ? pending.new.length + pending.changed.length : 0;
   const names = pending ? [...pending.new, ...pending.changed] : [];
-  const done = state.history.filter(r => r.success).length;
+  const installs = state.history.filter(r => r.success && r.kind === "deploy").length;
   return <section className="home-ops" aria-label="운영">
-    <strong>운영</strong>
-    {status.exists ? <a href={status.url} target="_blank" rel="noreferrer">{status.url.replace("http://", "")}</a> : <span className="dim">아직 없음 (첫 배포 때 만들어집니다)</span>}
-    {status.last && <span className="dim">마지막 배포 {when(status.last.started_at)}</span>}
-    {pending && <span className={waiting || pending.program ? "home-ops-wait" : "dim"} title={names.join(", ")}>
-      {waiting ? `아직 안 나간 화면 ${waiting}개${pending.new.length ? ` (새 화면 ${pending.new.length})` : ""}` : pending.program && status.exists ? "프로그램 변경이 아직 안 나감" : status.exists ? "개발과 같음" : ""}</span>}
+    <strong>운영 셋업 팩</strong>
+    {pack ? <a href={apiUrl(`/api/release/packs/${pack.name}`)} title="서버에 풀고 sh install.sh 를 실행하면 설치됩니다">{when(pack.started_at)} 팩 받기 ({Math.round(pack.size / 1024 / 1024)}MB · 화면 {pack.screens}개)</a>
+      : <span className="dim">아직 만든 팩이 없습니다</span>}
+    {pending && (pack || status.last) && <span className={waiting ? "home-ops-wait" : "dim"} title={names.join(", ")}>
+      {waiting ? `그 뒤로 바뀐 화면 ${waiting}개${pending.new.length ? ` (새 화면 ${pending.new.length})` : ""}` : "개발과 같음"}</span>}
+    {status.exists && <span className="dim">이 맥의 운영 <a href={status.url} target="_blank" rel="noreferrer">{status.url.replace("http://", "")}</a>{status.last ? ` · ${when(status.last.started_at)} 설치` : ""}</span>}
     {status.error && <span className="dim" title={status.error}>상태를 읽지 못함</span>}
     <span style={{ flex: 1 }} />
     <button type="button" className="home-btn" disabled={busy} onClick={() => onAsk("지금까지 만든 것을 커밋해줘")}>기록(커밋)</button>
-    {done > 1 && <button type="button" className="home-btn" disabled={busy} onClick={() => onAsk("이전 배포로 되돌려줘")}>이전 배포로</button>}
-    <button type="button" className="home-btn primary" disabled={busy} onClick={() => onAsk("운영에 배포해줘")}>운영에 배포</button>
+    {installs > 1 && <button type="button" className="home-btn" disabled={busy} onClick={() => onAsk("이전 배포로 되돌려줘")}>이전 팩으로</button>}
+    <button type="button" className="home-btn" disabled={busy} onClick={() => onAsk("운영에 배포해줘")}>이 맥의 운영에 설치</button>
+    <button type="button" className="home-btn primary" disabled={busy} onClick={() => onAsk("운영 셋업 팩 만들어줘")}>셋업 팩 만들기</button>
   </section>;
 }
 
