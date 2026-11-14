@@ -23,7 +23,9 @@ from pathlib import Path
 HARNESS = Path(__file__).resolve().parents[1] / 'erp-harness'
 
 
-_serial = itertools.count(1)
+import time as _time
+# Values that must be unique stay unique across runs too (a row left by an interrupted run must not collide with the next one).
+_serial = itertools.count(int(_time.time()) % 100000 * 100)
 
 
 def _number(field, wanted):
@@ -129,6 +131,37 @@ def sweep(framework, made):
             left.append((entity, record))
     left.reverse()
     LEFTOVER.extend(left)      # the run sweeps these once more after the trial definition is gone
+    return left
+
+
+def high_water(framework):
+    """The newest record id there is (ids run across all entities), taken before a run makes anything."""
+    top = 0
+    for item in framework.definitions():
+        if item['definition'].get('fields'):
+            code, rows = framework.call('GET', f"/api/data/{item['key']}")
+            if code == 200 and rows:
+                top = max(top, max(row['id'] for row in rows))
+    return top
+
+
+def clear_since(framework, mark, by):
+    """Remove every record newer than the mark that this account made: the checks' own samples, and whatever followed
+    from them by itself (an effect that made an order out of a sample quotation). Newest first, forced where locked."""
+    left = []
+    for _ in range(3):
+        found = []
+        for item in framework.definitions():
+            if item['definition'].get('fields'):
+                code, rows = framework.call('GET', f"/api/data/{item['key']}")
+                found += [(row['id'], item['key']) for row in (rows if code == 200 else []) if row['id'] > mark and row.get('createdBy') == by]
+        if not found:
+            return []
+        left = []
+        for record, entity in sorted(found, reverse=True):
+            code, _ = framework.call('DELETE', f'/api/data/{entity}/{record}?force=true')
+            if code not in (204, 404):
+                left.append((entity, record))
     return left
 
 

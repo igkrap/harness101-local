@@ -51,6 +51,7 @@ class Framework:
 
     def _sign_in(self):
         account = json.loads(CREDENTIALS.read_text())
+        self.username = account['username']
         _, session = self._raw('GET', '/api/auth/session')
         self.csrf = {session['csrf']['headerName']: session['csrf']['token']}
         status, _ = self._raw('POST', '/api/auth/login', form={'username': account['username'], 'password': account['password']})

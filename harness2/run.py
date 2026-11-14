@@ -52,6 +52,7 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
     framework = Framework()
     result = {'request': request, 'folder': str(folder)}
     started = time.time()
+    mark = checks.high_water(framework) if part_of is None else None      # a step is cleaned up by the request it is part of
     try:
         if definition_file:
             proposal = json.loads(Path(definition_file).read_text(encoding='utf-8'))
@@ -199,6 +200,8 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
         pending, checks.LEFTOVER[:] = list(checks.LEFTOVER), []
         still = [item for item in checks.sweep(framework, pending) if not item[0].startswith(TRIAL)]
         checks.LEFTOVER[:] = []
+        if mark is not None:
+            still = checks.clear_since(framework, mark, framework.username)
         if still:
             result['leftover_rows'] = still
         result['seconds'] = round(time.time() - started, 1)
