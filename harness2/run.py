@@ -137,6 +137,10 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
         if definition.get('calendar'):
             part = definition['calendar']
             result['view'] = f"달력 화면 - {part['entity']} 자료를 {part['date']}" + (f" ~ {part['end']}" if part.get('end') else '') + ' 날짜로 보여 준다'
+        if definition.get('take'):
+            part = definition['take']
+            result['view'] = f"이어받기 화면 - {part['from']} 에서 아직 남은 것을 목록으로 조회해, 고른 줄로 {part['entity']} 을(를) 만든다 (입력 폼 없이 목록에서 처리)" \
+                + (f" / 상태 {', '.join(part['statuses'])} 인 건만" if part.get('statuses') else '') + (f" / 함께 넘기는 값: {', '.join(list(part.get('set') or {}) + list(part.get('lineSet') or (part.get('lines') or {}).get('set') or {}))}" if part.get('set') or part.get('lineSet') or part.get('lines') else '')
         if definition.get('tree'):
             part = definition['tree']
             result['view'] = f"트리 화면 - {part['entity']} 자료를 " + (f"{part['parent']} → {part['child']} 쌍으로 잇는다" if part.get('child') else f"{part['parent']} (상위) 아래로 묶는다")
@@ -173,7 +177,7 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
 
         current = next((item for item in framework.definitions() if item['key'] == key), None)
         if current and action == 'change':
-            notes, blocking = ([], []) if definition.get('summary') or current['definition'].get('summary') or definition.get('dashboard') or current['definition'].get('dashboard') or definition.get('over') or current['definition'].get('over') or any(definition.get(part) or current['definition'].get(part) for part in ('calendar', 'tree')) else impact(framework, key, current['definition'], definition)
+            notes, blocking = ([], []) if definition.get('summary') or current['definition'].get('summary') or definition.get('dashboard') or current['definition'].get('dashboard') or definition.get('over') or current['definition'].get('over') or any(definition.get(part) or current['definition'].get(part) for part in ('calendar', 'tree', 'take')) else impact(framework, key, current['definition'], definition)
             result.update(impact=notes, needs_decision=blocking)
             result['changes'], result['removed'] = define.differences(current['definition'], definition)
             if not result['changes']:
@@ -192,7 +196,7 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
         checked = define.repoint(definition, key, trial_key)
         trial = {name: value for name, value in checked.items() if name not in ('rules', 'effects')}
         framework.save_definition(trial_key, dict(trial, title=trial_title), 'DRAFT')
-        data = (checks.view_checks if definition.get('calendar') or definition.get('tree') else checks.over_checks if definition.get('over') else checks.dashboard_checks if definition.get('dashboard') else checks.summary_checks if definition.get('summary') else checks.record_checks)(trial_key, checked, framework)
+        data = (checks.take_checks if definition.get('take') else checks.view_checks if definition.get('calendar') or definition.get('tree') else checks.over_checks if definition.get('over') else checks.dashboard_checks if definition.get('dashboard') else checks.summary_checks if definition.get('summary') else checks.record_checks)(trial_key, checked, framework)
         screen = checks.screen_checks(trial_title, definition, folder / '2-check', app_url())
         results = data.results + screen.results
         (folder / '2-check').mkdir(exist_ok=True)
@@ -325,7 +329,7 @@ def say(result):
                 lines.append('분석 틀: ' + ', '.join(part['analysis']))
             if part['chart']:
                 lines.append('차트: ' + part['chart'])
-        else:
+        elif result.get('fields'):          # a screen over another entity (take-over, calendar, tree) has no fields of its own
             lines.append(('위쪽 항목: ' if result.get('lines') else '항목: ') + ', '.join(result.get('fields', [])))
         if result.get('lines'):
             lines.append('줄 표 항목: ' + ', '.join(result['lines']) + (f"  [{result['line_limit']}]" if result.get('line_limit') else ''))

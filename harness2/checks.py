@@ -752,6 +752,99 @@ def summary_checks(key, definition, framework):
     return report
 
 
+def take_checks(key, definition, framework):
+    """A take-over screen: what an earlier record leaves open is listed, chosen rows become the next-stage record, the open quantity
+    goes down by what was taken, and more than is open is refused - tried on an earlier record made for the occasion."""
+    report, made, part, api = Report(), [], definition['take'], f'/api/take/{key}'
+    earlier = next(item['definition'] for item in framework.definitions() if item['key'] == part['from'])
+    target = next(item['definition'] for item in framework.definitions() if item['key'] == part['entity'])
+    try:
+        code, shape = framework.call('GET', f'{api}/shape')
+        if not report.add('화면의 틀을 읽을 수 있다 (만들 자료, 물어볼 항목)', code == 200, f'{code} {shape}'):
+            return report
+        body = {field['name']: sample(field, framework, made) for field in earlier['fields'] if not _computed(field)}
+        if earlier.get('lines'):
+            body['lines'] = [_line(earlier['lines']['fields'], framework, made, 6)]
+        source = framework.ok('POST', f"/api/data/{part['from']}", fit(body, earlier, framework, made))
+        made.append((part['from'], source['id']))
+        wanted, status = part.get('statuses') or [], earlier.get('status') or {}
+        for _ in range(4):                   # walk the earlier record to a status this screen lists
+            if not wanted or source.get('status') in wanted:
+                break
+            step = next((action for action in status.get('actions', []) if source.get('status') in action['from'] and action['to'] in wanted), None) \
+                or next((action for action in status.get('actions', []) if source.get('status') in action['from'] and action['to'] != source.get('status')), None)
+            if not step:
+                break
+            code, after = framework.call('POST', f"/api/data/{part['from']}/{source['id']}/actions/{step['name']}")
+            if code != 200:
+                break
+            source = after
+        if wanted and source.get('status') not in wanted:
+            report.add(f"앞 단계 자료를 이 화면이 다루는 상태({', '.join(wanted)})로 만들 수 있다", False, f"상태 {source.get('status')} 에서 더 갈 수 없었다")
+            return report
+        mine = lambda rows: [row for row in rows if row.get('sourceId') == source['id']]
+        code, rows = framework.call('GET', api)
+        if not report.add('남은 것 목록이 조회된다', code == 200 and isinstance(rows, list), f'{code} {str(rows)[:200]}'):
+            return report
+        open_rows = mine(rows)
+        report.add('방금 만든 앞 단계 자료가 남은 수량 그대로 목록에 있다', bool(open_rows) and all(row['remaining'] == row['ordered'] and row['done'] == 0 for row in open_rows), f'{open_rows}')
+        if not open_rows:
+            return report
+        values = {field['name']: sample(field, framework, made) for field in target['fields'] if field['name'] in shape.get('ask', []) and not _computed(field)}
+        first = open_rows[0]
+        part_quantity = max(1, int(first['remaining'] // 2)) if first['remaining'] >= 2 else first['remaining']
+        code, answer = framework.call('POST', api, {'values': values, 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': first['remaining'] + 1}]})
+        report.add(f"남은 수량({first['remaining']:g})보다 많이 넘기면 거절된다", code == 400, f'{code} {answer}')
+        code, answer = framework.call('POST', api, {'values': values, 'rows': []})
+        report.add('고른 줄이 없으면 거절된다', code == 400, f'{code} {answer}')
+        code, answer = framework.call('POST', api, {'values': values, 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': part_quantity}]})
+        ok = code in (200, 201) and isinstance(answer, dict) and answer.get('count') == 1
+        for item in (answer.get('created') or []) if isinstance(answer, dict) else []:
+            made.append((part['entity'], item['id']))
+        if not report.add(f"줄을 골라 일부({part_quantity:g})만 넘기면 {target['title']} 자료 한 건이 만들어진다", ok, f'{code} {answer}'):
+            return report
+        new = framework.ok('GET', f"/api/data/{part['entity']}/{answer['created'][0]['id']}")
+        limit = next(item for item in target.get('limits') or [] if item['entity'] == part['from'])
+        holder = (new.get('lines') or [{}])[0] if limit.get('lines') else new
+        report.add('만들어진 자료에 넘긴 수량이 들어 있다', holder.get(limit['field']) == part_quantity, f"{holder.get(limit['field'])}")
+        pointer = next((mine_name for mine_name, theirs in zip(limit['by'], limit['entityBy']) if theirs == 'id'), None)
+        if pointer:
+            where = holder if pointer in holder else new
+            report.add('만들어진 자료가 앞 단계 자료를 가리킨다', where.get(pointer) == source['id'], f'{where.get(pointer)}')
+        for into, come in (part.get('set') or {}).items():
+            if come not in ('id', 'today'):
+                report.add(f'함께 넘긴 값: {into} 에 앞 단계의 {come} 이(가) 들어 있다', new.get(into) == source.get(come), f'{new.get(into)} / {source.get(come)}')
+        now = framework.ok('GET', f"/api/data/{part['from']}/{source['id']}")
+        if wanted and now.get('status') not in wanted:
+            report.add('넘긴 뒤 앞 단계 자료의 상태가 바뀌어 목록에서 빠진다', not mine(framework.ok('GET', api)), '')
+            return report
+        after = [row for row in mine(framework.ok('GET', api)) if row['line'] == first['line']]
+        left = first['remaining'] - part_quantity
+        report.add(f'넘긴 만큼 남은 수량이 줄어든다 ({first["remaining"]:g} → {left:g})', (not after and left == 0) or (bool(after) and after[0]['remaining'] == left and after[0]['done'] == part_quantity), f'{after}')
+        if left > 0 and after:
+            code, answer = framework.call('POST', api, {'values': values, 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': left}]})
+            for item in (answer.get('created') or []) if isinstance(answer, dict) else []:
+                made.append((part['entity'], item['id']))
+            gone = not [row for row in mine(framework.ok('GET', api)) if row['line'] == first['line']] if code in (200, 201) else False
+            report.add('나머지를 모두 넘기면 그 줄은 목록에서 빠진다', gone, f'{code} {answer}')
+    finally:
+        report.leftover = sweep(framework, made)
+    return report
+
+
+def take_screen_criteria(definition):
+    toolbar = '[role="toolbar"][aria-label="업무 버튼"]'
+    items = [('화면 틀이 있다', {'op': 'visible', 'selector': '[data-ui="business-workspace"]'}),
+             ('조회 조건 영역이 있다', {'op': 'visible', 'selector': 'form[data-ui="query-panel"]'}),
+             ('남은 것 목록이 있다', {'op': 'visible', 'selector': '[data-ui="take"] [data-ui="record-grid"]'}),
+             ('목록에 남은 수량 열이 있다', {'op': 'text', 'selector': '[data-ui="record-grid"]', 'contains': '남은 수량'}),
+             ('목록에 이번에 넘길 수량 열이 있다', {'op': 'text', 'selector': '[data-ui="record-grid"]', 'contains': '이번'}),
+             ('줄을 고르는 체크 칸이 있다', {'op': 'visible', 'selector': '[data-ui="record-grid"][data-selection="checkbox-multiple"]'})]
+    for label in ('조회', '저장'):
+        items.append((f'공통 버튼 {label} 이(가) 있다', {'op': 'visible', 'selector': f'{toolbar} >> role=button[name="{label}"]'}))
+    return [{'id': f'C{index + 1}', 'requirement_id': 'R1', 'description': description, 'check': check} for index, (description, check) in enumerate(items)]
+
+
 def over_checks(key, definition, framework):
     """A work screen: it lists only its statuses, takes only its actions, changes nothing else - tried on records made in the entity it is over."""
     report, made, part = Report(), [], definition['over']
@@ -1091,7 +1184,9 @@ def screen_checks(title, definition, record_to, app):
     """Open the screen in a real browser (read-only) and look for what the definition promises."""
     sys.path.insert(0, str(HARNESS))
     import standard_contract
-    if definition.get('calendar') or definition.get('tree'):
+    if definition.get('take'):
+        criteria = take_screen_criteria(definition)
+    elif definition.get('calendar') or definition.get('tree'):
         criteria = view_screen_criteria(definition)
     elif definition.get('over'):
         criteria = over_screen_criteria(definition)
@@ -1105,7 +1200,7 @@ def screen_checks(title, definition, record_to, app):
         sheet = {'path': '/api/x', 'fields': [{'name': field['name'], 'label': field['label'], 'required': field['required'], 'sample': 'x'} for field in definition['fields']
                                               if not field.get('showWhen') or _holds(field['showWhen'], {})]}
         criteria = standard_contract.screen_criteria(sheet)
-    if not any(definition.get(part) for part in ('summary', 'dashboard', 'over', 'calendar', 'tree')):
+    if not any(definition.get(part) for part in ('summary', 'dashboard', 'over', 'calendar', 'tree', 'take')):
         criteria.append({'id': f'C{len(criteria) + 1}', 'requirement_id': 'R1', 'description': '한 건을 양식으로 뽑는 출력 버튼이 있다',
                          'check': {'op': 'visible', 'selector': '[role="toolbar"][aria-label="업무 버튼"] >> role=button[name="출력"]'}})
     out = Path(record_to) / 'browser'

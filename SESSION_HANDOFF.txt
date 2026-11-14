@@ -1137,3 +1137,20 @@ print = standard form adjusted by definition, calendar and tree both)
 - Found on the way: the harness's commit step takes everything in the project folder, framework sources included (so a half-done framework
   change gets committed with a request); a deploy label with ':' or spaces broke the jar's file name (now cleaned); an empty moreLines list
   (as stored definitions are written out) was refused - control_check caught it.
+
+== 2026-11-15: take-over screens ("take") - many records handled in the list, no form ==
+- The user's correction: "앞 단계에서 이어받기" is NOT picking the earlier record inside the edit panel. It is: query by the earlier stage (수주),
+  tick rows in the grid, save - "절대 편집패널을 다수의 건에 대한 조작을 하려는게 아님". Rule kept in memory (grid-first-for-many-records).
+- Definition: {"title", "take": {entity, from, statuses?, set?, lines:{set}?, columns?}}. What is open comes from the limit `entity` has against
+  `from` (by <-> entityBy pairs, entityField - what entity already holds). No such limit -> refused with the limit to add.
+- Server: TakeController (/api/take/{key}/shape, GET list of open rows, POST {values, rows:[{sourceId,line,quantity}]}): rows giving the same
+  header values become one record; made through RecordController.create (the entity's own rules, effects, limits), all or nothing.
+  A stored definition writes the line mapping as "lineSet": parse reads both "lines.set" and "lineSet".
+- Screen: app/TakeScreen - conditions of the earlier screen, the new record's unfilled header fields asked once above the list (date = today),
+  editable grid with tick boxes and "이번 <수량>", toolbar 조회/저장 only. Default columns: number/first refs/date of the earlier record (3) + its line.
+- harness2: take_checks (19 checks: open list, too much refused, part taken -> record made with quantity/pointer/set values, open goes down,
+  rest taken -> row gone), take_screen_criteria, model rule in define.py ("앞 단계 자료를 조회해서 다음 단계를 등록" -> take).
+- Proven: shipment_from_order by hand (19 checks + browser: tick, edit cell, refused without warehouse, saved, open 3 -> 2);
+  inbound_from_purchase_order made by the local model from one sentence (445 s, 19 checks). Both left in local-only.
+- Not done: the case where the limit is "lines against a header quantity"; choosing which target header a row goes to beyond "same values";
+  after saving, the earlier record's status is not moved by this screen (the target's own effects do that, as before).
