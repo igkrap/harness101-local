@@ -515,7 +515,7 @@ def pack(project, state, log=None):
         note('윈도우용 팩 만들기 (최초 셋업, 업데이트)')
         made = windows_pack.write_zips(folder, version, VENDOR, site().packs, name, PWSH, service=site().service, title=site().title)
         files = {kind: {'name': made[kind].name, 'file': str(made[kind]), 'size': made[kind].stat().st_size} for kind in ('install', 'update')}
-        out.update(success=True, folder=str(folder), name=name, files=files, postgres=made['postgres'], scripts_parsed=made['script_check'] is not None,
+        out.update(success=True, folder=str(folder), name=name, files=files, program=_program(project), postgres=made['postgres'], scripts_parsed=made['script_check'] is not None,
                    screens=len(definitions), shipped=_marks(definitions), tag=f'pack-{stamp}')
         vcs.tag(project, out['tag'], '운영 셋업 팩 ' + out['started_at'])
         for old in sorted((path for path in site().packs.glob('*setup-*') if path.is_dir()), key=lambda path: path.name[-15:])[:-5]:       # the five newest packs are kept
@@ -602,17 +602,26 @@ def rollback(project, state, log=None):
     return deploy(project, state, log, previous=True)
 
 
+def _program(project):
+    """A mark of the program itself (server and screens sources), to tell whether a pack still holds the current one."""
+    return {'server': live.source_hash(Path(project) / 'backend')[:12], 'web': _web_hash(Path(project) / 'frontend')[:16]}
+
+
 def status(project, state):
-    """For the platform's home: the newest pack, this machine's operating copy, and what has been made since the last pack or deployment."""
-    last_pack, last_deploy = _last(state, 'pack'), _last(state, 'deploy')
-    out = {'url': site().ops_url, 'project': site().title, 'exists': (_copy_home() / '.env').is_file(), 'last': last_deploy, 'pending': None,
-           'pack': last_pack and last_pack.get('files') and {'started_at': last_pack['started_at'], 'screens': last_pack.get('screens'), 'stamp': last_pack['stamp'],
-                                                           'files': {kind: {'name': item['name'], 'size': item['size']} for kind, item in last_pack['files'].items()}}}
+    """For the platform's home: the packs made so far (newest first) and whether the newest still holds everything made."""
+    made = [item for item in history(state, 200) if item.get('success') and item.get('kind') == 'pack' and item.get('files')
+            and all(Path(file['file']).is_file() for file in item['files'].values())][:6]
+    packs = [{'stamp': item['stamp'], 'started_at': item['started_at'], 'screens': item.get('screens'),
+              'files': {kind: {'name': file['name'], 'size': file['size']} for kind, file in item['files'].items()}} for item in made]
+    out = {'project': site().title, 'packs': packs, 'pending': None, 'current': False}
     try:
         here = _definitions(site().db)
-        marks, shipped = _marks(here), ((last_deploy or last_pack or {}).get('shipped') or {})
+        marks, shipped = _marks(here), ((made[0] if made else {}).get('shipped') or {})
+        program = bool(made) and made[0].get('program') is not None and made[0]['program'] != _program(project)
         out['pending'] = {'new': [row['definition']['title'] for key, row in here.items() if key not in shipped],
-                          'changed': [row['definition']['title'] for key, row in here.items() if key in shipped and shipped[key] != marks[key]], 'program': False}
+                          'changed': [row['definition']['title'] for key, row in here.items() if key in shipped and shipped[key] != marks[key]],
+                          'removed': len([key for key in shipped if key not in here]), 'program': program}
+        out['current'] = bool(made) and not out['pending']['new'] and not out['pending']['changed'] and not out['pending']['removed'] and not program
     except Exception as error:      # the home page still opens when docker is down
         out['error'] = str(error)[:200]
     return out

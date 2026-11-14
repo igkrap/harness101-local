@@ -159,3 +159,13 @@ select, input:not([type=checkbox]):not([type=radio]) { font-size: 13px; }
 /* The project in hand, in the heading of the request box. */
 .home-project { display: inline-flex; align-items: center; gap: 6px; margin-right: 10px; padding: 0 8px; line-height: 20px; border-radius: 2px; background: var(--color-accent); color: var(--color-on-accent); font-weight: 600; }
 .home-project em { font-style: normal; font-weight: 400; font-size: 11px; opacity: .85; }
+
+/* Deployment: the line, and under it the downloads when asked for. */
+.home-ops-box { border: 1px solid var(--color-border-emphasized); border-radius: 3px; background: var(--color-background-surface); }
+.home-ops-box .home-ops { border: 0; border-radius: 0; background: transparent; }
+.home-ops-files, .home-ops-older { display: flex; align-items: center; gap: 16px; margin: 0; padding: 6px 10px; border-top: 1px solid var(--color-border); font-size: 12.5px; }
+.home-ops-older { flex-direction: column; align-items: stretch; gap: 4px; list-style: none; }
+.home-ops-older li { display: flex; gap: 16px; }
+.home-ops-older li.dim { color: var(--color-text-secondary); font-size: 12px; }
+.home-ops-files a, .home-ops-older a { color: var(--color-accent); text-decoration: none; }
+.home-ops-files a:hover, .home-ops-older a:hover { text-decoration: underline; }

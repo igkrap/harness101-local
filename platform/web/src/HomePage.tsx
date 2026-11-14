@@ -29,39 +29,53 @@ function examplesFor(screens: string[]) {
   return [`${a} 화면에 비고 칸 추가해줘`, `${b || a} 화면 결과 목록에 등록일 열 추가해줘`, "거래처 등록 화면 만들어줘"];
 }
 
-type Release = { stamp: string; started_at: string; success?: boolean; kind?: string };
 type PackFile = { name: string; size: number };
-type Pack = { started_at: string; screens: number; files: { install: PackFile; update: PackFile } };
-type ReleaseStatus = { url: string; exists: boolean; last: Release | null; pack: Pack | null; pending: { new: string[]; changed: string[] } | null; error?: string };
-/** Operation in one line: the newest setup pack (to take to any server), what has been made since, and this machine's own operating copy. */
+type Pack = { stamp: string; started_at: string; screens: number; files: { install: PackFile; update: PackFile } };
+type ReleaseStatus = { project: string; packs: Pack[]; current: boolean; pending: { new: string[]; changed: string[]; removed: number; program: boolean } | null; error?: string };
 const mb = (bytes: number) => `${Math.round(bytes / 1024 / 1024)}MB`;
-function Operation({ refreshKey, busy, onAsk }: { refreshKey: string; busy: boolean; onAsk: (goal: string) => void }) {
-  const [state, setState] = useState<{ status: ReleaseStatus; history: Release[] } | null>(null);
+function PackLinks({ pack }: { pack: Pack }) {
+  return <>
+    <a href={apiUrl(`/api/release/packs/${pack.files.install.name}`)} title="빈 윈도우 서버에: 자바, PostgreSQL, DB, 서비스 등록까지. install.bat 을 관리자 권한으로 실행">최초 셋업 팩 ({mb(pack.files.install.size)})</a>
+    <a href={apiUrl(`/api/release/packs/${pack.files.update.name}`)} title="이미 설치된 서버에: update.bat 을 관리자 권한으로 실행. 더 새 버전이 설치된 서버에는 update.bat -Force">업데이트 팩 ({mb(pack.files.update.size)})</a>
+  </>;
+}
+/**
+ * Deployment in one line. "현재 버전 배포 다운로드" hands over the setup packs of what the project holds right now (making them
+ * first when the newest pack is behind); earlier versions stay listed for taking an operating server back by hand.
+ */
+function Operation({ refreshKey, busy, onOrder }: { refreshKey: string; busy: boolean; onOrder: (goal: string) => void }) {
+  const [status, setStatus] = useState<ReleaseStatus | null>(null);
+  const [open, setOpen] = useState(false), [wanted, setWanted] = useState(false), [older, setOlder] = useState(false);
   useEffect(() => {
     const c = new AbortController();
-    apiFetch("/api/release", { signal: c.signal }).then(r => r.json()).then(setState).catch(() => {});
+    apiFetch("/api/release", { signal: c.signal }).then(r => r.json()).then(d => setStatus(d.status)).catch(() => {});
     return () => c.abort();
   }, [refreshKey]);
-  if (!state) return null;
-  const { status } = state, pending = status.pending, pack = status.pack;
-  const waiting = pending ? pending.new.length + pending.changed.length : 0;
+  // Asked for while the newest pack was behind: the downloads open by themselves once the new pack is there.
+  useEffect(() => { if (wanted && status?.current) { setWanted(false); setOpen(true); } }, [wanted, status?.current]);
+  if (!status) return null;
+  const pending = status.pending, newest = status.packs[0];
+  const waiting = pending ? pending.new.length + pending.changed.length + pending.removed : 0;
   const names = pending ? [...pending.new, ...pending.changed] : [];
-  const installs = state.history.filter(r => r.success && r.kind === "deploy").length;
-  return <section className="home-ops" aria-label="운영">
-    <strong>운영 셋업 팩</strong>
-    {pack ? <span>{when(pack.started_at)} ·{" "}
-        <a href={apiUrl(`/api/release/packs/${pack.files.install.name}`)} title="빈 윈도우 서버에: 자바, PostgreSQL, DB, 서비스 등록까지. install.bat 을 관리자 권한으로 실행">최초 셋업 팩 ({mb(pack.files.install.size)})</a>{" · "}
-        <a href={apiUrl(`/api/release/packs/${pack.files.update.name}`)} title="이미 설치된 서버에: update.bat 을 관리자 권한으로 실행. 실패하면 자동으로 이전 상태로 되돌립니다">업데이트 팩 ({mb(pack.files.update.size)})</a></span>
-      : <span className="dim">아직 만든 팩이 없습니다</span>}
-    {pending && (pack || status.last) && <span className={waiting ? "home-ops-wait" : "dim"} title={names.join(", ")}>
-      {waiting ? `그 뒤로 바뀐 화면 ${waiting}개${pending.new.length ? ` (새 화면 ${pending.new.length})` : ""}` : "개발과 같음"}</span>}
-    {status.exists && <span className="dim">이 맥의 운영 <a href={status.url} target="_blank" rel="noreferrer">{status.url.replace("http://", "")}</a>{status.last ? ` · ${when(status.last.started_at)} 설치` : ""}</span>}
-    {status.error && <span className="dim" title={status.error}>상태를 읽지 못함</span>}
-    <span style={{ flex: 1 }} />
-    <button type="button" className="home-btn" disabled={busy} title="지금까지 만든 화면을 깃에 기록합니다" onClick={() => onAsk("지금까지 만든 것을 커밋해줘")}>커밋</button>
-    {installs > 1 && <button type="button" className="home-btn" disabled={busy} onClick={() => { if (window.confirm("이 맥의 운영을 이전 팩으로 되돌릴까요? (운영에 입력된 자료는 그대로 둡니다)")) onAsk("이전 배포로 되돌려줘"); }}>이전 팩으로</button>}
-    <button type="button" className="home-btn" disabled={busy} title="셋업 팩을 만들어 이 맥의 운영 한 벌에 설치합니다" onClick={() => onAsk("운영에 배포해줘")}>이 맥의 운영에 설치</button>
-    <button type="button" className="home-btn primary" disabled={busy} title="커밋한 뒤 최초 셋업 팩과 업데이트 팩을 만듭니다" onClick={() => onAsk("운영 셋업 팩 만들어줘")}>셋업 팩 만들기</button>
+  const behind = !status.current;
+  const download = () => { if (behind) { setOpen(false); setWanted(true); onOrder("운영 셋업 팩 만들어줘"); } else setOpen(value => !value); };
+  return <section className="home-ops-box" aria-label="배포">
+    <div className="home-ops">
+      <strong>배포</strong>
+      {!newest ? <span className="dim">아직 만든 버전이 없습니다</span>
+        : status.current ? <span className="dim">현재 버전 {when(newest.started_at)} · 화면 {newest.screens}개</span>
+        : <span className="home-ops-wait" title={names.join(", ")}>마지막 버전({when(newest.started_at)}) 뒤로 바뀜{waiting ? `: 화면 ${waiting}개` : ""}{pending?.program ? `${waiting ? ", " : ": "}프로그램` : ""}</span>}
+      {wanted && <span className="dim">현재 버전을 만드는 중… 끝나면 받기가 열립니다</span>}
+      {status.error && <span className="dim" title={status.error}>상태를 읽지 못함</span>}
+      <span style={{ flex: 1 }} />
+      <button type="button" className="home-btn" disabled={busy} title="지금까지 만든 화면을 깃에 기록합니다" onClick={() => onOrder("지금까지 만든 것을 커밋해줘")}>커밋</button>
+      {status.packs.length > (status.current ? 1 : 0) && <button type="button" className="home-btn" aria-expanded={older} title="전에 만든 버전의 팩 (운영 서버를 이전 버전으로 직접 돌릴 때)" onClick={() => setOlder(value => !value)}>이전 버전</button>}
+      <button type="button" className="home-btn primary" disabled={busy || wanted} aria-expanded={open} title={behind ? "지금 상태로 셋업 팩을 만든 뒤 받습니다" : "현재 버전의 셋업 팩을 받습니다"} onClick={download}>현재 버전 배포 다운로드</button>
+    </div>
+    {open && newest && status.current && <div className="home-ops-files" data-ui="pack-current"><span>현재 버전 {when(newest.started_at)}</span><PackLinks pack={newest} /></div>}
+    {older && <ul className="home-ops-older" data-ui="pack-older">{status.packs.slice(status.current ? 1 : 0).map(pack =>
+      <li key={pack.stamp}><span>{when(pack.started_at)} · 화면 {pack.screens}개</span><PackLinks pack={pack} /></li>)}
+      <li className="dim">운영 서버를 이전 버전으로 돌리려면 그 버전의 업데이트 팩을 풀고 update.bat -Force 를 실행합니다. 최근 5개 버전을 보관합니다.</li></ul>}
   </section>;
 }
 
@@ -169,7 +183,7 @@ export default function HomePage(props: {
           <button key={t} type="button" onClick={() => { setGoal(t); area.current?.focus(); }}>{t}</button>)}</div>}
     </section>
 
-    <Operation refreshKey={`${queue?.id}:${queue?.status}`} busy={props.busy || live} onAsk={text => { void props.onOrder(text); }} />
+    <Operation refreshKey={`${queue?.id}:${queue?.status}`} busy={props.busy || live} onOrder={text => { void props.onOrder(text); }} />
 
     {queue && <section className={`home-card tone-${tone}`} aria-label="진행 상황">
       <header className="home-card-head">
