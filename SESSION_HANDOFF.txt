@@ -858,3 +858,14 @@ Orca CLI selected /Applications/Orca.app/Contents/Resources/bin/orca, skill read
 - Looks: screen style setting (solid = default: grey page, white panels, light grey rounded table headings; tint; plain). User rejected pastel tint ("AI 느낌") and
   navy heading rows ("촌스럽다"). Home backdrop: canvas dot field reacting to the pointer and clicks. No drag text selection in the app. Explanatory sentences
   removed from the permission screens on request.
+
+[2026-11-14, later] Several screens per request; no confirmation step; undo
+- The user does not want a review step ("저성능모델로 최대한 내가 일을 안하고싶은 환경"): mistakes are to be caught without the person, and undone cheaply.
+- harness2: a request needing several screens is answered {"action":"steps","steps":[...]} and done in order (part_of, 2-6 steps, stops at the first that is not
+  applied, earlier steps stay). define._mismatch: the model reads its result (described in words / the list of changes) against the request (~10 s);
+  a difference goes back once, a remaining one is shown as "⚠ 확인해 볼 점". run.undo(result) puts back before.json or removes a created screen (refuses when
+  the screen changed again, holds records, or is used). Trial copies are removed when nothing is accepted.
+- Platform: one item per step; POST /api/queues/{id}/undo; "되돌리기" on the card and in the recent table.
+- Framework: a field of another screen may be given by its label ("사원명"); the refusal lists name=label for every field (a model failed four times on the old message).
+- Local model through the platform: purchase dashboard (2 summaries + board), "입고 완료" status + inbound effect (2 screens), single-screen control not split,
+  two requests applied then both undone. The self-reading step has not yet been seen catching a real mismatch.

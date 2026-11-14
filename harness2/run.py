@@ -179,7 +179,9 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
                 return result
         (folder / '3-apply').mkdir(exist_ok=True)
         (folder / '3-apply' / 'published.json').write_text(json.dumps(saved, ensure_ascii=False, indent=1), encoding='utf-8')
-        result.update(status='applied', program=saved['programCode'], revision=saved['revision'])
+        # What was there before, kept with the run: this is what "undo" puts back.
+        (folder / '3-apply' / 'before.json').write_text(json.dumps(current, ensure_ascii=False, indent=1), encoding='utf-8')
+        result.update(status='applied', program=saved['programCode'], revision=saved['revision'], created=current is None)
         return result
     except Exception as problem:
         result.update(status='error', error=str(problem)[:600])
@@ -194,6 +196,42 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
             result['leftover_rows'] = still
         result['seconds'] = round(time.time() - started, 1)
         (folder / 'result.json').write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding='utf-8')
+
+
+def undo(result):
+    """Take back what a request applied: a changed screen gets its earlier definition again, a new screen is removed.
+    Steps are undone last first. Refused (with the reason) when the screen was changed again afterwards, or when a new
+    screen already holds records or is used by another screen - nothing is forced. Returns (done, lines of plain words)."""
+    framework, lines, done = Framework(), [], True
+    parts = [item for item in result.get('steps', [])] if result.get('planned') else [result]
+    for item in reversed([part for part in parts if part.get('status') == 'applied']):
+        key, title = item['key'], item.get('title') or item['key']
+        now = next((one for one in framework.definitions() if one['key'] == key), None)
+        if now is None:
+            lines.append(f'{title}: 이미 없습니다.')
+            continue
+        if now['revision'] != item.get('revision'):
+            lines.append(f'{title}: 이 요청 뒤에 화면이 또 바뀌어서 되돌리지 않았습니다. 더 최근 요청부터 되돌려야 합니다.')
+            done = False
+            break
+        before = Path(item['folder']) / '3-apply' / 'before.json'
+        earlier = json.loads(before.read_text(encoding='utf-8')) if before.exists() else None
+        try:
+            if item.get('created') or earlier is None:
+                code, answer = framework.delete_definition(key)
+                if code != 200:
+                    raise RuntimeError((answer or {}).get('detail') or str(answer))
+                lines.append(f'{title}: 새로 만든 화면을 없앴습니다.')
+            else:
+                framework.save_definition(key, define.clean(earlier['definition']), earlier['status'])
+                lines.append(f'{title}: 이 요청 전의 모습으로 되돌렸습니다.')
+        except Exception as problem:
+            lines.append(f'{title}: 되돌리지 못했습니다 - {str(problem)[:200]}')
+            done = False
+            break
+    if not lines:
+        lines, done = ['되돌릴 것이 없습니다 (적용된 것이 없는 요청입니다).'], False
+    return done, lines
 
 
 def say(result):

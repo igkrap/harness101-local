@@ -66,6 +66,7 @@ export default function HomePage(props: {
   queue: TaskQueue | null | undefined; active: ActiveJob; phase: string;
   onStopQueue: (id: string) => void; onResumeQueue: (id: string) => void; onStopJob: () => void;
   onOpenApp: () => void; onOpenHistory: () => void; onDetail: (jobId: string) => void; focusKey: number;
+  /** Take back what a request applied; resolves when done. */ onUndo: (id: string) => Promise<void>;
   events: RunEvent[]; eventsJob?: string;
 }) {
   const { goal, setGoal, queue } = props;
@@ -89,6 +90,11 @@ export default function HomePage(props: {
   const [label, tone] = queue ? queueStatus[queue.status] || [queue.status, "muted"] : ["", ""];
   const failedJob = queue?.items.find(i => i.status === "failed")?.job_id;
   const lastJob = [...(queue?.items || [])].reverse().find(i => i.job_id)?.job_id;
+  const [undoing, setUndoing] = useState("");
+  const canUndo = (q: TaskQueue) => q.route === "definition" && !q.undone && !!q.definition_result && (q.definition_result.status === "applied" || q.definition_result.status === "partial");
+  const undo = (q: TaskQueue) => { if (undoing || !window.confirm(`"${q.goal.slice(0, 60)}" 요청으로 바뀐 것을 되돌릴까요?`)) return;
+    setUndoing(q.id); void props.onUndo(q.id).catch(e => window.alert(String(e instanceof Error ? e.message : e))).finally(() => { setUndoing("");
+      apiFetch("/api/queues").then(r => r.json()).then(d => setRecent(d.queues || [])).catch(() => {}); }); };
   const others = recent.filter(q => q.id !== queue?.id).slice(0, 40);
 
   return <div className="home">
@@ -133,6 +139,8 @@ export default function HomePage(props: {
         {["failed", "stopped", "interrupted"].includes(queue.status) && <button type="button" className="home-btn primary" disabled={props.busy} onClick={() => props.onResumeQueue(queue.id)}>이어서 실행</button>}
         {queue.status === "succeeded" && <button type="button" className="home-btn primary" onClick={props.onOpenApp}>앱에서 보기</button>}
         {queue.status === "succeeded" && <button type="button" className="home-btn" onClick={props.onOpenHistory}>변경 이력</button>}
+        {canUndo(queue) && <button type="button" className="home-btn" disabled={!!undoing || live} onClick={() => undo(queue)}>{undoing === queue.id ? "되돌리는 중…" : "되돌리기"}</button>}
+        {queue.undone && <span className="home-time">되돌린 요청</span>}
         {(failedJob || lastJob) && <button type="button" className="home-link" onClick={() => props.onDetail((failedJob || lastJob)!)}>실행 기록 자세히</button>}
       </div>
     </section>}
@@ -146,7 +154,7 @@ export default function HomePage(props: {
 
     {others.length > 0 && <section className="home-recent" aria-label="최근 요청">
       <table className="biz-table">
-        <colgroup><col style={{ width: 62 }} /><col /><col style={{ width: "22%" }} /><col style={{ width: 58 }} /><col style={{ width: 56 }} /><col style={{ width: 84 }} /><col style={{ width: 104 }} /><col style={{ width: 44 }} /></colgroup>
+        <colgroup><col style={{ width: 62 }} /><col /><col style={{ width: "22%" }} /><col style={{ width: 58 }} /><col style={{ width: 56 }} /><col style={{ width: 84 }} /><col style={{ width: 104 }} /><col style={{ width: 104 }} /></colgroup>
         <thead><tr><th>상태</th><th>요청</th><th>결과</th><th>구분</th><th className="num">검사</th><th className="num">걸린 시간</th><th>일시</th><th /></tr></thead>
         <tbody>{others.map(q => { const [l, t] = queueStatus[q.status] || [q.status, "muted"]; const job = [...q.items].reverse().find(i => i.job_id)?.job_id; const r = q.definition_result;
           const failed = r?.failed?.length || 0;
@@ -159,7 +167,9 @@ export default function HomePage(props: {
             <td className="num">{r?.checks ? (failed ? `${r.checks - failed}/${r.checks}` : r.checks) : ""}</td>
             <td className="num">{r?.seconds ? `${Math.round(r.seconds)}초` : since(q.created_at, q.finished_at)}</td>
             <td className="dim">{when(q.created_at)}</td>
-            <td>{job && <button type="button" className="biz-link" onClick={() => props.onDetail(job)}>기록</button>}</td>
+            <td>{job && <button type="button" className="biz-link" onClick={() => props.onDetail(job)}>기록</button>}
+              {canUndo(q) && <button type="button" className="biz-link" style={{ marginLeft: 8 }} disabled={!!undoing} onClick={() => undo(q)}>{undoing === q.id ? "…" : "되돌리기"}</button>}
+              {q.undone && <span className="dim" style={{ marginLeft: 8 }}>되돌림</span>}</td>
           </tr>; })}</tbody>
       </table>
     </section>}

@@ -157,6 +157,26 @@ class QueueManager:
         self._spawn(queue['id'], plan=True)
         return queue
 
+    def undo(self, queue_id):
+        """Take back what a definition request applied (the screens it made or changed)."""
+        with self.lock:
+            queue = self.get(queue_id)
+            if self.active():
+                raise RuntimeError('실행 중인 요청이 끝난 뒤에 되돌릴 수 있습니다.')
+            if queue.get('route') != 'definition' or not queue.get('definition_result'):
+                raise RuntimeError('되돌릴 수 있는 요청이 아닙니다.')
+            if queue.get('undone'):
+                raise RuntimeError('이미 되돌린 요청입니다.')
+        import sys
+        folder = str(Path(__file__).resolve().parents[1] / 'harness2')
+        if folder not in sys.path:
+            sys.path.insert(0, folder)
+        import run as definition_run
+        done, lines = definition_run.undo(queue['definition_result'])
+        note = '되돌리기: ' + ' / '.join(lines)
+        self._update(queue_id, undone=bool(done), undo_note=note, detail=(queue.get('detail') or '') + '\n\n' + note)
+        return self.get(queue_id)
+
     def resume(self, queue_id):
         with self.lock:
             queue = self.get(queue_id)

@@ -2,7 +2,7 @@ import { Button } from "@astryxdesign/core/Button";
 import "./queue.css";
 
 export type QueueItem = { domain: string; title: string; checks: string[]; status: string; job_id: string | null; attempts?: number; deploy?: string; deploy_note?: string };
-export type TaskQueue = { id: string; goal: string; status: string; items: QueueItem[]; detail?: string; plan_seconds?: number; plan_fallback?: boolean; created_at: string; finished_at?: string | null;
+export type TaskQueue = { id: string; goal: string; status: string; items: QueueItem[]; detail?: string; plan_seconds?: number; plan_fallback?: boolean; created_at: string; finished_at?: string | null; route?: string; undone?: boolean;
   /** The outcome of a definition-route request (harness2). */ definition_result?: { status?: string; action?: string; key?: string; title?: string; checks?: number; seconds?: number; failed?: unknown[] } };
 
 const statusLabel: Record<string, string> = {

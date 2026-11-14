@@ -704,6 +704,8 @@ class Handler(BaseHTTPRequestHandler):
                 if action=='branch':self.send_json(vcs.switch(app.project,body.get('name'),bool(body.get('create'))));return
                 if action=='push':self.send_json(vcs.push(app.project));return
             if parsed.path=='/api/queues':self.send_json(app.queues.create(body),201);return
+            match=re.fullmatch(r'/api/queues/([a-f0-9]{32})/undo',parsed.path)
+            if match:self.send_json(app.queues.undo(match.group(1)));return
             match=re.fullmatch(r'/api/queues/([a-f0-9]{32})/(stop|resume)',parsed.path)
             if match:self.send_json(app.queues.stop(match.group(1)) if match.group(2)=='stop' else app.queues.resume(match.group(1)));return
             if parsed.path=='/api/jobs':
