@@ -31,12 +31,15 @@ from pathlib import Path
 
 import backend_deploy as live
 import project_git as vcs
+import windows_pack
 
 PROD_PORT, PROD_PROJECT, TRIAL_PORT = 5300, 'local-only-ops', 5390
 OLD_CONTAINER = 'mdi-prod-api'      # the first operating copy (before packs); stopped when the pack-based one takes its port
 PROD_URL = f'http://127.0.0.1:{PROD_PORT}'
 PROD_HOME = live.SHARE / 'prod/local-only'
 PACKS = live.SHARE / 'packs/local-only'
+VENDOR = live.SHARE / 'vendor/windows'      # the Windows runtime pieces (Java, PostgreSQL ...), downloaded once
+PWSH = live.SHARE / 'tools/pwsh/pwsh'        # PowerShell, to parse-check the Windows scripts (they cannot be run on this machine)
 APP_IMAGE = 'eclipse-temurin:17-jre'
 
 
@@ -131,7 +134,18 @@ def _titles(project, paths):
 
 
 def record(project, message=None):
-    """Write the bundle and commit every pending change of the project. Returns what was recorded (commit None = nothing new)."""
+    """Write the bundle and commit every pending change of the project. Returns what was recorded (commit None = nothing new).
+    Another git command may be at work in the project at the same moment (the platform's own pages read its state): then it waits and tries again."""
+    for attempt in range(6):
+        try:
+            return _record(project, message)
+        except RuntimeError as error:
+            if 'index.lock' not in str(error) or attempt == 5:
+                raise
+            time.sleep(1.5)
+
+
+def _record(project, message=None):
     vcs.ensure_repo(project)
     write_bundle(project)
     changed = [line[3:].strip().strip('"') for line in vcs._git(project, 'status', '--porcelain', '--untracked-files=all', raw=True).splitlines() if line.strip()]
@@ -499,15 +513,17 @@ def pack(project, state, log=None):
                 (folder / file).chmod(0o755)
         step = 'trial'
         out['trial'] = _try_pack(folder, len(definitions), note)
-        step = 'zip'
-        note('압축')
-        archive = shutil.make_archive(str(PACKS / name), 'zip', root_dir=PACKS, base_dir=name)
-        out.update(success=True, folder=str(folder), file=archive, name=name + '.zip', size=Path(archive).stat().st_size, screens=len(definitions), shipped=_marks(definitions),
-                   tag=f'pack-{stamp}')
+        step = 'windows'
+        note('윈도우용 팩 만들기 (최초 셋업, 업데이트)')
+        made = windows_pack.write_zips(folder, version, VENDOR, PACKS, name, PWSH)
+        files = {kind: {'name': made[kind].name, 'file': str(made[kind]), 'size': made[kind].stat().st_size} for kind in ('install', 'update')}
+        out.update(success=True, folder=str(folder), name=name, files=files, postgres=made['postgres'], scripts_parsed=made['script_check'] is not None,
+                   screens=len(definitions), shipped=_marks(definitions), tag=f'pack-{stamp}')
         vcs.tag(project, out['tag'], '운영 셋업 팩 ' + out['started_at'])
-        for old in sorted(PACKS.glob('setup-pack-*.zip'))[:-5]:       # the five newest packs are kept
-            old.unlink()
-            shutil.rmtree(PACKS / old.stem, ignore_errors=True)
+        for old in sorted(path for path in PACKS.glob('setup-pack-*') if path.is_dir())[:-5]:       # the five newest packs are kept
+            shutil.rmtree(old, ignore_errors=True)
+            for file in PACKS.glob(old.name + '*.zip'):
+                file.unlink()
     except Exception as error:
         out.update(success=False, step=step, error=str(error)[-1200:])
     out['finished_at'] = time.strftime('%Y-%m-%dT%H:%M:%S')
@@ -589,7 +605,9 @@ def rollback(project, state, log=None):
 def status(project, state):
     """For the platform's home: the newest pack, this machine's operating copy, and what has been made since the last pack or deployment."""
     last_pack, last_deploy = _last(state, 'pack'), _last(state, 'deploy')
-    out = {'url': PROD_URL, 'exists': (_copy_home() / '.env').is_file(), 'last': last_deploy, 'pack': last_pack and {key: last_pack.get(key) for key in ('name', 'size', 'started_at', 'screens', 'stamp')}, 'pending': None}
+    out = {'url': PROD_URL, 'exists': (_copy_home() / '.env').is_file(), 'last': last_deploy, 'pending': None,
+           'pack': last_pack and last_pack.get('files') and {'started_at': last_pack['started_at'], 'screens': last_pack.get('screens'), 'stamp': last_pack['stamp'],
+                                                           'files': {kind: {'name': item['name'], 'size': item['size']} for kind, item in last_pack['files'].items()}}}
     try:
         here = _definitions(live.DB_NAME)
         marks, shipped = _marks(here), ((last_deploy or last_pack or {}).get('shipped') or {})
@@ -602,7 +620,7 @@ def status(project, state):
 
 def pack_file(state, name):
     """The zip of a pack by its file name (only names this module made)."""
-    if not re.fullmatch(r'setup-pack-\d{8}-\d{6}\.zip', name or ''):
+    if not re.fullmatch(r'setup-pack-\d{8}-\d{6}-(install|update)\.zip', name or ''):
         raise ValueError('팩 이름이 올바르지 않습니다.')
     path = PACKS / name
     if not path.is_file():
@@ -641,15 +659,19 @@ def say(kind, result):
     if kind == 'pack':
         if not result.get('success'):
             return f"셋업 팩을 만들지 못했습니다 ({result.get('step')} 단계): {result.get('error', '')[:500]}"
-        return (f"운영 셋업 팩을 만들었습니다: {result['name']} ({_size(result['size'])}, 화면 {result['screens']}개)\n"
-                f"빈 환경에 시험 설치해 확인했습니다 ({result.get('trial', '')}; 관리자 로그인 확인).\n"
-                f"파일 위치: {result['file']}\n서버에 풀고 sh install.sh 를 실행하면 설치됩니다 (도커 필요). 이미 설치된 곳은 덮어쓴 뒤 sh update.sh.")
+        files = result['files']
+        return (f"운영 셋업 팩을 만들었습니다 (윈도우 서버용, 화면 {result['screens']}개):\n"
+                f"  최초 셋업 팩  {files['install']['name']} ({_size(files['install']['size'])}) - 빈 서버에 자바·PostgreSQL {result.get('postgres', '')}·DB·서비스까지 설치 (install.bat)\n"
+                f"  업데이트 팩   {files['update']['name']} ({_size(files['update']['size'])}) - 설치된 서버를 새 버전으로 (update.bat, 실패하면 자동으로 이전 상태로)\n"
+                f"팩에 든 프로그램·화면·화면 정의는 빈 환경에 설치해 확인했습니다 ({result.get('trial', '')}; 관리자 로그인 확인).\n"
+                f"⚠ 윈도우용 설치 스크립트는 문법 검사만 했습니다 (이 맥에서는 윈도우 설치를 돌려 볼 수 없음). 실제 윈도우에서 한 번 설치해 보고 쓰세요.\n"
+                f"파일 위치: {PACKS}")
     if not result.get('success'):
         back = ' 운영은 이전 팩으로 되돌렸습니다.' if result.get('restored') else ' 운영은 그대로입니다.'
         return f"배포하지 못했습니다 ({result.get('step')} 단계): {result.get('error', '')[:400]}{back}"
     lines = [('이전 팩으로 되돌렸습니다' if result.get('rollback') else '이 맥에 운영 한 벌을 새로 설치했습니다' if result.get('first') else '운영에 배포했습니다') + f" - {result['url']} ({result.get('detail', '')})"]
     if result.get('pack'):
-        lines.append(f"설치한 팩: {result['pack']} (다른 서버에도 같은 팩으로 설치할 수 있습니다)")
+        lines.append(f"설치한 팩: {result['pack']}")
     if result.get('first'):
         lines.append('운영 관리자(admin)의 첫 비밀번호는 platform/state/auth/prod-login.json 에 있습니다. 들어가서 바꾸세요.')
     return '\n'.join(lines)

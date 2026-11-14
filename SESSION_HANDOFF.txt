@@ -955,3 +955,19 @@ Orca CLI selected /Applications/Orca.app/Contents/Resources/bin/orca, skill read
 - install.sh and update.sh were run by hand on an unpacked zip (port 5391) and removed again.
 - Leftovers from the first approach: database mdi_prod in mdi-db (no records) and platform/state/auth/prod-deployer.json are unused; not deleted (ask the user).
   This Mac's docker has a broken credential helper; release._compose uses its own DOCKER_CONFIG.
+
+[2026-11-14, late night] Windows setup packs: first setup vs update (user: 윈도우 서버/PC, no internet; "최초셋업은 DB까지 설치하고 런타임환경 잡는거까지")
+- "셋업 팩 만들어줘" now makes two zips (platform/windows_pack.py, called from release.pack after the Docker trial of the application layer):
+  setup-pack-<stamp>-install.zip (~170MB): app/ web/ release/ + runtime/ (Temurin JRE 17, PostgreSQL 17.11 Windows binaries without pgAdmin/doc/include,
+  WinSW, vc_redist) + scripts/*.ps1 + install.bat. install.ps1: refuses if already installed, copies to C:\ERP (-Dir), VC++ runtime if missing, initdb
+  (scram, UTC, localhost, port 5433), services <Name>-DB (pg_ctl register) and <Name>-APP (WinSW), firewall rule, waits, checks release_status,
+  writes admin-first-password.txt (ACL: administrators only).
+  setup-pack-<stamp>-update.zip (~50MB, no runtime): update.ps1 refuses same/older version (-Force), pg_dump backup, swaps app/web/release, and on failure
+  restores the previous application and the dump. Any installed version can take any newer update pack. Also backup/restore/uninstall .bat.
+- Runtime pieces are downloaded once to ~/.local/share/local-workshop/vendor/windows. Scripts are UTF-8 with BOM, CRLF; .bat files are ASCII.
+- NOT RUN ON WINDOWS. Only parse-checked with a portable PowerShell 7 (~/.local/share/local-workshop/tools/pwsh). The application layer itself is
+  trial-installed in Docker each time. The user must try one real install + update on Windows; expect script fixes after that.
+  Points I could not verify: pg_ctl register service account/permissions, WinSW env handling, PowerShell 5.1 specifics, Korean console output.
+- JVM runs with -Duser.timezone=UTC and PostgreSQL with timezone UTC on Windows, because the app treats stored timestamps as UTC.
+- release.record retries when another git command holds the project's index.lock (seen once).
+- The Linux/Docker pack zip is no longer produced; the compose-based folder remains internal (trial install, this Mac's copy on 5300).

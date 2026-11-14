@@ -30,9 +30,11 @@ function examplesFor(screens: string[]) {
 }
 
 type Release = { stamp: string; started_at: string; success?: boolean; kind?: string };
-type Pack = { name: string; size: number; started_at: string; screens: number };
+type PackFile = { name: string; size: number };
+type Pack = { started_at: string; screens: number; files: { install: PackFile; update: PackFile } };
 type ReleaseStatus = { url: string; exists: boolean; last: Release | null; pack: Pack | null; pending: { new: string[]; changed: string[] } | null; error?: string };
 /** Operation in one line: the newest setup pack (to take to any server), what has been made since, and this machine's own operating copy. */
+const mb = (bytes: number) => `${Math.round(bytes / 1024 / 1024)}MB`;
 function Operation({ refreshKey, busy, onAsk }: { refreshKey: string; busy: boolean; onAsk: (goal: string) => void }) {
   const [state, setState] = useState<{ status: ReleaseStatus; history: Release[] } | null>(null);
   useEffect(() => {
@@ -47,7 +49,9 @@ function Operation({ refreshKey, busy, onAsk }: { refreshKey: string; busy: bool
   const installs = state.history.filter(r => r.success && r.kind === "deploy").length;
   return <section className="home-ops" aria-label="운영">
     <strong>운영 셋업 팩</strong>
-    {pack ? <a href={apiUrl(`/api/release/packs/${pack.name}`)} title="서버에 풀고 sh install.sh 를 실행하면 설치됩니다">{when(pack.started_at)} 팩 받기 ({Math.round(pack.size / 1024 / 1024)}MB · 화면 {pack.screens}개)</a>
+    {pack ? <span>{when(pack.started_at)} ·{" "}
+        <a href={apiUrl(`/api/release/packs/${pack.files.install.name}`)} title="빈 윈도우 서버에: 자바, PostgreSQL, DB, 서비스 등록까지. install.bat 을 관리자 권한으로 실행">최초 셋업 팩 ({mb(pack.files.install.size)})</a>{" · "}
+        <a href={apiUrl(`/api/release/packs/${pack.files.update.name}`)} title="이미 설치된 서버에: update.bat 을 관리자 권한으로 실행. 실패하면 자동으로 이전 상태로 되돌립니다">업데이트 팩 ({mb(pack.files.update.size)})</a></span>
       : <span className="dim">아직 만든 팩이 없습니다</span>}
     {pending && (pack || status.last) && <span className={waiting ? "home-ops-wait" : "dim"} title={names.join(", ")}>
       {waiting ? `그 뒤로 바뀐 화면 ${waiting}개${pending.new.length ? ` (새 화면 ${pending.new.length})` : ""}` : "개발과 같음"}</span>}
