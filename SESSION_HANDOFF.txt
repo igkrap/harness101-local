@@ -889,3 +889,11 @@ Orca CLI selected /Applications/Orca.app/Contents/Resources/bin/orca, skill read
 - harness2: over_checks / over_screen_criteria; separate actions checked as refused on the own screen; clear_since() removes everything a run made
   (effects had been creating untracked orders from sample quotations - 8 sample vendors/items were stuck behind them); unique samples differ per run.
 - Local model: repair completion screen (2 steps), quotation approval screen with confirm kept for it (2 steps), read-only order screen.
+
+[2026-11-14, late] Notifications built and removed; consolidation
+- Notifications (bell, "notify" effect) were built, verified with two temporary accounts, and removed at the user's request; V32 stays, V33 drops the table.
+  Rule for me: features picked from my own "missing" list are named and checked with the user before building (ownership and notifications were both removed).
+  Calendar and tree screens are NOT built - only if the user asks.
+- Kept: numbers right-aligned (GridColumn.align), one period control for a whole dashboard (each summary's own date filter), bulk import for screens with
+  lines (one sheet row per line; consecutive rows with the same header values are one record; all or nothing), 올리기 on line-table screens.
+- 38 screens exist, mostly made by test requests and all unplaced; the user decides which to delete (list given in the conversation).
