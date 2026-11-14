@@ -132,7 +132,7 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
         if definition.get('effects'):
             names = {action['name']: action['label'] for action in (definition.get('status') or {}).get('actions', [])}
             result['effects'] = [('등록하면 ' if effect['on'] == 'create' else names.get(effect['on'], effect['on']) + ' 하면 ')
-                                 + (f"{effect['create']['entity']} 을(를) 자동으로 만든다" if effect.get('create') else f"{effect['act']['via']} 이(가) 가리키는 자료에 {effect['act']['action']} 을(를) 한다")
+                                 + (f"{effect['create']['entity']} 을(를) 자동으로 만든다" if effect.get('create') else f"{effect['fill']['entity']} 의 수량이 다 차면 그 자료에 {effect['fill']['action']} 을(를) 한다" if effect.get('fill') else f"{effect['act']['via']} 이(가) 가리키는 자료에 {effect['act']['action']} 을(를) 한다")
                                  for effect in definition['effects']]
         if definition.get('calendar'):
             part = definition['calendar']

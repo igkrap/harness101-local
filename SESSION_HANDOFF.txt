@@ -1185,3 +1185,16 @@ print = standard form adjusted by definition, calendar and tree both)
 - control_check --pack: 29/29 on the second run; the first run failed "이름을 바꾼 뒤에도 요청이..." once (not reproduced - timing after rename?).
 - Not done: operation servers that already hold data are migrated by prepare() at start - never tried on a real operating copy; real FK
   constraints between screens (refs are BIGINT + index, guarded by the framework); performance not measured again with many rows.
+
+== 2026-11-15: effects.fill; a four-stage flow tried (출발 → 도착 → 수입검사 → 입고) ==
+- effects.fill {"on":"create","fill":{entity, action}}: when this record uses up an earlier record in full (by this entity's limit against it,
+  entityBy has id), that record takes the action. shipping_result has a second limit against sales_order and fill -> completeShipment
+  (수주 becomes 출하 완료 once 출하실적 reaches its quantities). Only on create: deleting a result does not move the status back.
+- The user does NOT want 입고지시 ("굳이 뭐 입고 지시 이런걸 할생각은 없는데") - the 지시+실적 pair is not for every business. inbound, purchase flow and
+  work_order were left as they were. Asked instead whether 출발 → 도착 → 수입검사 → 입고 can be done: yes, tried for real.
+- Trial screens kept in local-only (delete if the user says): imp_departure, imp_arrival, imp_inspection (검사 수량, 합격 수량 typed, 불량 = formula,
+  check 합격 <= 검사), imp_receipt (limit against the inspection's passQuantity) + a take screen for each step. Walked one order: 10 ordered,
+  10 departed, 6 arrived (4 stay open), 6 inspected / 5 passed, 6 refused at receipt, 5 received.
+- harness2 fit(): settles the nearer of two stacked limits first and follows its pointer to the farther one; re-applies checks after limits.
+- Known gaps: in a take screen only the quantity is typed in the row - the inspection's pass quantity is carried as the full quantity and
+  corrected afterwards on the inspection's own screen (one record at a time); fill across more than two stages is not checked by the harness.

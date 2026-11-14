@@ -184,18 +184,26 @@ def fit(body, definition, framework, made, break_check=None):
     import datetime
     today = datetime.date.today().isoformat()
     settle(body, definition, framework, made)
-    for check in definition.get('checks') or []:
-        for unit in _units(body, check.get('lines')):
-            right = today if check['right'] == 'today' else unit.get(check['right'])
-            if right is None:
-                kinds = {field['name']: field.get('type') for field in definition['fields'] + (definition.get('lines') or {}).get('fields', [])}
-                right = unit[check['right']] = '09:30:00' if kinds.get(check['right']) == 'time' else '2026-01-15' if isinstance(unit.get(check['left']), str) or unit.get(check['left']) is None else 10
-            keep = {'>': 1, '>=': 0, '<': -1, '<=': 0, '==': 0, '!=': 1}[check['op']]
-            wrong = {'>': 0, '>=': -1, '<': 0, '<=': 1, '==': 1, '!=': 0}[check['op']]
-            unit[check['left']] = _shift(right, wrong if check is break_check else keep)
+    def obey():
+        for check in definition.get('checks') or []:
+            for unit in _units(body, check.get('lines')):
+                right = today if check['right'] == 'today' else unit.get(check['right'])
+                if right is None:
+                    kinds = {field['name']: field.get('type') for field in definition['fields'] + (definition.get('lines') or {}).get('fields', [])}
+                    right = unit[check['right']] = '09:30:00' if kinds.get(check['right']) == 'time' else '2026-01-15' if isinstance(unit.get(check['left']), str) or unit.get(check['left']) is None else 10
+                keep = {'>': 1, '>=': 0, '<': -1, '<=': 0, '==': 0, '!=': 1}[check['op']]
+                wrong = {'>': 0, '>=': -1, '<': 0, '<=': 1, '==': 1, '!=': 0}[check['op']]
+                unit[check['left']] = _shift(right, wrong if check is break_check else keep)
+    obey()
     line_names = {field['name'] for field in (definition.get('lines') or {}).get('fields', [])}
-    for limit in definition.get('limits') or []:
-        other = next(item['definition'] for item in framework.definitions() if item['key'] == limit['entity'])
+    known = {item['key']: item['definition'] for item in framework.definitions()} if definition.get('limits') else {}
+    # A record may be limited by two stages at once (a result by its instruction and by the order behind it). The nearer stage is settled
+    # first; the farther one is then the record that stage itself points at, so both speak of the same item and quantity.
+    entities = [limit['entity'] for limit in definition.get('limits') or []]
+    nearer = lambda limit: 0 if any(far['entity'] in entities for far in known.get(limit['entity'], {}).get('limits') or []) else 1
+    settled = {}
+    for limit in sorted(definition.get('limits') or [], key=nearer):
+        other = known[limit['entity']]
         pairs = list(zip(limit['by'], limit['entityBy']))
         if limit.get('lines'):
             if not body.get('lines'):
@@ -204,6 +212,13 @@ def fit(body, definition, framework, made, break_check=None):
         unit = body['lines'][0] if limit.get('lines') else body
         via = next((mine for mine, theirs in pairs if theirs == 'id'), None)
         holder = lambda name: unit if limit.get('lines') and name in line_names else body
+        for stage, (stage_row, stage_unit) in settled.items():       # a nearer stage already chosen points at this one: follow it
+            behind = next((item for item in known[stage].get('limits') or [] if item['entity'] == limit['entity'] and 'id' in item['entityBy']), None)
+            if via and behind:
+                pointer = behind['by'][behind['entityBy'].index('id')]
+                found = stage_unit.get(pointer) if pointer in stage_unit else stage_row.get(pointer)
+                if found:
+                    holder(via)[via] = found
         if via and holder(via).get(via):
             row = framework.ok('GET', f"/api/data/{limit['entity']}/{holder(via)[via]}")
         else:                                           # nothing points at the other entity: make the row that gives the allowance
@@ -213,10 +228,13 @@ def fit(body, definition, framework, made, break_check=None):
             row = framework.ok('POST', f"/api/data/{limit['entity']}", fit(given, other, framework, made))
             made.append((limit['entity'], row['id']))
         theirs_unit = (row.get('lines') or [{}])[0] if limit.get('entityLines') else row
+        settled[limit['entity']] = (row, theirs_unit)
         value_of = lambda name: row['id'] if name == 'id' else theirs_unit.get(name) if name in theirs_unit else row.get(name)
         for mine, theirs in pairs:
             holder(mine)[mine] = value_of(theirs)
         unit[limit['field']] = value_of(limit['entityField']) or 0
+    if definition.get('limits'):
+        obey()          # a limit may have changed a number a check compares: the checks are made true again
     return body
 
 
@@ -519,7 +537,8 @@ def record_checks(key, definition, framework):
             unit[limit['field']] = allowed + 1
             code, answer = post(over)
             report.add(f"한도: {limit['field']} 이(가) {limit['entity']} 의 {limit['entityField']}({allowed:g}) 을(를) 넘으면 거절된다 ({limit['message']})",
-                       code == 400 and str((answer or {}).get('detail', '')).startswith(limit['message']), f'{code} {answer}')
+                       # (another limit on the same quantity may be the one that speaks: a result held by its instruction and by the order behind it)
+                       code == 400 and any(str((answer or {}).get('detail', '')).startswith(same['message']) for same in definition['limits'] if same['field'] == limit['field']), f'{code} {answer}')
             within = new_body()
             code, answer = post(within)
             report.add(f"한도: 꼭 그만큼({(within['lines'][0] if limit.get('lines') else within)[limit['field']]:g})은 저장된다", code == 201, f'{code} {answer}')
@@ -1154,6 +1173,51 @@ def effect_checks(key, definition, framework):
                     got = [[line.get(into) for into in make['lines']['set']] for line in new[0].get('lines', [])]
                     want = [[line.get(come) for come in make['lines']['set'].values()] for line in row.get('lines', [])]
                     report.add('자동 처리: 줄 표도 줄마다 옮겨진다', got == want, f'기대 {want}, 실제 {got}')
+            elif effect.get('fill'):
+                fill, other = effect['fill'], known[effect['fill']['entity']]
+                wanted = next(item for item in other['status']['actions'] if item['name'] == fill['action'])
+                names = {value['code']: value['label'] for value in other['status']['values']}
+                limit = next(item for item in definition['limits'] if item['entity'] == fill['entity'] and 'id' in item['entityBy'])
+                pointer = limit['by'][limit['entityBy'].index('id')]
+
+                def fresh(entity, about, point=None):
+                    """A record of another stage, made whole; point: (field, id) it must point at (so its quantities are that record's)."""
+                    body = {field['name']: sample(field, framework, made) for field in about['fields'] if not _computed(field)}
+                    if about.get('lines'):
+                        body['lines'] = [_line(about['lines']['fields'], framework, made, 4)]
+                    if point:
+                        in_line = any(field['name'] == point[0] for field in (about.get('lines') or {}).get('fields', []))
+                        (body['lines'][0] if in_line else body)[point[0]] = point[1]
+                    made_row = framework.ok('POST', f'/api/data/{entity}', fit(body, about, framework, made))
+                    made.append((entity, made_row['id']))
+                    return made_row
+                first = fresh(fill['entity'], other)             # the earlier record, brought to where the action starts
+                for _ in range(4):
+                    if first.get('status') in wanted['from']:
+                        break
+                    step = next((item for item in other['status']['actions'] if first.get('status') in item['from'] and item['to'] in wanted['from']), None) \
+                        or next((item for item in other['status']['actions'] if first.get('status') in item['from'] and item['name'] != wanted['name']), None)
+                    if not step:
+                        break
+                    first = framework.ok('POST', f"/api/data/{fill['entity']}/{first['id']}/actions/{step['name']}")
+                body = {field['name']: sample(field, framework, made) for field in definition['fields'] if not _computed(field)}
+                if definition.get('lines'):
+                    body['lines'] = [_line(definition['lines']['fields'], framework, made, 4)]
+                place = lambda name: body['lines'][0] if name in line_names else body
+                for between in definition['limits']:            # a stage in between (an instruction between the order and this result) is made from the same earlier record
+                    middle = known.get(between['entity'])
+                    via = next((item for item in (middle or {}).get('limits') or [] if item['entity'] == fill['entity'] and 'id' in item['entityBy']), None)
+                    if between is limit or not via or 'id' not in between['entityBy']:
+                        continue
+                    stage = fresh(between['entity'], middle, (via['by'][via['entityBy'].index('id')], first['id']))
+                    place(between['by'][between['entityBy'].index('id')])[between['by'][between['entityBy'].index('id')]] = stage['id']
+                place(pointer)[pointer] = first['id']
+                code, row = framework.call('POST', api, fit(body, definition, framework, made))
+                if code == 201:
+                    made.append((key, row['id']))
+                after = framework.ok('GET', f"/api/data/{fill['entity']}/{first['id']}")
+                report.add(f"자동 처리: 등록해서 {other['title']} 의 수량이 다 차면 그 자료가 {names.get(wanted['to'], wanted['to'])} 상태가 된다",
+                           code == 201 and first.get('status') in wanted['from'] and after.get('status') == wanted['to'], f"{code} {row if code != 201 else ''} / 앞 단계 상태 {first.get('status')} → {after.get('status')}")
             else:
                 act = effect['act']
                 pointer = next(field for field in definition['fields'] if field['name'] == act['via'])
