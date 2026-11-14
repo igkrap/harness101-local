@@ -45,6 +45,10 @@ def sample(field, framework, made):
         return _number(field, 10 + (next(_serial) if field.get('unique') else 0))
     if kind == 'date':
         return '2026-01-15'
+    if kind == 'time':
+        return '09:30:00'
+    if kind == 'yesno':
+        return True
     if kind == 'code':
         codes = framework.codes(field['codeGroup'])
         return codes[0]['code'] if codes else None
@@ -61,7 +65,11 @@ def sample(field, framework, made):
 
 
 def _shift(value, by):
-    """A date or a number moved by some days / units."""
+    """A date, a time or a number moved by some days / minutes / units."""
+    if isinstance(value, str) and ':' in value:
+        hour, minute = int(value[:2]), int(value[3:5])
+        total = max(0, min(23 * 60 + 59, hour * 60 + minute + by))
+        return f'{total // 60:02d}:{total % 60:02d}:00'
     if isinstance(value, str):
         import datetime
         return (datetime.date.fromisoformat(value) + datetime.timedelta(days=by)).isoformat()
@@ -81,7 +89,8 @@ def fit(body, definition, framework, made, break_check=None):
         for unit in _units(body, check.get('lines')):
             right = today if check['right'] == 'today' else unit.get(check['right'])
             if right is None:
-                right = unit[check['right']] = '2026-01-15' if isinstance(unit.get(check['left']), str) or unit.get(check['left']) is None else 10
+                kinds = {field['name']: field.get('type') for field in definition['fields'] + (definition.get('lines') or {}).get('fields', [])}
+                right = unit[check['right']] = '09:30:00' if kinds.get(check['right']) == 'time' else '2026-01-15' if isinstance(unit.get(check['left']), str) or unit.get(check['left']) is None else 10
             keep = {'>': 1, '>=': 0, '<': -1, '<=': 0, '==': 0, '!=': 1}[check['op']]
             wrong = {'>': 0, '>=': -1, '<': 0, '<=': 1, '==': 1, '!=': 0}[check['op']]
             unit[check['left']] = _shift(right, wrong if check is break_check else keep)
@@ -271,7 +280,7 @@ def record_checks(key, definition, framework):
             minimal['lines'] = [{field['name']: value for field, value in ((field, _line([field], framework, made, 2)[field['name']]) for field in line_fields if field['required'])} for _ in range(low)]
         code, answer = post(fit(minimal, definition, framework, made))
         report.add('선택 항목은 모두 비워도 저장된다', code == 201, f'{code} {answer}')
-        wrong_values = {'number': '열 개', 'date': '1월 15일', 'code': '없는코드zz', 'ref': 999999999}
+        wrong_values = {'number': '열 개', 'date': '1월 15일', 'time': '아침 일찍', 'code': '없는코드zz', 'ref': 999999999}
         for field in [item for item in plain if item.get('type', 'text') in wrong_values]:
             refused(f"{field['label']}: 맞지 않는 값({wrong_values[field['type']]})은 거절된다", dict(new_body(), **{field['name']: wrong_values[field['type']]}))
         for where, group in (('', plain), ('줄의 ', [item for item in line_fields if not _computed(item)] if usual else [])):
@@ -282,6 +291,11 @@ def record_checks(key, definition, framework):
                     broken = new_body()
                     (broken['lines'][0] if where else broken)[field['name']] = value
                     refused(f"{where}{field['label']}: {field[edge]:g} {word} 값({value:g})은 거절된다", broken)
+        for where, group in (('', plain), ('줄의 ', [item for item in line_fields if not _computed(item)] if usual else [])):
+            for field in [item for item in group if item.get('decimals') is not None]:
+                broken, value = new_body(), 10 + 10 ** -(field['decimals'] + 1)
+                (broken['lines'][0] if where else broken)[field['name']] = value
+                refused(f"{where}{field['label']}: 소수 {field['decimals']}자리를 넘는 값({value:g})은 거절된다", broken)
         for check in definition.get('checks') or []:
             broken = fit(new_body(), definition, framework, made, break_check=check)
             code, answer = post(broken)
@@ -310,7 +324,7 @@ def record_checks(key, definition, framework):
         changed = new_body()
         code, updated = framework.call('PUT', f"{api}/{row['id']}", changed)
         same_number = all(updated.get(field['name']) == row.get(field['name']) for field in fields if field.get('type') == 'serial') if code == 200 else False
-        kept = [field['label'] for field in plain if field.get('type', 'text') in ('text', 'number', 'date') and code == 200 and updated.get(field['name']) != changed[field['name']]]
+        kept = [field['label'] for field in plain if field.get('type', 'text') in ('text', 'number', 'date', 'time', 'yesno', 'memo') and code == 200 and updated.get(field['name']) != changed[field['name']]]
         report.add('수정: 고쳐 저장하면 고친 값이 남는다' + (' (번호는 그대로)' if any(f.get('type') == 'serial' for f in fields) else ''), code == 200 and same_number and not kept, f'{code} {kept or updated}')
         if status:
             names = {value['code']: value['label'] for value in status['values']}

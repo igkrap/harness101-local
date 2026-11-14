@@ -88,7 +88,7 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
         def label(field):
             extra = [field.get('type', 'text')] + (['필수'] if field['required'] else []) + (['계산'] if field.get('formula') or field.get('sum') else []) \
                 + ([f"{'' if field.get('min') is None else format(field['min'], 'g')}~{'' if field.get('max') is None else format(field['max'], 'g')}"] if field.get('min') is not None or field.get('max') is not None else []) \
-                + (['중복 불가'] if field.get('unique') else []) + ([{'dropdown': '목록에서 고름', 'search': '검색창', 'popup': '검색창'}[field['pick']]] if field.get('pick') else [])
+                + ([('정수만' if field['decimals'] == 0 else f"소수 {field['decimals']}자리")] if field.get('decimals') is not None else []) + (['중복 불가'] if field.get('unique') else []) + ([{'dropdown': '목록에서 고름', 'search': '검색창', 'popup': '검색창'}[field['pick']]] if field.get('pick') else [])
             return f"{field['label']}({', '.join(str(item) for item in extra)})"
         result.update(action=action, key=key, title=definition['title'], fields=[label(field) for field in definition['fields']])
         if definition.get('lines'):
