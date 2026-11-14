@@ -326,6 +326,10 @@ def record_checks(key, definition, framework):
         same_number = all(updated.get(field['name']) == row.get(field['name']) for field in fields if field.get('type') == 'serial') if code == 200 else False
         kept = [field['label'] for field in plain if field.get('type', 'text') in ('text', 'number', 'date', 'time', 'yesno', 'memo') and code == 200 and updated.get(field['name']) != changed[field['name']]]
         report.add('수정: 고쳐 저장하면 고친 값이 남는다' + (' (번호는 그대로)' if any(f.get('type') == 'serial' for f in fields) else ''), code == 200 and same_number and not kept, f'{code} {kept or updated}')
+        if code == 200:
+            log_code, log = framework.call('GET', f"/api/data/{key}/{row['id']}/history")
+            whats = [entry.get('what') for entry in log] if log_code == 200 and isinstance(log, list) else []
+            report.add('이력: 등록과 수정이 변경 이력에 남는다', whats[-1:] == ['등록'] and '수정' in whats, f'{log_code} {whats}')
         if status:
             names = {value['code']: value['label'] for value in status['values']}
             report.add(f"상태: 새 자료는 {names.get(status['initial'], status['initial'])} 상태로 시작한다", row.get('status') == status['initial'], f"{row.get('status')}")
