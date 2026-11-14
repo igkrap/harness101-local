@@ -331,6 +331,11 @@ def record_checks(key, definition, framework):
             log_code, log = framework.call('GET', f"/api/data/{key}/{row['id']}/history")
             whats = [entry.get('what') for entry in log] if log_code == 200 and isinstance(log, list) else []
             report.add('이력: 등록과 수정이 변경 이력에 남는다', whats[-1:] == ['등록'] and '수정' in whats, f'{log_code} {whats}')
+            pointing = next((field for field in plain if field.get('type') == 'ref' and isinstance(updated.get(field['name']), int)), None)
+            if pointing:        # the way from the record pointed at (as the record stands after the change) back to this screen
+                link_code, links = framework.call('GET', f"/api/data/{pointing['ref']['entity']}/{updated[pointing['name']]}/links")
+                found = [item for item in (links or {}).get('from', []) if item.get('entity') == key and item.get('field') == pointing['name']] if link_code == 200 else []
+                report.add(f"연결: {pointing['label']} 쪽 자료에서 이 화면의 자료로 넘어갈 수 있다", bool(found) and found[0]['count'] >= 1, f'{link_code} {str(links)[:200]}')
         if status:
             names = {value['code']: value['label'] for value in status['values']}
             report.add(f"상태: 새 자료는 {names.get(status['initial'], status['initial'])} 상태로 시작한다", row.get('status') == status['initial'], f"{row.get('status')}")

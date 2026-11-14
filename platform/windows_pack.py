@@ -45,6 +45,27 @@ function Copy-Folder([string]$from, [string]$to) {
     Copy-Item $from $to -Recurse
 }
 
+# 이 실행에서 화면에 나온 것을 파일로도 남긴다 (실패했을 때 그 파일을 보내면 원인을 찾을 수 있다).
+function Start-Log([string]$name, [string]$folder) {
+    try {
+        if (-not (Test-Path $folder)) { New-Item -ItemType Directory -Force -Path $folder | Out-Null }
+        $script:LogFile = Join-Path $folder ("setup-log-$name-" + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.txt')
+        Start-Transcript -Path $script:LogFile | Out-Null
+        Write-Host ("Windows " + [Environment]::OSVersion.Version + " / PowerShell " + $PSVersionTable.PSVersion + " / " + $name)
+    } catch { $script:LogFile = $null }
+}
+function Stop-Log {
+    if ($script:LogFile) { try { Stop-Transcript | Out-Null } catch { }; Write-Host "기록 파일: $script:LogFile" }
+}
+# 스크립트가 오류로 멈출 때: 무엇이 어디서 났는지 적고, 기록 파일의 위치를 알려 준 뒤 실패로 끝낸다.
+function Stop-Failed($problem) {
+    Write-Host ''
+    Write-Host ("[오류] " + $problem.Exception.Message) -ForegroundColor Red
+    Write-Host $problem.ScriptStackTrace
+    Stop-Log
+    exit 1
+}
+
 function Say([string]$text) { Write-Host ('[' + (Get-Date -Format 'HH:mm:ss') + '] ' + $text) }
 
 function New-Secret([int]$length) {
@@ -168,6 +189,8 @@ INSTALL = r'''# 최초 셋업: 빈 윈도우에 런타임(자바, PostgreSQL)과
 #   install.bat -Dir D:\ERP -Port 80 -Name ERP2      위치·포트·서비스 이름을 바꿔서 (한 서버에 두 벌을 둘 때 이름과 포트를 다르게)
 param([string]$Dir = 'C:\ERP', [int]$Port = 8080, [int]$DbPort = 5433, [string]$Name = 'ERP', [switch]$NoFirewall)
 . (Join-Path $PSScriptRoot 'common.ps1')
+trap { Stop-Failed $_ }
+Start-Log 'install' (Join-Path $PackRoot 'logs')
 Assert-Admin
 if (-not (Test-Path (Join-Path $PackRoot 'runtime\pgsql\bin\initdb.exe'))) { throw '이 팩에는 런타임이 없습니다 (업데이트 팩입니다). 최초 셋업 팩으로 설치하세요.' }
 if (Test-Path (Join-Path $Dir 'config.json')) { throw "$Dir 에는 이미 설치되어 있습니다. 새 버전으로 올리려면 업데이트 팩의 update.bat 을 쓰세요." }
@@ -235,6 +258,7 @@ Write-Host "  접속 주소: http://<이 서버의 주소>:$Port   (이 서버�
 Write-Host "  관리자 첫 비밀번호: $note 파일에 있습니다. 들어가서 바꾸세요."
 Write-Host "  서비스: $Name-DB (데이터베이스), $Name-APP (서버) - 윈도우가 켜지면 자동으로 시작합니다."
 Write-Host "  백업: $Dir\backup.bat   ·   새 버전으로 올리기: 업데이트 팩의 update.bat"
+Stop-Log
 '''
 
 UPDATE = r'''# 업데이트: 이미 설치된 곳의 서버 프로그램·화면·화면 정의를 이 팩의 것으로 바꾼다. 자료, 첨부 파일, 사용자, 권한은 그대로 둔다.
@@ -244,13 +268,15 @@ UPDATE = r'''# 업데이트: 이미 설치된 곳의 서버 프로그램·화면
 #   update.bat -Force             설치된 것보다 오래된 팩으로도 (되돌릴 때)
 param([string]$Dir = 'C:\ERP', [switch]$Force)
 . (Join-Path $PSScriptRoot 'common.ps1')
+trap { Stop-Failed $_ }
+Start-Log 'update' (Join-Path $PackRoot 'logs')
 Assert-Admin
 $config = Read-Config $Dir
 $installed = Read-Version $Dir
 $coming = Read-Version $PackRoot
 if (-not $coming) { throw '이 폴더는 셋업 팩이 아닙니다 (VERSION.json 없음).' }
 if ((Resolve-Path $PackRoot).Path -eq (Resolve-Path $Dir).Path) { throw '설치된 폴더가 아니라, 새로 받은 팩을 푼 폴더의 update.bat 을 실행하세요.' }
-if ($installed -and $installed.stamp -eq $coming.stamp) { Say "이미 이 버전($($coming.stamp))입니다. 할 일이 없습니다."; return }
+if ($installed -and $installed.stamp -eq $coming.stamp) { Say "이미 이 버전($($coming.stamp))입니다. 할 일이 없습니다."; Stop-Log; return }
 if ($installed -and ($installed.stamp -gt $coming.stamp) -and -not $Force) {
     throw "설치된 버전($($installed.stamp))이 이 팩($($coming.stamp))보다 새것입니다. 일부러 되돌리는 것이라면 -Force 를 붙이세요."
 }
@@ -280,6 +306,7 @@ Say '서버가 뜨기를 기다리는 중'
 $result = Wait-App $Dir $config
 if ($result -eq 'ok') {
     Say "업데이트했습니다 (버전 $($coming.stamp), 화면 $($coming.screens)개). 이전 프로그램은 $previous 에, 백업은 $backup 에 있습니다."
+    Stop-Log
     return
 }
 
@@ -292,19 +319,25 @@ Start-Service $app
 $again = Wait-App $Dir $config
 if ($again -eq 'ok') { throw "업데이트하지 못했습니다 ($result). 이전 버전($($installed.stamp))으로 되돌려 다시 운영 중입니다." }
 throw "업데이트하지 못했고($result), 되돌린 뒤에도 서버가 올라오지 않았습니다($again). $Dir\logs 와 백업 $backup 을 확인하세요."
+Stop-Log
 '''
 
 BACKUP = r'''# 데이터베이스 전체를 backups 폴더에 파일 하나로 받는다 (자료, 첨부 파일, 사용자, 권한 모두).
 param([string]$Dir = (Split-Path -Parent $PSScriptRoot))
 . (Join-Path $PSScriptRoot 'common.ps1')
+trap { Stop-Failed $_ }
+Start-Log 'backup' (Join-Path $PackRoot 'logs')
 $config = Read-Config $Dir
 $file = Backup-Db $Dir $config
 Say "백업: $file"
+Stop-Log
 '''
 
 RESTORE = r'''# 백업 파일로 되돌린다: restore.bat C:\ERP\backups\db-20260101-120000.dump   (지금 자료는 그 시점의 것으로 바뀐다)
 param([Parameter(Mandatory = $true)][string]$File, [string]$Dir = (Split-Path -Parent $PSScriptRoot))
 . (Join-Path $PSScriptRoot 'common.ps1')
+trap { Stop-Failed $_ }
+Start-Log 'restore' (Join-Path $PackRoot 'logs')
 Assert-Admin
 if (-not (Test-Path $File)) { throw "백업 파일이 없습니다: $File" }
 $config = Read-Config $Dir
@@ -317,11 +350,14 @@ Start-Service $app
 $result = Wait-App $Dir $config
 if ($result -ne 'ok') { throw "되돌렸지만 서버 확인에 실패했습니다: $result" }
 Say '되돌렸습니다.'
+Stop-Log
 '''
 
 UNINSTALL = r'''# 서비스 두 개를 내린다. 자료(data, backups)와 폴더는 지우지 않는다 - 필요 없으면 폴더를 직접 지운다.
 param([string]$Dir = (Split-Path -Parent $PSScriptRoot))
 . (Join-Path $PSScriptRoot 'common.ps1')
+trap { Stop-Failed $_ }
+Start-Log 'uninstall' (Join-Path $PackRoot 'logs')
 Assert-Admin
 $config = Read-Config $Dir
 $name = $config.name
@@ -331,13 +367,15 @@ Stop-Service "$name-DB" -Force -ErrorAction SilentlyContinue
 Invoke-Native (Join-Path $Dir 'runtime\pgsql\bin\pg_ctl.exe') @('unregister', '-N', "$name-DB") | Out-Null
 Remove-NetFirewallRule -DisplayName "$name-APP ($($config.port))" -ErrorAction SilentlyContinue
 Say "서비스를 내렸습니다. 자료는 $Dir 에 그대로 있습니다."
+Stop-Log
 '''
 
 SCRIPTS = {'common.ps1': COMMON, 'install.ps1': INSTALL, 'update.ps1': UPDATE, 'backup.ps1': BACKUP, 'restore.ps1': RESTORE, 'uninstall.ps1': UNINSTALL}
 
 
 def _bat(script):
-    """A launcher that keeps the window open, so the outcome can be read. Plain ASCII: a .bat is read in the console's own code page."""
+    """A launcher that keeps the window open, so the outcome can be read. Plain ASCII: a .bat is read in the console's own code page.
+    (What the script says is also kept in a file - see Start-Log in the scripts - to send along when something fails.)"""
     return ('@echo off\r\nchcp 65001 >nul\r\npowershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\\' + script + '" %*\r\n'
             'echo.\r\nif errorlevel 1 (echo [FAILED] See the message above.) else (echo [DONE])\r\npause\r\n')
 
@@ -378,6 +416,11 @@ def _readme(version, first):
 새 버전이 올라오지 않거나 화면 정의가 하나라도 받아들여지지 않으면 **이전 프로그램과 백업으로 자동으로 되돌립니다.**
 어느 버전에서든 이 팩 하나로 올릴 수 있습니다(중간 버전을 거칠 필요 없음). 설치된 것보다 오래된 팩은 거절합니다(`-Force` 로 일부러 되돌릴 수 있음).
 """) + """
+## 잘 안 될 때
+
+설치나 업데이트가 멈추면 창에 `[오류]` 로 시작하는 줄이 나오고, 팩을 푼 폴더의 `logs` 폴더에 `setup-log-….txt` 파일이 남습니다.
+그 파일을 그대로 보내 주시면 원인을 찾을 수 있습니다. (비밀번호는 기록에 남기지 않습니다.)
+
 ## 건드리지 않는 것
 
 운영에서 입력한 자료, 첨부 파일, 사용자, 역할, 권한, 시스템 설정(이름·로고·테마)은 업데이트해도 그대로입니다.

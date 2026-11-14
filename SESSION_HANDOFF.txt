@@ -1057,3 +1057,14 @@ Orca CLI selected /Applications/Orca.app/Contents/Resources/bin/orca, skill read
 - 2026-11-14: user: "이전버전 팩은 필요가없다" - the earlier-version list is gone from the home strip; release.pack keeps only the current version's packs (older folders and zips are deleted when a new pack is made); old pack files of local-only were deleted. The order "이전 배포로 되돌려줘" (this Mac's copy on 5300) therefore has nothing to go back to.
 
 - 2026-11-15: at the user's word the local operating copy is gone: compose project local-only-ops (port 5300, empty) removed with its volume, prod-login.json deleted, release.deploy/rollback/_install_here and the orders deploy/rollback removed. "배포해줘"/"운영에 배포해줘" now mean: make the setup packs. Sentences about rolling back are not orders. control_check --pack 24/24 after the change. sites.Site still carries ops_port/ops_project (unused now; ops_home/builds holds the built screens).
+
+[2026-11-15] Moving between screens; Windows run prepared
+- Framework: GET /api/data/{key}/{id}/links (who points at this record with counts, and what it points at); list filters <date>_from/_to and
+  lines.<field>; frontend app/links.tsx (intentOf, useLinked, LinkedNote, LinksDialog); toolbar actions 연결 (record screens) and 내역 (summaries:
+  from a line to the source screen, by the line's group keys - month/year become periods, line fields become lines.<field> - plus the summary's
+  own conditions). Tried in a browser on local-only: order -> its shipment, order -> its vendor, item -> the 6 orders it is on, monthly summary
+  line -> the 2 orders of that month; release of the note. capabilities().builtInRules tells the model it is built in. harness2 has a derived check.
+- harness2/framework.py appends the platform folder to sys.path (it used to put it first; platform/checks.py would shadow harness2/checks.py).
+- Windows packs: every .ps1 run writes logs\setup-log-<name>-<time>.txt (Start-Log/Stop-Failed in common.ps1, trap in each script); README has
+  "잘 안 될 때". Still only parse-checked. Waiting for the user to run install.bat and update.bat on a Windows PC and send the log if it stops.
+- Pack keep-one verified: making a new pack removed the previous one.

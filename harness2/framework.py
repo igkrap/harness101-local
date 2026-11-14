@@ -12,7 +12,8 @@ import urllib.request
 from pathlib import Path
 
 import sys
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'platform')) if str(Path(__file__).resolve().parents[1] / 'platform') not in sys.path else None
+# appended, not put first: the platform has modules of its own with names the harness also uses (checks)
+sys.path.append(str(Path(__file__).resolve().parents[1] / 'platform')) if str(Path(__file__).resolve().parents[1] / 'platform') not in sys.path else None
 from sites import site      # the project in hand: its server, its screens' address, the account to look with
 
 
