@@ -628,7 +628,9 @@ def pack_file(state, name):
     return path
 
 
-COMMANDS = (('rollback', re.compile(r'(배포|운영|버전).*(되돌|롤백|이전으로)|(되돌|롤백).*(배포|운영)')),
+COMMANDS = (('platform-pack', re.compile(r'플랫폼.*(팩|패키지|꾸러미)')),
+            ('model-pack', re.compile(r'모델 ?(팩|패키지|꾸러미)')),
+            ('rollback', re.compile(r'(배포|운영|버전).*(되돌|롤백|이전으로)|(되돌|롤백).*(배포|운영)')),
             ('pack', re.compile(r'(셋업|셋팅|세팅|설치|운영|배포) ?(팩|패키지|꾸러미|묶음)|setup ?pack')),
             ('deploy', re.compile(r'배포|운영 ?(에|으로|서버|환경).*(올려|반영|내보내|적용|설치)|릴리[스즈]')),
             ('record', re.compile(r'커밋|깃 ?(에|으로|허브)|저장소에|버전.*(남겨|기록|저장)|변경.*(기록|저장)해')))
@@ -656,6 +658,14 @@ def say(kind, result):
                  '공통 코드' if result.get('codes') else '', '메뉴 편성' if result.get('menus') else '', f"소스 파일 {result['source_files']}개" if result.get('source_files') else '']
         tail = ' 원격 저장소에도 올렸습니다.' if result.get('pushed') is True else f" 원격 저장소에는 올리지 못했습니다: {result['pushed']}" if result.get('pushed') else ''
         return f"기록했습니다 ({result['commit'][:7]}): " + ', '.join(filter(None, parts)) + '.' + tail
+    if kind == 'platform-pack':
+        version = result['version']
+        return (f"플랫폼 셋업 팩을 만들었습니다 (맥·애플 실리콘용): {result['name']} ({result['size'] / 1024 / 1024:.1f}MB)\n"
+                f"플랫폼·하네스·프로젝트(화면 {version['screens']}개)와 설치 스크립트가 들어 있습니다. 다른 맥에서 풀고 bash install.sh (처음) 또는 bash update.sh (플랫폼만 새 버전으로).\n"
+                + (f"⚠ 커밋되지 않은 변경은 팩에 들어가지 않았습니다: {', '.join(result['uncommitted'])}\n" if result.get('uncommitted') else '')
+                + f"모델({version['model']}, 약 15GB)은 들어 있지 않습니다. 인터넷이 없는 맥에는 '모델 팩 만들어줘' 로 만든 파일을 함께 옮기세요.\n파일 위치: {result['file']}")
+    if kind == 'model-pack':
+        return f"모델 팩: {result['name']} ({result['size'] / 1024 / 1024 / 1024:.1f}GB, {result['model']})\n플랫폼 셋업 팩을 푼 폴더 안이나 바로 옆에 두고 install.sh 를 실행하면 내려받지 않고 이 파일에서 풉니다.\n파일 위치: {result['file']}"
     if kind == 'pack':
         if not result.get('success'):
             return f"셋업 팩을 만들지 못했습니다 ({result.get('step')} 단계): {result.get('error', '')[:500]}"

@@ -1,7 +1,7 @@
 #!/bin/zsh
 # Keep the local Qwen MLX server up: relaunch with the same settings whenever it exits (e.g. Metal OOM).
 STATE="$(cd "$(dirname "$0")/.." && pwd)/state"
-PY=/Users/igkrap/.local/share/mlx-server/venv/bin/python3.13
+PY="$HOME/.local/share/mlx-server/venv/bin/python"
 echo $$ > "$STATE/qwen-supervisor.pid"
 while true; do
   "$PY" -m mlx_lm.server --model mlx-community/Qwen3.8-27B-4bit --host 127.0.0.1 --port 8099 \

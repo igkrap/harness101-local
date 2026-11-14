@@ -293,7 +293,7 @@ class QueueManager:
         kind = release.command(goal)
         if not kind:
             return False
-        title = {'record': '변경 기록 (깃)', 'pack': '운영 셋업 팩 만들기', 'deploy': '셋업 팩을 만들어 이 맥의 운영에 설치', 'rollback': '이전 팩으로 되돌리기'}[kind]
+        title = {'record': '변경 기록 (깃)', 'platform-pack': '플랫폼 셋업 팩 만들기', 'model-pack': '모델 팩 만들기', 'pack': '운영 셋업 팩 만들기', 'deploy': '셋업 팩을 만들어 이 맥의 운영에 설치', 'rollback': '이전 팩으로 되돌리기'}[kind]
         item = {'domain': 'release', 'title': title, 'checks': [], 'status': 'running', 'job_id': None, 'attempts': 1}
         self._update(queue_id, items=[item], status='running', route='release')
 
@@ -301,7 +301,9 @@ class QueueManager:
             self._update(queue_id, items=[dict(item, note=str(step)[:60])])
         try:
             project, state = self.app.project, self.app.state
-            result = (release.record(project) if kind == 'record' else release.pack(project, state, note) if kind == 'pack'
+            import platform_pack
+            result = (platform_pack.build(project, note) if kind == 'platform-pack' else platform_pack.model_pack(note) if kind == 'model-pack'
+                      else release.record(project) if kind == 'record' else release.pack(project, state, note) if kind == 'pack'
                       else release.rollback(project, state, note) if kind == 'rollback' else release.deploy(project, state, note))
             ok = bool(result.get('success', True))
             said = release.say(kind, result)
