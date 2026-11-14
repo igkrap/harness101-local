@@ -11,9 +11,14 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-BASE = 'http://127.0.0.1:8083'
-APP = 'http://127.0.0.1:5292'
-CREDENTIALS = Path(__file__).resolve().parents[1] / 'platform/state/auth/verifier-login.json'
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'platform')) if str(Path(__file__).resolve().parents[1] / 'platform') not in sys.path else None
+from sites import site      # the project in hand: its server, its screens' address, the account to look with
+
+
+def app_url():
+    """Where the project's screens are served (for looking at them in a browser)."""
+    return site().preview_url.rstrip('/')
 
 
 class Failed(Exception):
@@ -23,8 +28,8 @@ class Failed(Exception):
 
 
 class Framework:
-    def __init__(self, base=BASE):
-        self.base = base
+    def __init__(self, base=None):
+        self.base = base or site().api_url
         self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
         self.csrf = {}
         self._sign_in()
@@ -50,7 +55,7 @@ class Framework:
             return error.code, detail
 
     def _sign_in(self):
-        account = json.loads(CREDENTIALS.read_text())
+        account = json.loads(site().credentials.read_text())
         self.username = account['username']
         _, session = self._raw('GET', '/api/auth/session')
         self.csrf = {session['csrf']['headerName']: session['csrf']['token']}

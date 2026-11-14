@@ -32,12 +32,10 @@ from pathlib import Path
 import backend_deploy as live
 import project_git as vcs
 import windows_pack
+from sites import site      # the project in hand: every name below comes from it
 
-PROD_PORT, PROD_PROJECT, TRIAL_PORT = 5300, 'local-only-ops', 5390
-OLD_CONTAINER = 'mdi-prod-api'      # the first operating copy (before packs); stopped when the pack-based one takes its port
-PROD_URL = f'http://127.0.0.1:{PROD_PORT}'
-PROD_HOME = live.SHARE / 'prod/local-only'
-PACKS = live.SHARE / 'packs/local-only'
+TRIAL_PORT = 5390
+OLD_CONTAINER = 'mdi-prod-api'      # the first project's first operating copy (before packs); stopped when the pack-based one takes its port
 VENDOR = live.SHARE / 'vendor/windows'      # the Windows runtime pieces (Java, PostgreSQL ...), downloaded once
 PWSH = live.SHARE / 'tools/pwsh/pwsh'        # PowerShell, to parse-check the Windows scripts (they cannot be run on this machine)
 APP_IMAGE = 'eclipse-temurin:17-jre'
@@ -103,7 +101,7 @@ def write_bundle(project):
     """Write development's definitions, common codes and menus under release/ (files that are no longer true are removed)."""
     folder = Path(project) / 'release'
     (folder / 'definitions').mkdir(parents=True, exist_ok=True)
-    definitions = _definitions(live.DB_NAME)
+    definitions = _definitions(site().db)
     for path in (folder / 'definitions').glob('*.json'):
         if path.stem not in definitions:
             path.unlink()
@@ -111,8 +109,8 @@ def write_bundle(project):
         path, text = folder / 'definitions' / f'{key}.json', _dump(row)
         if not path.is_file() or path.read_text(encoding='utf-8') != text:
             path.write_text(text, encoding='utf-8')
-    settings = _psql(live.DB_NAME, "SELECT row_to_json(s) FROM sys_settings s WHERE setting_key NOT LIKE 'release\\_%' ORDER BY setting_key", rows=True)
-    for name, value in (('codes.json', _codes(live.DB_NAME)), ('menus.json', _menus(live.DB_NAME)), ('settings.json', settings)):
+    settings = _psql(site().db, "SELECT row_to_json(s) FROM sys_settings s WHERE setting_key NOT LIKE 'release\\_%' ORDER BY setting_key", rows=True)
+    for name, value in (('codes.json', _codes(site().db)), ('menus.json', _menus(site().db)), ('settings.json', settings)):
         path, text = folder / name, _dump(value)
         if not path.is_file() or path.read_text(encoding='utf-8') != text:
             path.write_text(text, encoding='utf-8')
@@ -341,7 +339,7 @@ def _web_hash(frontend):
 def _build_web(project, note):
     """The screens as built files, kept per source state so the same sources are built once."""
     frontend = Path(project) / 'frontend'
-    built = live.SHARE / 'prod/local-only/builds' / _web_hash(frontend)[:16]
+    built = site().ops_home / 'builds' / _web_hash(frontend)[:16]
     if not (built / 'index.html').is_file():
         note('화면 빌드')
         with tempfile.TemporaryDirectory() as tmp:
@@ -491,14 +489,14 @@ def pack(project, state, log=None):
         shipped = live.deploy(project, state, 'pack', note)       # development runs the same sources first, so what is packed is what was tried
         if not shipped.get('success'):
             raise ReleaseError(f"개발 서버 반영 실패({shipped.get('step')}): {shipped.get('error', '')[:300]}")
-        jar = Path(_mounted(live.CONTAINER, '/app/app.jar'))
+        jar = Path(_mounted(site().api_container, '/app/app.jar'))
         step = 'screens'
         built = _build_web(project, note)
         step = 'assemble'
         note('팩 조립')
-        definitions = _definitions(live.DB_NAME)
-        name = f'setup-pack-{stamp}'
-        folder = PACKS / name
+        definitions = _definitions(site().db)
+        name = f'{site().slug}-setup-{stamp}'
+        folder = site().packs / name
         (folder / 'app').mkdir(parents=True)
         shutil.copy2(jar, folder / 'app/app.jar')
         shutil.copytree(built, folder / 'web')
@@ -515,14 +513,14 @@ def pack(project, state, log=None):
         out['trial'] = _try_pack(folder, len(definitions), note)
         step = 'windows'
         note('윈도우용 팩 만들기 (최초 셋업, 업데이트)')
-        made = windows_pack.write_zips(folder, version, VENDOR, PACKS, name, PWSH)
+        made = windows_pack.write_zips(folder, version, VENDOR, site().packs, name, PWSH, service=site().service, title=site().title)
         files = {kind: {'name': made[kind].name, 'file': str(made[kind]), 'size': made[kind].stat().st_size} for kind in ('install', 'update')}
         out.update(success=True, folder=str(folder), name=name, files=files, postgres=made['postgres'], scripts_parsed=made['script_check'] is not None,
                    screens=len(definitions), shipped=_marks(definitions), tag=f'pack-{stamp}')
         vcs.tag(project, out['tag'], '운영 셋업 팩 ' + out['started_at'])
-        for old in sorted(path for path in PACKS.glob('setup-pack-*') if path.is_dir())[:-5]:       # the five newest packs are kept
+        for old in sorted((path for path in site().packs.glob('*setup-*') if path.is_dir()), key=lambda path: path.name[-15:])[:-5]:       # the five newest packs are kept
             shutil.rmtree(old, ignore_errors=True)
-            for file in PACKS.glob(old.name + '*.zip'):
+            for file in site().packs.glob(old.name + '*.zip'):
                 file.unlink()
     except Exception as error:
         out.update(success=False, step=step, error=str(error)[-1200:])
@@ -534,7 +532,7 @@ def pack(project, state, log=None):
 # ---- this machine's own operating copy: the pack, installed here ----
 
 def _copy_home():
-    return live.SHARE / 'prod/local-only/copy'
+    return site().ops_home / 'copy'
 
 
 def _install_here(folder, note):
@@ -543,7 +541,8 @@ def _install_here(folder, note):
     first = not (home / '.env').is_file()
     home.mkdir(parents=True, exist_ok=True)
     if first:
-        subprocess.run(['docker', 'rm', '-f', OLD_CONTAINER], capture_output=True)       # it holds port 5300; its database (mdi_prod) is left where it is
+        if site().first:
+            subprocess.run(['docker', 'rm', '-f', OLD_CONTAINER], capture_output=True)       # it holds port 5300; its database (mdi_prod) is left where it is
     else:
         note('운영 DB 백업')
         (home / 'backups').mkdir(exist_ok=True)
@@ -552,12 +551,13 @@ def _install_here(folder, note):
             raise ReleaseError('운영 DB 백업 실패: ' + dump.stderr.decode(errors='replace')[-300:])
         (home / 'backups' / f"db-{time.strftime('%Y%m%d-%H%M%S')}.dump").write_bytes(dump.stdout)
     live.sh(['rsync', '-a', '--delete', '--exclude', '.env', '--exclude', 'backups', str(folder) + '/', str(home) + '/'], timeout=300)
-    values = _write_env(home, PROD_PROJECT, PROD_PORT, '127.0.0.1')
-    login = Path(__file__).resolve().parent / 'state/auth/prod-login.json'
+    values = _write_env(home, site().ops_project, site().ops_port, '127.0.0.1')
+    login = site().state / 'auth/prod-login.json'
+    login.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     if first:       # the first administrator's password, where the other sign-in files are kept (0600)
         descriptor = os.open(login, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(descriptor, 'w') as out:
-            json.dump({'username': 'admin', 'password': values['ADMIN_PASSWORD'], 'url': PROD_URL}, out)
+            json.dump({'username': 'admin', 'password': values['ADMIN_PASSWORD'], 'url': site().ops_url}, out)
     note('운영 서버 시작')
     _compose(home, 'up', '-d', '--force-recreate', 'app') if not first else _compose(home, 'up', '-d')
     status, detail = _wait_copy(home)
@@ -567,7 +567,7 @@ def _install_here(folder, note):
 def deploy(project, state, log=None, previous=False):
     """Build a pack and install it on this machine's operating copy. previous: install the pack before the one in effect instead."""
     note = log or (lambda *_: None)
-    out = {'kind': 'deploy', 'stamp': time.strftime('%Y%m%d%H%M%S') + '1', 'started_at': time.strftime('%Y-%m-%dT%H:%M:%S'), 'url': PROD_URL, 'rollback': previous}
+    out = {'kind': 'deploy', 'stamp': time.strftime('%Y%m%d%H%M%S') + '1', 'started_at': time.strftime('%Y-%m-%dT%H:%M:%S'), 'url': site().ops_url, 'rollback': previous}
     step = 'pack'
     try:
         if previous:
@@ -605,11 +605,11 @@ def rollback(project, state, log=None):
 def status(project, state):
     """For the platform's home: the newest pack, this machine's operating copy, and what has been made since the last pack or deployment."""
     last_pack, last_deploy = _last(state, 'pack'), _last(state, 'deploy')
-    out = {'url': PROD_URL, 'exists': (_copy_home() / '.env').is_file(), 'last': last_deploy, 'pending': None,
+    out = {'url': site().ops_url, 'project': site().title, 'exists': (_copy_home() / '.env').is_file(), 'last': last_deploy, 'pending': None,
            'pack': last_pack and last_pack.get('files') and {'started_at': last_pack['started_at'], 'screens': last_pack.get('screens'), 'stamp': last_pack['stamp'],
                                                            'files': {kind: {'name': item['name'], 'size': item['size']} for kind, item in last_pack['files'].items()}}}
     try:
-        here = _definitions(live.DB_NAME)
+        here = _definitions(site().db)
         marks, shipped = _marks(here), ((last_deploy or last_pack or {}).get('shipped') or {})
         out['pending'] = {'new': [row['definition']['title'] for key, row in here.items() if key not in shipped],
                           'changed': [row['definition']['title'] for key, row in here.items() if key in shipped and shipped[key] != marks[key]], 'program': False}
@@ -620,9 +620,9 @@ def status(project, state):
 
 def pack_file(state, name):
     """The zip of a pack by its file name (only names this module made)."""
-    if not re.fullmatch(r'setup-pack-\d{8}-\d{6}-(install|update)\.zip', name or ''):
+    if not re.fullmatch(r'[a-z0-9-]{1,40}-\d{8}-\d{6}-(install|update)\.zip', name or ''):
         raise ValueError('팩 이름이 올바르지 않습니다.')
-    path = PACKS / name
+    path = site().packs / name
     if not path.is_file():
         raise ValueError('그 팩은 남아 있지 않습니다.')
     return path
@@ -670,12 +670,12 @@ def say(kind, result):
         if not result.get('success'):
             return f"셋업 팩을 만들지 못했습니다 ({result.get('step')} 단계): {result.get('error', '')[:500]}"
         files = result['files']
-        return (f"운영 셋업 팩을 만들었습니다 (윈도우 서버용, 화면 {result['screens']}개):\n"
+        return (f"{site().title} 운영 셋업 팩을 만들었습니다 (윈도우 서버용, 화면 {result['screens']}개):\n"
                 f"  최초 셋업 팩  {files['install']['name']} ({_size(files['install']['size'])}) - 빈 서버에 자바·PostgreSQL {result.get('postgres', '')}·DB·서비스까지 설치 (install.bat)\n"
                 f"  업데이트 팩   {files['update']['name']} ({_size(files['update']['size'])}) - 설치된 서버를 새 버전으로 (update.bat, 실패하면 자동으로 이전 상태로)\n"
                 f"팩에 든 프로그램·화면·화면 정의는 빈 환경에 설치해 확인했습니다 ({result.get('trial', '')}; 관리자 로그인 확인).\n"
                 f"⚠ 윈도우용 설치 스크립트는 문법 검사만 했습니다 (이 맥에서는 윈도우 설치를 돌려 볼 수 없음). 실제 윈도우에서 한 번 설치해 보고 쓰세요.\n"
-                f"파일 위치: {PACKS}")
+                f"파일 위치: {site().packs}")
     if not result.get('success'):
         back = ' 운영은 이전 팩으로 되돌렸습니다.' if result.get('restored') else ' 운영은 그대로입니다.'
         return f"배포하지 못했습니다 ({result.get('step')} 단계): {result.get('error', '')[:400]}{back}"
@@ -683,5 +683,5 @@ def say(kind, result):
     if result.get('pack'):
         lines.append(f"설치한 팩: {result['pack']}")
     if result.get('first'):
-        lines.append('운영 관리자(admin)의 첫 비밀번호는 platform/state/auth/prod-login.json 에 있습니다. 들어가서 바꾸세요.')
+        lines.append(f"운영 관리자(admin)의 첫 비밀번호는 {site().state / 'auth/prod-login.json'} 에 있습니다. 들어가서 바꾸세요.")
     return '\n'.join(lines)

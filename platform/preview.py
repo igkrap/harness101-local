@@ -78,10 +78,10 @@ class Previews:
             threading.Thread(target=self._start,args=(dict(record),),daemon=True).start()
             return self.status(record)
 
-    def _spawn(self,command,frontend,item,**kwargs):
+    def _spawn(self,command,frontend,item,extra=None,**kwargs):
         with self.lock:
             if self.closing:raise RuntimeError('플랫폼이 종료 중입니다.')
-            process=subprocess.Popen(command,cwd=frontend,env=environment(),start_new_session=True,**kwargs)
+            process=subprocess.Popen(command,cwd=frontend,env={**environment(),**(extra or {})},start_new_session=True,**kwargs)
             item['process']=process;item['managed']=True
             return process
 
@@ -108,7 +108,9 @@ class Previews:
                         os.killpg(process.pid,signal.SIGTERM);raise ValueError('의존성 설치 시간이 초과됐습니다.')
                     if code:raise ValueError('프론트엔드 의존성을 설치하지 못했습니다.')
                 with self.lock:item['status']='starting'
-                process=self._spawn(['node',str(BASE/'preview_server.mjs'),str(frontend)],frontend,item,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,bufsize=1)
+                own=record.get('site') or {}
+                extra={'PLATFORM_PREVIEW_PORT':str(own['preview_port']),'PLATFORM_PREVIEW_API':f"http://127.0.0.1:{own['api_port']}"} if own else None
+                process=self._spawn(['node',str(BASE/'preview_server.mjs'),str(frontend)],frontend,item,extra=extra,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,bufsize=1)
                 with process.stdout as output:
                     for line in output:
                         log.write(line);log.flush()

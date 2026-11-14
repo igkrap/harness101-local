@@ -16,16 +16,13 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-CONTAINER = 'mdi-local-api'
+from sites import site      # the project in hand: its server container, database, port and folders
+
 DB_CONTAINER = 'mdi-db'
-DB_NAME = 'mdi_local'
 DB_USER = 'mdi'
 NETWORK = 'mdi-internal'
-LIVE_URL = 'http://127.0.0.1:8083/'
 BUILD_IMAGE = 'maven:3.9-eclipse-temurin-17'
 SHARE = Path.home() / '.local/share/local-workshop'
-ARTIFACTS = SHARE / 'artifacts/local-only/backend'
-BACKUPS = SHARE / 'backups/local-only'
 START_SECONDS = 180
 
 
@@ -58,17 +55,17 @@ def build_jar(backend, label, digest):
         jars = [p for p in (scratch / 'target').glob('*.jar') if not p.name.endswith(('-plain.jar', '.original'))]
         if len(jars) != 1:
             raise DeployError(f'빌드 산출 JAR를 하나로 특정하지 못했습니다: {[p.name for p in jars]}')
-        ARTIFACTS.mkdir(parents=True, exist_ok=True)
-        target = ARTIFACTS / f'app-{label}-{digest[:12]}.jar'
+        site().artifacts.mkdir(parents=True, exist_ok=True)
+        target = site().artifacts / f'app-{label}-{digest[:12]}.jar'
         shutil.copy2(jars[0], target)
     return target
 
 
 def backup(stamp):
-    BACKUPS.mkdir(parents=True, exist_ok=True)
-    path = BACKUPS / f'{DB_NAME}-before-deploy-{stamp}.dump'
+    site().backups.mkdir(parents=True, exist_ok=True)
+    path = site().backups / f'{site().db}-before-deploy-{stamp}.dump'
     with path.open('wb') as out:
-        result = subprocess.run(['docker', 'exec', DB_CONTAINER, 'pg_dump', '-U', DB_USER, '-Fc', DB_NAME],
+        result = subprocess.run(['docker', 'exec', DB_CONTAINER, 'pg_dump', '-U', DB_USER, '-Fc', site().db],
                                 stdout=out, stderr=subprocess.PIPE, timeout=600)
     if result.returncode != 0 or path.stat().st_size == 0:
         raise DeployError('DB 백업 실패: ' + result.stderr.decode(errors='replace')[-400:])
@@ -76,7 +73,7 @@ def backup(stamp):
 
 
 def live_config():
-    info = json.loads(sh(['docker', 'inspect', CONTAINER]))[0]
+    info = json.loads(sh(['docker', 'inspect', site().api_container]))[0]
     return {'image': info['Config']['Image'], 'env': info['Config']['Env'],
             'ports': info['HostConfig'].get('PortBindings') or {},
             'networks': list((info.get('NetworkSettings') or {}).get('Networks') or {}) or [NETWORK]}
@@ -85,7 +82,7 @@ def live_config():
 def env_file(env, directory, db_url=None):
     """Container env (holds the admin password) goes through a 0600 file, never argv or logs."""
     lines = [e for e in env if not e.startswith('DB_URL=')] + ['DB_URL=' + (db_url or next(
-        (e.split('=', 1)[1] for e in env if e.startswith('DB_URL=')), f'jdbc:postgresql://{DB_CONTAINER}:5432/{DB_NAME}'))]
+        (e.split('=', 1)[1] for e in env if e.startswith('DB_URL=')), f'jdbc:postgresql://{DB_CONTAINER}:5432/{site().db}'))]
     path = Path(directory) / 'app.env'
     path.touch(mode=0o600)
     path.write_text('\n'.join(lines) + '\n')
@@ -135,7 +132,7 @@ def psql(sql):
 
 def rehearse(config, jar, dump, stamp, tmp):
     """Start the new jar against a restored copy of the live dump; the Flyway upgrade happens there first."""
-    clone, name = f'{DB_NAME}_deploycheck_{stamp}', f'mdi-deploy-rehearsal-{stamp}'
+    clone, name = f'{site().db}_deploycheck_{stamp}', f'mdi-deploy-rehearsal-{stamp}'
     psql(f'CREATE DATABASE "{clone}" OWNER {DB_USER}')
     try:
         with dump.open('rb') as data:
@@ -155,22 +152,22 @@ def rehearse(config, jar, dump, stamp, tmp):
 
 
 def swap(config, jar, stamp, tmp):
-    rollback = f'{CONTAINER}-before-deploy-{stamp}'
-    sh(['docker', 'stop', CONTAINER], timeout=120)
-    sh(['docker', 'rename', CONTAINER, rollback])
+    rollback = f'{site().api_container}-before-deploy-{stamp}'
+    sh(['docker', 'stop', site().api_container], timeout=120)
+    sh(['docker', 'rename', site().api_container, rollback])
     try:
-        run_app(CONTAINER, config, jar, env_file(config['env'], tmp))
-        wait_started(CONTAINER, LIVE_URL)
+        run_app(site().api_container, config, jar, env_file(config['env'], tmp))
+        wait_started(site().api_container, site().api_url + '/')
     except Exception:
-        subprocess.run(['docker', 'rm', '-f', CONTAINER], capture_output=True)
-        subprocess.run(['docker', 'rename', rollback, CONTAINER], capture_output=True)
-        subprocess.run(['docker', 'start', CONTAINER], capture_output=True)
+        subprocess.run(['docker', 'rm', '-f', site().api_container], capture_output=True)
+        subprocess.run(['docker', 'rename', rollback, site().api_container], capture_output=True)
+        subprocess.run(['docker', 'start', site().api_container], capture_output=True)
         raise
     return rollback
 
 
 def flyway_versions():
-    out = subprocess.run(['docker', 'exec', DB_CONTAINER, 'psql', '-U', DB_USER, '-d', DB_NAME, '-Atc',
+    out = subprocess.run(['docker', 'exec', DB_CONTAINER, 'psql', '-U', DB_USER, '-d', site().db, '-Atc',
                           'select version from flyway_schema_history where success order by installed_rank'],
                          capture_output=True, text=True).stdout
     return [v for v in out.split() if v]

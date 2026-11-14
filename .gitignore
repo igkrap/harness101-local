@@ -31,3 +31,6 @@ local-only/
 fullstack/
 erp-harness/state/
 harness2/runs/
+
+# projects made on the platform (each keeps its own git history)
+/projects/

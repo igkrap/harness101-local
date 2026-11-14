@@ -98,7 +98,8 @@ class Workspaces:
 
     def catalog(self):
         with self.lock:
-            return {'projects': [{**r, 'available': Path(r['root']).is_dir(), 'active': next((j for j in self.apps[r['id']].jobs.values() if j['status'] in ('running', 'stopping')), None) if r['id'] in self.apps else None} for r in self.records]}
+            import projects
+            return {'kinds': projects.kinds(), 'projects': [{**r, 'available': Path(r['root']).is_dir(), 'active': next((j for j in self.apps[r['id']].jobs.values() if j['status'] in ('running', 'stopping')), None) if r['id'] in self.apps else None} for r in self.records]}
 
     def busy(self):
         if self.testing_model or self.chat_active or getattr(self, 'queue_planning', False): return True
@@ -136,6 +137,11 @@ class Workspaces:
             self.records.append(record)
             self.persist()
             return record
+
+    def create(self, body):
+        """A new project of a chosen kind, with the base framework and a working set of its own."""
+        import projects
+        return projects.create(self, body)
 
     def pick(self):
         from folder_dialog import choose_folder

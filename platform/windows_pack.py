@@ -343,8 +343,12 @@ def _bat(script):
 
 
 def readme(version, kind):
-    first = kind == 'install'
-    return f"""# 운영 셋업 팩 - {'최초 셋업' if first else '업데이트'}
+    service = version.get('service', 'ERP')
+    return _readme(version, kind == 'install').replace(':\\ERP', f':\\{service}').replace('`ERP-DB`', f'`{service}-DB`').replace('`ERP-APP`', f'`{service}-APP`')
+
+
+def _readme(version, first):
+    return f"""# {version.get('project', '')} 운영 셋업 팩 - {'최초 셋업' if first else '업데이트'}
 
 버전 {version['stamp']} · 만든 때 {version['made_at']} · 화면 {version['screens']}개
 
@@ -478,16 +482,17 @@ def check_scripts(folder, pwsh):
     return [line for line in (result.stdout + result.stderr).splitlines() if line.strip()]
 
 
-def write_zips(layer, version, cache, target, name, pwsh=None):
+def write_zips(layer, version, cache, target, name, pwsh=None, service='ERP', title=None):
     """Make <name>-install.zip and <name>-update.zip from the application layer (a folder with app/, web/, release/).
     Returns {'install': path, 'update': path, 'postgres': version, 'script_check': problems or None}."""
     layer, target = Path(layer), Path(target)
     prepared, postgres = runtime(cache)
-    version = dict(version, postgres=postgres, platform='windows-x64')
+    version = dict(version, postgres=postgres, platform='windows-x64', service=service, project=title or service)
     stage = target / f'{name}-scripts'
     shutil.rmtree(stage, ignore_errors=True)
     stage.mkdir(parents=True)
-    for file, text in SCRIPTS.items():       # UTF-8 with a byte order mark, Windows line ends
+    for file, text in SCRIPTS.items():       # UTF-8 with a byte order mark, Windows line ends; the project's name as the default folder and service name
+        text = text.replace("[string]$Name = 'ERP'", f"[string]$Name = '{service}'").replace('-Name ERP2', f'-Name {service}2').replace(':\\ERP', f':\\{service}')
         (stage / file).write_bytes(b'\xef\xbb\xbf' + text.replace('\r\n', '\n').replace('\n', '\r\n').encode('utf-8'))
     problems = check_scripts(stage, pwsh)
     if problems:

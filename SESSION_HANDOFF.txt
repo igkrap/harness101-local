@@ -989,3 +989,21 @@ Orca CLI selected /Applications/Orca.app/Contents/Resources/bin/orca, skill read
   and whether the dev DB/API may use Docker Desktop/WSL2 or must run natively like the operating pack.
 
 - 2026-11-14: user put platform-side packs on hold ("플랫폼쪽은 일단 하지말자"). Mac platform pack stays as built; no Windows platform pack, no dockerising of the platform until asked.
+
+[2026-11-14, night] New projects by kind; everything named after the project
+(user: "신규 프로젝트를 만들면 그 완전 기본 프레임워크는 그대로 가져가고 셋업팩도 그 프로젝트 명 기반으로", "생성할때 업무 사이트, ~~사이트 고를 수 있게, 일단 업무사이트만 활성화")
+- platform/sites.py: Site (slug, title, kind, root, state, db, api container/port, preview url, ops port, derived pack/backup/ops folders, Windows service name)
+  and site() = the project in hand (contextvar; default = local-only with its old names). Set per HTTP request (server.py) and per queue thread (task_queue._run).
+  backend_deploy, release, windows_pack and harness2 (framework.py site-aware, checks.py passes the project's origins/credentials to the inspector) read it.
+- KINDS in sites.py: business (업무 사이트, enabled, template local-only), shop and homepage (disabled placeholders I chose - the user only said "~~사이트").
+- platform/projects.py create(): projects/<slug> (ignored by the outer git) = git archive of local-only HEAD without release/, own git repo, harness symlink,
+  database mdi_<slug> (+_test) in mdi-db, container mdi-<slug>-api on the next free port from 8084, preview on 5310+, ops port 5301+, admin/verifier
+  files under state/projects/<id>/runs/auth, system_name = title, npm ci. Reuses a jar built from the same sources. Cleans up if it fails. ~15 s.
+  POST /api/projects/create {title, slug, kind}; 프로젝트 page has the form.
+- Packs: <slug>-setup-<stamp>-install/update.zip in packs/<slug>; Windows defaults C:\<SLUG> and services <SLUG>-DB/-APP; this Mac's copy <slug>-ops.
+- Tried with a project demo-site: local model wrote 거래처 등록 into ITS database (not local-only's); the screen check first timed out because the
+  inspector signed in to local-only (fixed via HARNESS_AUTH_ORIGINS / HARNESS_LOGIN_CREDENTIALS), replay then passed 30 checks; its pack was built and
+  trial-installed with 1 screen. demo-site was removed afterwards (container, databases, folder, record, packs).
+- Limits: a new project only takes requests a definition can answer (the older code route knows only local-only's servers; such requests are refused with
+  a message). There is no "delete project" in the platform. Framework changes made later in local-only do not flow into existing projects.
+  Previews of new projects are started by the platform on demand (not by start.sh).

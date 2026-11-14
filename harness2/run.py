@@ -16,7 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import checks
 import define
-from framework import APP, Framework
+from framework import Framework, app_url
 
 RUNS = Path(__file__).resolve().parent / 'runs'
 TRIAL = 'trial_'
@@ -158,7 +158,7 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
         trial = {name: value for name, value in definition.items() if name not in ('rules', 'effects')}
         framework.save_definition(trial_key, dict(trial, title=trial_title), 'DRAFT')
         data = (checks.over_checks if definition.get('over') else checks.dashboard_checks if definition.get('dashboard') else checks.summary_checks if definition.get('summary') else checks.record_checks)(trial_key, definition, framework)
-        screen = checks.screen_checks(trial_title, definition, folder / '2-check', APP)
+        screen = checks.screen_checks(trial_title, definition, folder / '2-check', app_url())
         results = data.results + screen.results
         (folder / '2-check').mkdir(exist_ok=True)
         (folder / '2-check' / 'results.json').write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding='utf-8')

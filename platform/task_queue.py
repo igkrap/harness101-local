@@ -232,6 +232,8 @@ class QueueManager:
 
     def _run(self, queue_id, plan):
         hub = self.app.coordinator
+        import sites
+        sites._current.set(sites.of_app(self.app))      # everything this thread builds, checks, packs or deploys belongs to this project
         try:
             if plan and self._release_route(queue_id):
                 if hub is not None:
@@ -241,6 +243,13 @@ class QueueManager:
                 if hub is not None:
                     hub.queue_planning = False
                 return
+            if plan and not sites.site().first:
+                # Requests a definition cannot answer are written as code by the older route, which knows only the first project's servers.
+                if hub is not None:
+                    hub.queue_planning = False
+                queue = self.get(queue_id)
+                reason = queue.get('route_reason') or queue.get('route_error') or ''
+                return self._finish(queue_id, 'failed', '이 요청은 화면 정의로 할 수 있는 일이 아니어서 처리하지 못했습니다' + (f' ({reason})' if reason else '') + '. 새로 만든 프로젝트에서는 화면 정의로 되는 요청만 받습니다.')
             if plan:
                 try:
                     items = self._plan(queue_id)
@@ -313,6 +322,23 @@ class QueueManager:
         self._finish(queue_id, 'succeeded' if ok else 'failed', said)
         return True
 
+    def _preview_ready(self):
+        """The project's screens must be up for the checks that look at them: start the preview if the platform owns it, and wait for it."""
+        import sites, time, urllib.request
+        hub, record = self.app.coordinator, getattr(self.app, 'metadata', None)
+        if sites.site().first or hub is None or not record:
+            return
+        for _ in range(60):
+            try:
+                with urllib.request.urlopen(sites.site().preview_url, timeout=2) as answer:
+                    if answer.status == 200:
+                        return
+            except OSError:
+                pass
+            hub.previews.ensure(record)
+            time.sleep(2)
+        raise RuntimeError('앱 화면(미리보기)을 켜지 못했습니다.')
+
     def _definition_route(self, queue_id):
         """Requests a definition can answer (a new registration screen, a field added, a field made required ...)
         go through harness2: the model writes a definition, the framework judges it, checks are derived from it and
@@ -328,6 +354,7 @@ class QueueManager:
                 sys.path.insert(0, folder)
             import run as definition_run
             goal = self.get(queue_id)['goal']
+            self._preview_ready()
             self._update(queue_id, items=[{'domain': 'definition', 'title': '화면 정의 작성과 검사', 'checks': ['definition'], 'status': 'running', 'job_id': None, 'attempts': 1}],
                          status='running', route='definition')
             result = definition_run.run(goal)

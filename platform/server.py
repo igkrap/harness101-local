@@ -582,6 +582,7 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path=='/api/projects' and hasattr(self.server.platform,'catalog'):
                 self.send_json(self.server.platform.catalog());return
             app=self.context(query)
+            import sites;sites._current.set(sites.of_app(app))      # this request is about that project (one thread per request)
             if parsed.path=='/api/chats':self.send_json(chat_store.list_chats(app));return
             if parsed.path=='/api/queues':self.send_json({'queues':app.queues.list()});return
             match=re.fullmatch(r'/api/queues/([a-f0-9]{32})',parsed.path)
@@ -682,6 +683,7 @@ class Handler(BaseHTTPRequestHandler):
         if not self.allowed() or self.headers.get('X-Platform-Token')!=hub.token:self.send_json({'error':'유효하지 않은 실행 요청입니다.'},403);return
         try:
             parsed=urlsplit(self.path);app=self.context(parse_qs(parsed.query))
+            import sites;sites._current.set(sites.of_app(app))
             length=int(self.headers.get('Content-Length','0'))
             if not 0<length<=(4500000 if parsed.path.startswith('/api/chat') else 100000):raise ValueError('요청 크기가 올바르지 않습니다.')
             if self.headers.get('Content-Type','').split(';')[0]!='application/json':raise ValueError('JSON 요청이 필요합니다.')
@@ -698,6 +700,7 @@ class Handler(BaseHTTPRequestHandler):
                     with hub.lock:hub.testing_model=False
                 self.send_json(result);return
             if parsed.path=='/api/projects/pick' and hasattr(hub,'pick'):self.send_json(hub.pick());return
+            if parsed.path=='/api/projects/create' and hasattr(hub,'create'):self.send_json(hub.create(body),201);return
             if parsed.path=='/api/projects' and hasattr(hub,'add'):self.send_json(hub.add(body),201);return
             if parsed.path=='/api/preview' and hasattr(hub,'previews'):self.send_json(hub.previews.ensure(app.metadata),202);return
             if parsed.path=='/api/chat':self.send_json(chat_answer(hub,app,body));return

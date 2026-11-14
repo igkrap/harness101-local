@@ -15,6 +15,7 @@ check creates is removed again, also when a check fails.
 """
 import itertools
 import json
+import os
 import subprocess
 import sys
 import uuid
@@ -813,7 +814,10 @@ def screen_checks(title, definition, record_to, app):
     out = Path(record_to) / 'browser'
     data = {'open_screen': title, 'contract': {'criteria': criteria, 'requirements': []}, 'preview_url': app + '/?drafts=1', 'api_url': '',
             'output_dir': str(out / uuid.uuid4().hex), 'allow_browser_writes': False, 'allow_api_writes': False}
-    done = subprocess.run(['node', str(HARNESS / 'react_layout_inspector.cjs')], input=json.dumps(data), text=True, capture_output=True, timeout=240)
+    # The browser signs in to the project in hand: its addresses and its own checking account.
+    from framework import site
+    env = dict(os.environ, HARNESS_AUTH_ORIGINS=f'{app},{site().api_url}', HARNESS_LOGIN_CREDENTIALS=str(site().credentials))
+    done = subprocess.run(['node', str(HARNESS / 'react_layout_inspector.cjs')], input=json.dumps(data), text=True, capture_output=True, timeout=240, env=env)
     report = Report()
     try:
         results = {result['id']: result for result in json.loads(done.stdout).get('results', [])}

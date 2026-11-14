@@ -45,13 +45,14 @@ def sh(cmd, timeout=1800, check=True, **kw):
 
 
 class Setup:
-    def __init__(self, root, suffix='', db_port=5433, api_port=8083, state=None, share=None, log=print):
+    def __init__(self, root, suffix='', db_port=5433, api_port=8083, state=None, share=None, log=print, project=None, database='mdi_local', api=None, slug='local-only'):
         self.root = Path(root).resolve()                       # holds platform/ and local-only/
-        self.project = self.root / 'local-only'
+        self.project = Path(project).resolve() if project else self.root / 'local-only'
+        self.database_name, self.slug = database, slug
         self.state = Path(state).resolve() if state else self.root / 'platform/state'
         self.share = Path(share).resolve() if share else Path.home() / '.local/share/local-workshop'
         self.suffix, self.db_port, self.api_port, self.log = suffix, db_port, api_port, log
-        self.db, self.api = 'mdi-db' + suffix, 'mdi-local-api' + suffix
+        self.db, self.api = 'mdi-db' + suffix, (api or 'mdi-local-api') + suffix
         self.internal, self.public, self.m2 = 'mdi-internal' + suffix, 'mdi-public' + suffix, 'mdi-m2' + suffix
         self.data = 'mdi-db-data' + suffix
 
@@ -97,7 +98,7 @@ class Setup:
                 raise SetupError('데이터베이스가 90초 안에 시작하지 않았습니다.')
             time.sleep(2)
         time.sleep(1)
-        for name in ('mdi_local', 'mdi_local_test'):
+        for name in (self.database_name, self.database_name + '_test'):
             if not self.psql(f"SELECT 1 FROM pg_database WHERE datname = '{name}'"):
                 self.psql(f'CREATE DATABASE "{name}" OWNER mdi')
 
@@ -113,8 +114,14 @@ class Setup:
     def build(self):
         """The server program from the project's sources. The first build fetches what Maven needs into the cache volume; later builds (the platform's own) work without the network."""
         digest = self.source_hash()
-        target = self.share / 'artifacts/local-only/backend' / f'app-setup-{digest[:12]}.jar'
+        target = self.share / 'artifacts' / self.slug / 'backend' / f'app-setup-{digest[:12]}.jar'
         if target.is_file():
+            return target, digest
+        # The same sources were built before, for another project (a new project starts from the same base framework): the same program.
+        built = sorted((self.share / 'artifacts').glob(f'*/backend/*-{digest[:12]}.jar'))
+        if built:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(built[0], target)
             return target, digest
         self.log('서버 프로그램 빌드 (처음에는 필요한 것을 내려받느라 몇 분 걸립니다)')
         self.share.mkdir(parents=True, exist_ok=True)
@@ -139,7 +146,7 @@ class Setup:
         if login.is_file() and server.is_file():
             return server
         self.log('관리자 계정')
-        hashed = self.psql(f"CREATE EXTENSION IF NOT EXISTS pgcrypto; SELECT crypt('{ADMIN['password']}', gen_salt('bf', 12));", 'mdi_local').splitlines()[-1]
+        hashed = self.psql(f"CREATE EXTENSION IF NOT EXISTS pgcrypto; SELECT crypt('{ADMIN['password']}', gen_salt('bf', 12));", self.database_name).splitlines()[-1]
         if not re.fullmatch(r'\$2[aby]\$\d\d\$[./A-Za-z0-9]{53}', hashed):
             raise SetupError('관리자 비밀번호 해시를 만들지 못했습니다.')
         for path, content in ((login, json.dumps(ADMIN, indent=2) + '\n'),
@@ -154,7 +161,7 @@ class Setup:
         with tempfile.TemporaryDirectory() as tmp:
             envfile = Path(tmp) / 'app.env'
             envfile.touch(mode=0o600)
-            envfile.write_text(server_env.read_text() + f'DB_URL=jdbc:postgresql://{self.db}:5432/mdi_local\n')
+            envfile.write_text(server_env.read_text() + f'DB_URL=jdbc:postgresql://{self.db}:5432/{self.database_name}\n')
             sh(['docker', 'run', '-d', '--name', self.api, '--network', self.internal, '--env-file', str(envfile), '--restart', 'unless-stopped',
                 '-v', f'{jar}:/app/app.jar:ro', *(['-v', f"{self.project / 'release'}:/app/release:ro"] if with_release else []),
                 '-p', f'127.0.0.1:{self.api_port}:8080', BUILD_IMAGE, 'java', '-jar', '/app/app.jar'], timeout=180)
@@ -174,7 +181,7 @@ class Setup:
         """Start the app's server. The first time it is started once with the project's release/ beside it, so the screens that
         came with the project are in the development database; then again without, because in development screens are made, not loaded."""
         running = sh(['docker', 'inspect', '-f', '{{.State.Running}}', self.api], check=False).stdout.strip() == 'true'
-        screens = self.psql("SELECT to_regclass('public.app_definitions') IS NOT NULL", 'mdi_local') == 't' and int(self.psql('SELECT COUNT(*) FROM app_definitions', 'mdi_local') or 0)
+        screens = self.psql("SELECT to_regclass('public.app_definitions') IS NOT NULL", self.database_name) == 't' and int(self.psql('SELECT COUNT(*) FROM app_definitions', self.database_name) or 0)
         if running and screens:
             return screens
         server_env = self.accounts()
@@ -182,20 +189,20 @@ class Setup:
         if bundle:
             self.log('서버 시작 + 프로젝트에 든 화면 반영')
             self._run_api(jar, server_env, True)
-            status = self.psql("SELECT setting_value FROM sys_settings WHERE setting_key = 'release_status'", 'mdi_local')
+            status = self.psql("SELECT setting_value FROM sys_settings WHERE setting_key = 'release_status'", self.database_name)
             if status != 'ok':
-                raise SetupError('프로젝트에 든 화면을 반영하지 못했습니다: ' + self.psql("SELECT setting_value FROM sys_settings WHERE setting_key = 'release_detail'", 'mdi_local'))
+                raise SetupError('프로젝트에 든 화면을 반영하지 못했습니다: ' + self.psql("SELECT setting_value FROM sys_settings WHERE setting_key = 'release_detail'", self.database_name))
         self.log('서버 시작')
         self._run_api(jar, server_env, False)
         record = self.state / 'deploys'
         record.mkdir(parents=True, exist_ok=True)
         (record / 'current.json').write_text(json.dumps({'stamp': time.strftime('%Y%m%d%H%M%S'), 'label': 'setup', 'source_sha': digest, 'jar': str(jar), 'success': True}, ensure_ascii=False, indent=1))
-        return int(self.psql('SELECT COUNT(*) FROM app_definitions', 'mdi_local') or 0)
+        return int(self.psql('SELECT COUNT(*) FROM app_definitions', self.database_name) or 0)
 
     def verifier(self):
         """The platform's own administrator-level account for looking at screens (one live sign-in per account, so it must not share the person's)."""
         target = self.state / 'auth/verifier-login.json'
-        if target.is_file() and self.psql("SELECT 1 FROM workspace_users WHERE username = 'verifier'", 'mdi_local'):
+        if target.is_file() and self.psql("SELECT 1 FROM workspace_users WHERE username = 'verifier'", self.database_name):
             return
         self.log('화면 검증 전용 계정')
         password = secrets.token_urlsafe(24)
@@ -204,7 +211,7 @@ class Setup:
                 INSERT INTO workspace_users (username, password_hash, display_name, permissions, enabled, status)
                 VALUES ('verifier', '{{bcrypt}}' || crypt('{password}', gen_salt('bf', 10)), '화면 검증 전용 (플랫폼)', '{PERMISSIONS}', TRUE, 'ACTIVE')
                 ON CONFLICT (username) DO UPDATE SET password_hash = EXCLUDED.password_hash, enabled = TRUE, status = 'ACTIVE';
-                INSERT INTO sys_user_roles (username, role_code) VALUES ('verifier', 'ADMIN') ON CONFLICT DO NOTHING;""", 'mdi_local')
+                INSERT INTO sys_user_roles (username, role_code) VALUES ('verifier', 'ADMIN') ON CONFLICT DO NOTHING;""", self.database_name)
         except SetupError as error:
             raise SetupError(str(error).replace(password, '***'))
         descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
