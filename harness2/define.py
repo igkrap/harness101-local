@@ -39,7 +39,6 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 - 다른 자료에서 고르는 항목(거래처, 품목, 부서 ...)은 글자로 받지 말고 ref 로 한다. 이미 있는 자료만 가리킬 수 있고, ref.label 과 fill 의 값은 그 자료에 실제로 있는 항목 name 이어야 한다(위 '이미 있는 자료' 참고).
 - 정해진 값 중에서 고르는 항목은 code 로 하되 있는 공통 코드 그룹만 쓴다. 맞는 그룹이 없으면 글자(text)로 둔다.
 - "~하면 ~못 하게" 같은 요청은 rules 로 적는다. 규칙이 가리키는 자료와 항목은 이미 있어야 한다.
-- "~하면 알려줘"는 effects 의 notify 로 적는다. 받는 사람은 화면으로 정한다: 승인자·처리자에게 알리는 것은 그들이 쓰는 화면(승인 화면 등)의 key 를 screen 에, 등록한 사람에게 알리는 것은 to: "author". 그 화면이 아직 없으면 steps 로 화면부터 만든다.
 - effects 의 on 은 요청의 말 그대로 정한다: "등록하면·저장하면·입력하면"은 create, "확정하면·승인하면·완료하면"처럼 상태 버튼을 말하면 그 action 이름이다.
 - 한 건 안에서 두 값을 견주는 조건(날짜 순서 등)은 checks 로, 다른 자료의 수량을 넘지 못하게 하는 것(초과 출하·재고 부족 방지)은 limits 로, "~하면 자동으로 ~된다/만들어진다"는 effects 로 적는다. 그 규칙은 저장이 거절되어야 하는 자료, 일이 시작되는 자료의 정의에 붙인다(출하 수량 제한은 출하에, 수주 확정 시 출하 생성은 수주에).
 - id, 상태, 등록·수정자/일시는 프레임워크가 관리하므로 항목으로 넣지 않는다(상태는 definition.status 로).
@@ -82,8 +81,7 @@ def describe(key, definition):
         if definition.get(part):
             text += f' / {label}: ' + '; '.join(rule['message'] for rule in definition[part])
     if definition.get('effects'):
-        text += ' / 자동 처리: ' + '; '.join(('등록할 때' if effect['on'] == 'create' else f"{effect['on']} 동작을 할 때") + ' → ' + (f"{effect['create']['entity']} 한 건을 만든다" if effect.get('create') else f"{effect['act']['via']} 이(가) 가리키는 자료에 {effect['act']['action']} 동작을 한다" if effect.get('act')
-            else (f"{effect['notify']['screen']} 화면을 쓰는 사람들에게" if effect['notify'].get('screen') else '등록한 사람에게') + f" 알린다(\"{effect['notify']['message']}\")") for effect in definition['effects'])
+        text += ' / 자동 처리: ' + '; '.join(('등록할 때' if effect['on'] == 'create' else f"{effect['on']} 동작을 할 때") + ' → ' + (f"{effect['create']['entity']} 한 건을 만든다" if effect.get('create') else f"{effect['act']['via']} 이(가) 가리키는 자료에 {effect['act']['action']} 동작을 한다") for effect in definition['effects'])
     if definition.get('over'):
         part = definition['over']
         text = f"- key {key} / 화면 이름 {definition['title']} / 업무 화면: {part['entity']} 자료 중 " + (f"상태 {part['statuses']} 인 건" if part.get('statuses') else '모든 건') \
