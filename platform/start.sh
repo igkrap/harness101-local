@@ -12,11 +12,7 @@ trap 'exit 130' INT TERM
 if ! curl -fsS --max-time 2 http://127.0.0.1:5293/api/state >/dev/null 2>&1; then
   if [ ! -d "$platform_dir/web/node_modules" ]; then npm --prefix "$platform_dir/web" ci; fi
   npm --prefix "$platform_dir/web" run build
-  if ! curl -fsS --max-time 2 http://127.0.0.1:5292/ >/dev/null 2>&1; then
-    if [ ! -d "$project_dir/frontend/node_modules" ]; then npm --prefix "$project_dir/frontend" ci; fi
-    (cd "$project_dir/frontend" && exec node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5292 --strictPort) >"$platform_dir/state/preview.log" 2>&1 &
-    preview_pid=$!
-  fi
+  # the platform itself brings up the preview of the first project's screens
   python3 "$platform_dir/server.py"
 else
   echo '플랫폼 실행 중: http://127.0.0.1:5293'

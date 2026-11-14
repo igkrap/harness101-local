@@ -1,7 +1,7 @@
 /**
  * The platform as a desktop app: one window instead of a browser tab, and the things the platform needs are looked
- * after from here - the platform's own server, the preview of the first project's screens, the development database
- * and app server (Docker containers) and the local model's server.
+ * after from here - the platform's own server (which brings up the preview of the first project's screens itself), the
+ * development database and app server (Docker containers) and the local model's server.
  *
  * Each is started only when it is not already answering, so the app can be opened beside a platform that was started
  * by hand. When the app quits it stops what it started itself - except the local model's server, which is left
@@ -18,6 +18,10 @@ const ROOT = path.resolve(PLATFORM, '..');
 const STATE = path.join(PLATFORM, 'state');
 const URLS = { platform: 'http://127.0.0.1:5293', preview: 'http://127.0.0.1:5292', model: 'http://127.0.0.1:8099/v1/models' };
 const SMOKE = process.argv.includes('--smoke');
+// The first project's names (its server container, where its screens are previewed) as the platform's records hold them.
+function first() { try { return JSON.parse(fs.readFileSync(path.join(STATE, 'projects.json'), 'utf8'))[0].site || {}; } catch { return {}; } }
+const apiContainer = () => first().api_container || 'mdi-local-api';
+const previewUrl = () => `http://127.0.0.1:${first().preview_port || 5292}`;
 const started = {};          // what this app started: name -> child process
 let win = null, quitting = false;
 
@@ -53,7 +57,7 @@ function run(name, command, args, cwd, detached = false) {
 async function bringUp(tell) {
   const problems = [];
   tell('도커(개발 DB와 앱 서버) 확인');
-  await new Promise(done => execFile('docker', ['start', 'mdi-db', 'mdi-local-api'], { env: ENV, timeout: 30000 }, error => {
+  await new Promise(done => execFile('docker', ['start', 'mdi-db', apiContainer()], { env: ENV, timeout: 30000 }, error => {
     if (error) problems.push('도커가 꺼져 있거나 개발 DB·앱 서버 컨테이너가 없습니다. 도커를 켠 뒤 메뉴의 "다시 확인"을 누르세요.');
     done();
   }));
@@ -61,10 +65,6 @@ async function bringUp(tell) {
     const script = path.join(PLATFORM, 'scripts/qwen-serve-forever.sh');
     if (fs.existsSync(script)) { tell('로컬 모델 서버 켜는 중 (모델을 올리는 데 1분쯤 걸립니다)'); run('model', script, [], PLATFORM, true); }
     else problems.push('로컬 모델 서버를 켜는 스크립트가 없습니다.');
-  }
-  if (!(await answers(URLS.preview))) {
-    const frontend = path.join(ROOT, 'local-only/frontend');
-    if (fs.existsSync(path.join(frontend, 'node_modules/vite/bin/vite.js'))) { tell('앱 화면(미리보기) 켜는 중'); run('preview', 'node', ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5292', '--strictPort'], frontend); }
   }
   if (!(await answers(URLS.platform + '/api/state'))) {
     if (!fs.existsSync(path.join(PLATFORM, 'web/dist/index.html'))) {
@@ -79,8 +79,8 @@ async function bringUp(tell) {
 }
 
 async function status() {
-  const [platform, preview, model] = await Promise.all([answers(URLS.platform + '/api/state'), answers(URLS.preview), answers(URLS.model)]);
-  const docker = await new Promise(done => execFile('docker', ['inspect', '-f', '{{.State.Running}}', 'mdi-db', 'mdi-local-api'], { env: ENV, timeout: 10000 }, (error, out) => done(!error && out.trim().split('\n').every(line => line === 'true'))));
+  const [platform, preview, model] = await Promise.all([answers(URLS.platform + '/api/state'), answers(previewUrl()), answers(URLS.model)]);
+  const docker = await new Promise(done => execFile('docker', ['inspect', '-f', '{{.State.Running}}', 'mdi-db', apiContainer()], { env: ENV, timeout: 10000 }, (error, out) => done(!error && out.trim().split('\n').every(line => line === 'true'))));
   return { platform, preview, model, docker, mine: Object.keys(started) };
 }
 

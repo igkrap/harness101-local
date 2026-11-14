@@ -62,13 +62,13 @@ def create(hub, body, log=None):
         raise ValueError('영문 이름은 영문 소문자로 시작하는 3~25자의 소문자·숫자·하이픈입니다 (예: acme-erp). 폴더, 데이터베이스, 셋업 팩 이름에 쓰입니다.')
     root, database = HOME / slug, 'mdi_' + slug.replace('-', '_')
     with hub.lock:
-        if slug == sites.DEFAULT.slug or any((record.get('site') or {}).get('slug') == slug or Path(record['root']).name == slug for record in hub.records):
+        if any((record.get('site') or {}).get('slug') == slug or Path(record['root']).name == slug for record in hub.records) or (sites.ROOT / slug).exists():
             raise ValueError(f'{slug} 은(는) 이미 있는 프로젝트 이름입니다.')
         owned = [record.get('site') or {} for record in hub.records]
-        taken = {sites.DEFAULT.api_port, sites.DEFAULT.ops_port, 5292, 5293, 5390} | {int(own[key]) for own in owned for key in ('api_port', 'preview_port', 'ops_port') if own.get(key)}
+        taken = {5293, 5390} | {int(own[key]) for own in owned for key in ('api_port', 'preview_port', 'ops_port') if own.get(key)}
     if root.exists():
         raise ValueError(f'{root} 폴더가 이미 있습니다.')
-    source = sites.ROOT / kind['template']
+    source = Path(hub.records[0]['root'])        # the reference project: the first one, wherever it is and whatever it is called
     api_port = _free(8084, taken)
     preview_port = _free(5310, taken | {api_port})
     ops_port = _free(5301, taken | {api_port, preview_port})
@@ -80,7 +80,7 @@ def create(hub, body, log=None):
         vcs.ensure_repo(root)
         default = hub.records[0]
         own = {'slug': slug, 'title': title, 'kind': kind_id, 'db': database, 'api_container': f'mdi-{slug}-api', 'api_port': api_port, 'preview_port': preview_port, 'ops_port': ops_port,
-               'template': kind['template'], 'template_commit': commit}
+               'template': Path(hub.records[0]['root']).name, 'template_commit': commit}
         record = {'id': hashlib.sha256(str(root.resolve()).encode()).hexdigest()[:16], 'name': slug, 'root': str(root.resolve()), 'preview_url': f'http://127.0.0.1:{preview_port}',
                   'model_url': default.get('model_url', 'http://127.0.0.1:8099/v1'), 'default_model': default.get('default_model', ''), 'test_db_url': f'jdbc:postgresql://{sites.DB_CONTAINER}:5432/{database}_test',
                   **({'model_config': default['model_config']} if default.get('model_config') else {}), 'site': own}
@@ -153,7 +153,7 @@ def remove(hub, project_id, confirm):
     return {'removed': slug, 'packs_kept': str(sites.SHARE / 'packs' / slug) if (sites.SHARE / 'packs' / slug).is_dir() else None}
 
 
-def rename(hub, project_id, title=None, slug=None):
+def rename(hub, project_id, title=None, slug=None, allow_queue=False):
     """Give a project another name. title: the name people see (on the platform, on the project's own screens when it still
     carried the old one, on the setup packs made from now on). slug: the English name - the folder, the development
     database, the server and the pack files are renamed with it; only for projects made here, and only while nothing runs in them.
@@ -170,18 +170,19 @@ def rename(hub, project_id, title=None, slug=None):
         if slug is not None and own and slug == own['slug']:
             slug = None
         if slug is not None:
-            if not own or record is hub.records[0]:
-                raise ValueError('이 프로젝트는 영문 이름을 바꿀 수 없습니다 (처음부터 있던 프로젝트입니다). 보이는 이름만 바꿀 수 있습니다.')
+            if not own:
+                raise ValueError('이 프로젝트는 영문 이름을 바꿀 수 없습니다.')
             if not sites.SLUG.fullmatch(slug):
                 raise ValueError('영문 이름은 영문 소문자로 시작하는 3~25자의 소문자·숫자·하이픈입니다 (예: acme-erp).')
-            if slug == sites.DEFAULT.slug or any((item.get('site') or {}).get('slug') == slug or Path(item['root']).name == slug for item in hub.records) or (HOME / slug).exists():
+            if any((item.get('site') or {}).get('slug') == slug or Path(item['root']).name == slug for item in hub.records) or (HOME / slug).exists() or (sites.ROOT / slug).exists():
                 raise ValueError(f'{slug} 은(는) 이미 있는 프로젝트 이름입니다.')
             app = hub.apps.get(project_id)
-            if app is not None and (any(process.poll() is None for process in app.processes.values()) or (getattr(app, 'queues', None) and app.queues.active())):
+            # (a rename asked for in the request box is itself the piece of work in the queue)
+            if app is not None and (any(process.poll() is None for process in app.processes.values()) or (getattr(app, 'queues', None) and app.queues.active() and not allow_queue)):
                 raise RuntimeError('이 프로젝트에서 진행 중인 작업이 있습니다. 끝난 뒤 바꾸세요.')
     old_title = (own or {}).get('title') or record.get('title') or record['name']
     if title is not None and title != old_title:
-        database = own['db'] if own else sites.DEFAULT.db
+        database = own['db'] if own else sites.default().db
         # The project's own screens say its name too: they follow when they still carried the old one (a name set there on purpose stays).
         subprocess.run(['docker', 'exec', '-i', sites.DB_CONTAINER, 'psql', '-U', sites.DB_USER, '-d', database, '-q'], capture_output=True, text=True, timeout=60,
                        input="UPDATE sys_settings SET setting_value = '" + title.replace("'", "''") + "' WHERE setting_key = 'system_name' AND setting_value = '" + old_title.replace("'", "''") + "';")
@@ -194,17 +195,28 @@ def rename(hub, project_id, title=None, slug=None):
     if slug is None:
         return record
 
+    first = bool(own.get('first'))
     old, root, database = own['slug'], Path(record['root']), own['db']
-    new_root, new_database, new_api = HOME / slug, 'mdi_' + slug.replace('-', '_'), f'mdi-{slug}-api'
-    state = hub.state / 'projects' / record['id'] / 'runs'
+    # The first project stays where it is, beside the platform, and keeps the platform's own state folder; the others live under projects/.
+    new_root, new_database, new_api = (root.parent if first else HOME) / slug, 'mdi_' + slug.replace('-', '_'), f'mdi-{slug}-api'
+    state = hub.state if first else hub.state / 'projects' / record['id'] / 'runs'
     item = hub.previews.items.pop(project_id, None)
     process = (item or {}).get('process')
+    import os, signal
     if process is not None and process.poll() is None:
-        import os, signal
         try:
             os.killpg(process.pid, signal.SIGTERM)
         except ProcessLookupError:
             pass
+    # A preview started some other way (by hand, by a start script) is serving from the folder that is about to move: it goes too.
+    listening = subprocess.run(['lsof', '-nP', f"-iTCP:{own['preview_port']}", '-sTCP:LISTEN', '-t'], capture_output=True, text=True).stdout.split()
+    for pid in listening:
+        where = subprocess.run(['lsof', '-a', '-p', pid, '-d', 'cwd', '-Fn'], capture_output=True, text=True).stdout
+        if str(root.resolve()) in where:
+            try:
+                os.kill(int(pid), signal.SIGTERM)
+            except (ProcessLookupError, ValueError):
+                pass
     subprocess.run(['docker', 'rm', '-f', own['api_container']], capture_output=True)
 
     def sql(text):
@@ -218,10 +230,17 @@ def rename(hub, project_id, title=None, slug=None):
             moved.append(lambda was=was, now=now: sql(f'ALTER DATABASE "{now}" RENAME TO "{was}";'))
         root.rename(new_root)
         moved.append(lambda: new_root.rename(root))
-        new_id = hashlib.sha256(str(new_root.resolve()).encode()).hexdigest()[:16]
-        new_state = hub.state / 'projects' / new_id
-        (hub.state / 'projects' / record['id']).rename(new_state)
-        moved.append(lambda: new_state.rename(hub.state / 'projects' / record['id']))
+        if first:
+            new_id, new_state = record['id'], None
+            ignore = sites.ROOT / '.gitignore'        # the platform's own git does not take a project in (each keeps its own history)
+            if ignore.is_file():        # the folder's line follows the name (the old name's line is not left behind)
+                lines = [line for line in ignore.read_text(encoding='utf-8').splitlines() if line.strip() not in (f'{old}/', f'{slug}/')]
+                ignore.write_text('\n'.join(lines).rstrip('\n') + f'\n{slug}/\n', encoding='utf-8')
+        else:
+            new_id = hashlib.sha256(str(new_root.resolve()).encode()).hexdigest()[:16]
+            new_state = hub.state / 'projects' / new_id
+            (hub.state / 'projects' / record['id']).rename(new_state)
+            moved.append(lambda: new_state.rename(hub.state / 'projects' / record['id']))
         for part in ('artifacts', 'backups', 'prod', 'packs'):
             source = sites.SHARE / part / old
             if source.is_dir() and not (sites.SHARE / part / slug).exists():
@@ -240,7 +259,9 @@ def rename(hub, project_id, title=None, slug=None):
         hub.apps.pop(project_id, None)
         own.update(slug=slug, db=new_database, api_container=new_api)
         record.update(id=new_id, name=slug, root=str(new_root.resolve()), test_db_url=f'jdbc:postgresql://{sites.DB_CONTAINER}:5432/{new_database}_test')
+        if first:
+            hub.runtime = str(new_root.resolve() / 'harness')
         hub.persist()
-    Setup(sites.ROOT, api_port=own['api_port'], state=new_state / 'runs', project=new_root, database=new_database, api=new_api, slug=slug).run()
+    Setup(sites.ROOT, api_port=own['api_port'], state=hub.state if first else new_state / 'runs', project=new_root, database=new_database, api=new_api, slug=slug).run()
     hub.previews.ensure(record)
     return record

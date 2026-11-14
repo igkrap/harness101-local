@@ -84,14 +84,14 @@ def compact_event(event):
 
 def file_signature(root, category):
     runtime=root/'harness'
-    if category=='harness' and not (runtime/'harness.py').is_file(): runtime=BASE.parent/'local-only/harness'
+    if category=='harness' and not (runtime/'harness.py').is_file(): runtime=BASE.parent/'erp-harness'
     paths = [*sorted(runtime.glob('*.py')), *sorted((runtime/'tests').glob('*.py'))] if category == 'harness' else sorted((root/'frontend/src').rglob('*')) + [root/'frontend/package.json', root/'frontend/tsconfig.json', root/'frontend/vite.config.ts'] if category in ('frontend','framework') else sorted((root/'backend/src').rglob('*')) + [root/'backend/pom.xml']
     digest = hashlib.sha256()
     for path in paths:
         if path.is_file() and '__pycache__' not in path.parts:
             digest.update(str(Path('harness')/path.relative_to(runtime) if category=='harness' else path.relative_to(root)).encode()); digest.update(path.read_bytes())
     if category == 'frontend':
-        checker_root = runtime if (runtime/'harness.py').is_file() else BASE.parent/'local-only/harness'
+        checker_root = runtime if (runtime/'harness.py').is_file() else BASE.parent/'erp-harness'
         for name in ('eslint.config.cjs','lint_frontend.py','frontend_checks.py'):
             checker = checker_root/name
             if checker.is_file():

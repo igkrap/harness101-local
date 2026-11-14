@@ -13,7 +13,8 @@ from pathlib import Path
 
 USERNAME = 'verifier'
 DISPLAY = '화면 검증 전용 (플랫폼)'
-DB = ['docker', 'exec', '-i', 'mdi-db', 'psql', '-U', 'mdi', '-d', 'mdi_local', '-v', 'ON_ERROR_STOP=1', '-q']
+import sites
+DB = ['docker', 'exec', '-i', 'mdi-db', 'psql', '-U', 'mdi', '-d', sites.default().db, '-v', 'ON_ERROR_STOP=1', '-q']
 
 
 def provision(rotate=False):

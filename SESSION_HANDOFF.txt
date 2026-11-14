@@ -1107,3 +1107,16 @@ print = standard form adjusted by definition, calendar and tree both)
 - control_check.py now renames its project (title, then slug) mid-way and goes on working in it: 27/27. Sentence and page form tried on a throwaway
   project (removed after).
 - Pack file names made before a slug rename keep the old slug in their names (the packs folder is moved).
+
+== 2026-11-15: the first project can be renamed too ==
+- The first project's names are no longer written into the platform: its record in platform/state/projects.json carries a
+  `site` block (slug, db, api_container, ports, first: true) and `sites.default()` reads it. `DEFAULT`/`FIRST_OWN` in
+  sites.py are only the starting values for a record from before.
+- `projects.rename` takes the first project's English name as well: the folder is renamed in place beside the platform
+  (id `default` and the platform's own state folder stay), both databases, the server container, the shared folders
+  (packs, backups, artifacts) and the folder's line in the outer .gitignore follow.
+- Tried on the real project: local-only -> local-only-x -> local-only. 39 screens, records, 145 commits, preview 5292 and
+  server 8083 all as before. A side effect of the round trip: its database is now `mdi_local_only` (+ `_test`) and its
+  container `mdi-local-only-api` (the names every project gets from its English name), no longer mdi_local / mdi-local-api.
+  A dump from before the test: ~/.local/share/local-workshop/backups/local-only/mdi_local-before-rename-test-20261115.dump
+- Packs made under an old name are not listed under the new one (their file names carry the old name): make them again.

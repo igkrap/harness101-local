@@ -40,6 +40,12 @@ class Workspaces:
         else:
             self.records = [{'id': 'default', 'name': 'Local Inventory', 'root': str(Path(project).resolve()), 'preview_url': 'http://127.0.0.1:5292', 'model_url': 'http://127.0.0.1:8099/v1', 'default_model': 'mlx-community/Qwen3.8-27B-4bit', 'test_db_url': 'jdbc:postgresql://mdi-db:5432/mdi_local_test'}]
             self.persist()
+        # The first project carries its names like every other (it had them fixed in the code before), so it can be renamed too.
+        import sites
+        if not self.records[0].get('site'):
+            self.records[0]['site'] = {**sites.FIRST_OWN, 'slug': Path(self.records[0]['root']).name, 'title': self.records[0].pop('title', None) or Path(self.records[0]['root']).name}
+            self.persist()
+        self.runtime = str(Path(self.records[0]['root']) / 'harness')
         renamed=False
         for record in self.records:
             name=Path(record['root']).name
@@ -51,6 +57,7 @@ class Workspaces:
         from model_registry import ModelRegistry
         self.models = ModelRegistry(self.state, self.records)
         self.resolve()
+        self.previews.ensure(self.records[0])        # the first project's screens are up whenever the platform is
 
     def configure_model(self, body, app):
         with self.lock:

@@ -127,7 +127,7 @@ def code_screens():
     """Titles of the screens that exist as code files (they are changed by the code route, not by definitions)."""
     from pathlib import Path
     titles = []
-    for path in sorted((Path(__file__).resolve().parents[1] / 'local-only/frontend/src/screens').glob('*.tsx')):
+    for path in sorted((__import__('framework').site().root / 'frontend/src/screens').glob('*.tsx')):
         found = re.search(r"title:\s*'([^']+)'", path.read_text(encoding='utf-8', errors='replace'))
         if found and found.group(1) != '홈':
             titles.append(found.group(1))
