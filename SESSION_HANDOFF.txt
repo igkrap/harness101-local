@@ -878,3 +878,14 @@ Orca CLI selected /Applications/Orca.app/Contents/Resources/bin/orca, skill read
 - Summary: cross-table view (first grouping down, second across, totals when the figure adds up) - a view switch on screen, nothing in the definition.
 - POST /api/data/{entity}/import {rows:[{label or name: text}]}: refs by code / name / "code name", codes by name, dates in four formats, all or nothing with
   row-numbered refusals. Not for entities that need lines. Screen: 올리기 (paste from a spreadsheet, CSV file in UTF-8 or EUC-KR, 양식 받기).
+
+[2026-11-14, night] Permission per screen; work screens
+- The user: permission is per screen; no per-person differences inside a screen. Ownership (access.own) and action roles were removed again.
+- Work screens ("over"): {"over": {"entity", "statuses", "actions", "edit"}} - another entity's records under a screen and program of their own
+  (/api/over/{key}: list, get, update when edit, actions listed; nothing created or deleted). status.actions[].separate keeps an action off the
+  entity's own screen (403 on /api/data). Approval = a work screen + giving that screen to a role in 프로그램 권한 편성.
+- Found by testing with a temporary non-admin account (/tmp/repro/perm_smoke.py): a status action POST needed the 신규 permission (now 저장);
+  choices of other screens were unreadable without those screens' permission (now GET /api/lookup/{entity}, any signed-in person, read only).
+- harness2: over_checks / over_screen_criteria; separate actions checked as refused on the own screen; clear_since() removes everything a run made
+  (effects had been creating untracked orders from sample quotations - 8 sample vendors/items were stuck behind them); unique samples differ per run.
+- Local model: repair completion screen (2 steps), quotation approval screen with confirm kept for it (2 steps), read-only order screen.
