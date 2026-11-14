@@ -41,11 +41,11 @@ function PackLinks({ pack }: { pack: Pack }) {
 }
 /**
  * Deployment in one line. "현재 버전 배포 다운로드" hands over the setup packs of what the project holds right now (making them
- * first when the newest pack is behind); earlier versions stay listed for taking an operating server back by hand.
+ * first when the pack is behind). Only the current version's packs are kept.
  */
 function Operation({ refreshKey, busy, onOrder }: { refreshKey: string; busy: boolean; onOrder: (goal: string) => void }) {
   const [status, setStatus] = useState<ReleaseStatus | null>(null);
-  const [open, setOpen] = useState(false), [wanted, setWanted] = useState(false), [older, setOlder] = useState(false);
+  const [open, setOpen] = useState(false), [wanted, setWanted] = useState(false);
   useEffect(() => {
     const c = new AbortController();
     apiFetch("/api/release", { signal: c.signal }).then(r => r.json()).then(d => setStatus(d.status)).catch(() => {});
@@ -71,13 +71,9 @@ function Operation({ refreshKey, busy, onOrder }: { refreshKey: string; busy: bo
       <span style={{ flex: 1 }} />
       {status.git && <span className="dim" title={status.git.remote ? `원격: ${status.git.remote}` : "원격 저장소 없음"}>작업 공간 {status.git.branch}{status.git.ahead ? ` · 올리지 않은 기록 ${status.git.ahead}` : ""}</span>}
       <button type="button" className={`home-btn${loose.length ? " is-waiting" : ""}`} disabled={busy} title={loose.length ? `아직 기록하지 않은 변경: ${loose.join(", ")}` : "요청이 성공하면 자동으로 기록됩니다. 그 밖에 바뀐 것이 있으면 여기서 기록합니다."} onClick={() => onOrder("지금까지 만든 것을 커밋해줘")}>커밋{loose.length ? ` (${loose.length})` : ""}</button>
-      {status.packs.length > (status.current ? 1 : 0) && <button type="button" className="home-btn" aria-expanded={older} title="전에 만든 버전의 팩 (운영 서버를 이전 버전으로 직접 돌릴 때)" onClick={() => setOlder(value => !value)}>이전 버전</button>}
       <button type="button" className="home-btn primary" disabled={busy || wanted} aria-expanded={open} title={behind ? "지금 상태로 셋업 팩을 만든 뒤 받습니다" : "현재 버전의 셋업 팩을 받습니다"} onClick={download}>현재 버전 배포 다운로드</button>
     </div>
     {open && newest && status.current && <div className="home-ops-files" data-ui="pack-current"><span>현재 버전 {when(newest.started_at)}</span><PackLinks pack={newest} /></div>}
-    {older && <ul className="home-ops-older" data-ui="pack-older">{status.packs.slice(status.current ? 1 : 0).map(pack =>
-      <li key={pack.stamp}><span>{when(pack.started_at)} · 화면 {pack.screens}개</span><PackLinks pack={pack} /></li>)}
-      <li className="dim">운영 서버를 이전 버전으로 돌리려면 그 버전의 업데이트 팩을 풀고 update.bat -Force 를 실행합니다. 최근 5개 버전을 보관합니다.</li></ul>}
   </section>;
 }
 

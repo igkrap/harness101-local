@@ -1053,3 +1053,5 @@ Orca CLI selected /Applications/Orca.app/Contents/Resources/bin/orca, skill read
   both names and that they stay locked for now).
 - Removed: database mdi_prod (0 records; dump kept at ~/.local/share/local-workshop/backups/local-only/mdi_prod-before-removal-20261114.dump) and
   platform/state/auth/prod-deployer.json. Databases mdi, mdi_test, mdi_auth_probe_* are older leftovers I did not make - untouched.
+
+- 2026-11-14: user: "이전버전 팩은 필요가없다" - the earlier-version list is gone from the home strip; release.pack keeps only the current version's packs (older folders and zips are deleted when a new pack is made); old pack files of local-only were deleted. The order "이전 배포로 되돌려줘" (this Mac's copy on 5300) therefore has nothing to go back to.

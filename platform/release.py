@@ -791,7 +791,7 @@ def pack(project, state, log=None):
             out.update(success=True, folder=str(folder), name=name, files=files, program=_program(project), postgres=made['postgres'], scripts_parsed=made['script_check'] is not None,
                        screens=len(definitions), shipped=_marks(definitions), tag=f'pack-{stamp}')
             vcs.tag(project, out['tag'], '운영 셋업 팩 ' + out['started_at'])
-            for old in sorted((path for path in site().packs.glob('*setup-*') if path.is_dir()), key=lambda path: path.name[-15:])[:-5]:       # the five newest packs are kept
+            for old in sorted((path for path in site().packs.glob('*setup-*') if path.is_dir()), key=lambda path: path.name[-15:])[:-1]:       # only the current version's packs are kept (an earlier version is not handed out again)
                 shutil.rmtree(old, ignore_errors=True)
                 for file in site().packs.glob(old.name + '*.zip'):
                     file.unlink()
@@ -894,7 +894,7 @@ def screens():
 def status(project, state):
     """For the platform's home: the packs made so far (newest first) and whether the newest still holds everything made."""
     made = [item for item in history(state, 200) if item.get('success') and item.get('kind') == 'pack' and item.get('files')
-            and all(Path(file['file']).is_file() for file in item['files'].values())][:6]
+            and all(Path(file['file']).is_file() for file in item['files'].values())][:1]
     packs = [{'stamp': item['stamp'], 'started_at': item['started_at'], 'screens': item.get('screens'),
               'files': {kind: {'name': file['name'], 'size': file['size']} for kind, file in item['files'].items()}} for item in made]
     out = {'project': site().title, 'slug': site().slug, 'packs': packs, 'pending': None, 'current': False}
