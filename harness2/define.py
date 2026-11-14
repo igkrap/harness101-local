@@ -58,7 +58,7 @@ def repoint(definition, was, now):
     """The definition with its fields that point at the screen `was` pointing at `now` instead. A screen may point at itself
     (a parent department); its trial copy must then point at the trial, and what the framework hands back must point home again."""
     out = json.loads(json.dumps(definition))
-    for field in (out.get('fields') or []) + ((out.get('lines') or {}).get('fields') or []):
+    for field in (out.get('fields') or []) + ((out.get('lines') or {}).get('fields') or []) + [item for more in out.get('moreLines') or [] for item in more.get('fields') or []]:
         if isinstance(field.get('ref'), dict) and field['ref'].get('entity') == was:
             field['ref']['entity'] = now
     return out
@@ -79,7 +79,8 @@ def real(framework, trial_prefix='trial_'):
 def _fields(fields):
     def one(field):
         extra = field['type'] + (f"→{field['ref']['entity']}" if field.get('ref') else '') + (', 필수' if field['required'] else '') \
-            + (', 계산' if field.get('formula') or field.get('sum') else '')
+            + (', 계산' if field.get('formula') or field.get('sum') else '') \
+            + ''.join(f", {field[part]['field']}={'|'.join(field[part]['is'])} 일 때{word}" for part, word in (('showWhen', '만 보임'), ('requiredWhen', ' 필수'), ('lockWhen', ' 잠김')) if field.get(part))
         return f"{field['name']}({field['label']}, {extra})"
     return ', '.join(one(field) for field in fields)
 
@@ -89,6 +90,8 @@ def describe(key, definition):
     text = f"- key {key} / 화면 이름 {definition['title']} / 항목: {_fields(definition['fields'])}"
     if definition.get('lines'):
         text += f" / 줄 표({definition['lines']['label']}): {_fields(definition['lines']['fields'])}"
+    for more in definition.get('moreLines') or []:
+        text += f" / 줄 표 {more['name']}({more['label']}): {_fields(more['fields'])}"
     if definition.get('status'):
         text += ' / 상태: ' + ', '.join(f"{value['code']}={value['label']}" for value in definition['status']['values']) \
             + ' / 동작: ' + ', '.join(f"{action['name']}({action['label']})" for action in definition['status']['actions'])
@@ -144,7 +147,8 @@ def _json(text):
 def complete(definition):
     """What the model may leave out, written out: the rest of the harness reads every field the same way."""
     definition.setdefault('fields', [])      # a summary screen has none of its own
-    groups = [definition.get('fields') or []] + ([definition['lines'].get('fields') or []] if isinstance(definition.get('lines'), dict) else [])
+    groups = [definition.get('fields') or []] + ([definition['lines'].get('fields') or []] if isinstance(definition.get('lines'), dict) else []) \
+        + [more.get('fields') or [] for more in definition.get('moreLines') or [] if isinstance(more, dict)]
     for fields in groups:
         for field in fields:
             if isinstance(field, dict):
@@ -166,6 +170,9 @@ def clean(definition):
     if definition.get('lines'):
         out['lines'] = {name: value for name, value in dict(definition['lines'], fields=[field(item) for item in definition['lines']['fields']]).items()
                         if value is not None and not (name == 'min' and value == 1)}
+    if definition.get('moreLines'):
+        out['moreLines'] = [{name: value for name, value in dict(more, fields=[field(item) for item in more['fields']]).items() if value is not None and not (name == 'min' and value == 0)}
+                            for more in definition['moreLines']]
     return out
 
 
@@ -206,6 +213,18 @@ def differences(old, new):
             for part in ('min', 'max'):
                 if old.get('lines') and old['lines'].get(part) != new['lines'].get(part):
                     note(f"줄 수 {part}: {old['lines'].get(part)} → {new['lines'].get(part)}")
+    was, now = {more['name']: more for more in old.get('moreLines') or []}, {more['name']: more for more in new.get('moreLines') or []}
+    for name, more in was.items():
+        if name not in now:
+            note(f"줄 표 {more['label']}({name}) 이(가) 통째로 없어짐", True)
+            continue
+        compare(f"줄 표 {more['label']} 의", more['fields'], now[name]['fields'])
+        for part in ('label', 'min', 'max'):
+            if more.get(part) != now[name].get(part):
+                note(f"줄 표 {more['label']} 의 {part}: {more.get(part)} → {now[name].get(part)}")
+    for name, more in now.items():
+        if name not in was:
+            note(f"줄 표 {more['label']}({name}) 이(가) 추가됨")
     before, after = old.get('status') or {}, new.get('status') or {}
     if before and not after:
         note('상태와 동작이 통째로 없어짐', True)

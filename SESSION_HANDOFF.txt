@@ -1120,3 +1120,20 @@ print = standard form adjusted by definition, calendar and tree both)
   container `mdi-local-only-api` (the names every project gets from its English name), no longer mdi_local / mdi-local-api.
   A dump from before the test: ~/.local/share/local-workshop/backups/local-only/mdi_local-before-rename-test-20261115.dump
 - Packs made under an old name are not listed under the new one (their file names carry the old name): make them again.
+
+== 2026-11-15: framework - further line tables, conditional fields, each person's table settings ==
+- Chosen by the user from my list (the fourth, "앞 단계에서 이어받기", was not understood and is NOT built - explain it before offering again).
+- moreLines: [{name,label,fields,min(0),max}] beside "lines" (needs lines). Kept in the record under its name; header "sum": "<name>.<field>";
+  list filter <name>.<field>=; delete guards, links and history follow every table (Definition.lineSets()). Checks, limits, effects, summaries,
+  import and the paper form still look at the first table only.
+- showWhen / requiredWhen / lockWhen: {field, is:[stored values]} on a field (header or line; a line may look at a header field).
+  Not there -> stored empty, asked for nothing. lockWhen: on update a header field keeps its stored value; in a line the box is only disabled.
+- Tables: RecordGrid keeps hidden columns, order and widths per person and screen (sys_user_grids, V38; /api/auth/grids; key = program code:label,
+  from ProgramCodeContext set by the workspace). Header menu: 이 열 숨기기, 열 고르기, 열 설정 처음으로.
+- harness2: checks.settle() makes sample bodies agree with conditions and required further tables (called from fit()); conditions() tries each
+  condition both ways; screen criteria skip fields an empty form does not show; define/run describe and compare the new parts.
+- Proven: work_order written by hand (76 checks) and looked at in a browser (12 points); inspection_report made by the local model from one
+  sentence - it wrote moreLines and showWhen+requiredWhen itself (55 checks, 355 s). Both screens are left in local-only as samples.
+- Found on the way: the harness's commit step takes everything in the project folder, framework sources included (so a half-done framework
+  change gets committed with a request); a deploy label with ':' or spaces broke the jar's file name (now cleaned); an empty moreLines list
+  (as stored definitions are written out) was refused - control_check caught it.

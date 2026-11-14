@@ -81,11 +81,109 @@ def _units(body, in_lines):
     return (body.get('lines') or []) if in_lines else [body]
 
 
+def _sets(definition):
+    """Every table of lines of a definition as (name in the record, its part): the first as 'lines', then the further ones."""
+    out = [('lines', definition['lines'])] if definition.get('lines') else []
+    return out + [(more['name'], more) for more in definition.get('moreLines') or []]
+
+
+def _holds(when, unit, above=None):
+    """Whether a field's condition holds under these values (as the framework judges it)."""
+    if not when:
+        return False
+    value = unit.get(when['field']) if when['field'] in unit else (above or {}).get(when['field'])
+    text = '' if value is None else 'true' if value is True else 'false' if value is False else f'{value:g}' if isinstance(value, float) else str(value).strip()
+    return text in when['is'] or (text == '' and 'false' in when['is'])
+
+
+def _wanted(field, text):
+    """A condition's value as a body carries it for that field."""
+    kind = field.get('type', 'text')
+    if kind == 'yesno':
+        return text == 'true'
+    if kind in ('number', 'ref'):
+        try:
+            return int(text) if float(text).is_integer() else float(text)
+        except ValueError:
+            return None
+    return text or None
+
+
+NONE = object()
+
+
+def _unwanted(field, when, framework):
+    """A value of the condition's field under which the condition does not hold (NONE when there is no such value to give)."""
+    kind = field.get('type', 'text')
+    if kind == 'yesno':
+        return NONE if {'true', 'false'} <= set(when['is']) else 'true' not in when['is']
+    if kind == 'code':
+        return next((code['code'] for code in framework.codes(field['codeGroup']) if code['code'] not in when['is']), NONE)
+    if kind == 'number':
+        return next((value for value in (_number(field, 10), _number(field, 11), _number(field, 12)) if f'{value:g}' not in when['is']), NONE)
+    if kind in ('text',):
+        return '해당없음'
+    return NONE
+
+
+def _groups(body, definition):
+    """The record and each of its lines as (fields, unit, the record above a line or None)."""
+    out = [(definition.get('fields') or [], body, None)]
+    for name, part in _sets(definition):
+        out += [(part['fields'], line, body) for line in body.get(name) or []]
+    return out
+
+
+def settle(body, definition, framework, made):
+    """Make a sample body agree with the definition's conditions (showWhen, requiredWhen, lockWhen), and give it the further
+    tables of lines it cannot exist without. Each condition's field takes the first value asked for, so the fields that depend on
+    it are there; a field that is still not there holds nothing (as the framework will store it); locks are kept from holding
+    where that is free; what has become required is filled."""
+    for name, part in _sets(definition)[1:]:
+        if part.get('min', 0) > 0 and not body.get(name):
+            body[name] = [_line(part['fields'], framework, made, 2) for _ in range(part['min'])]
+    header = {field['name']: field for field in definition.get('fields') or []}
+    for fields, unit, above in _groups(body, definition):
+        own, chosen = {field['name']: field for field in fields}, set()
+        for field in fields:
+            for part in ('showWhen', 'requiredWhen'):
+                when = field.get(part)
+                if when and when['field'] not in chosen and (when['field'] in own or above is None or not above.get('_settled', {}).get(when['field'])):
+                    holder, target = (unit, own[when['field']]) if when['field'] in own else (above, header.get(when['field']))
+                    if target is not None and not _holds(when, unit, above):
+                        holder[when['field']] = _wanted(target, when['is'][0])
+                    chosen.add(when['field'])
+        for field in fields:
+            when = field.get('lockWhen')
+            if when and when['field'] not in chosen and when['field'] in own and _holds(when, unit, above):
+                free = _unwanted(own[when['field']], when, framework)
+                if free is not NONE:
+                    unit[when['field']] = free
+        if above is None:
+            unit['_settled'] = {name: True for name in chosen}
+    body.pop('_settled', None)
+    for fields, unit, above in _groups(body, definition):
+        for field in fields:
+            if _computed(field):
+                continue
+            if field.get('showWhen') and not _holds(field['showWhen'], unit, above):
+                unit[field['name']] = False if field.get('type') == 'yesno' else None
+            elif unit.get(field['name']) is None and (field.get('required') or _holds(field.get('requiredWhen'), unit, above)) and field.get('type') != 'yesno':
+                unit[field['name']] = sample(field, framework, made)
+    return body
+
+
+def _there(field, unit, above=None):
+    """Whether the field is on the form under these values (a field with showWhen may not be)."""
+    return not field.get('showWhen') or _holds(field['showWhen'], unit, above)
+
+
 def fit(body, definition, framework, made, break_check=None):
     """Make a sample body obey the definition's own checks and limits (a sample of plain values would not: every date is
     the same day, and a limit allows nothing until the other entity holds a matching row). break_check: the one check to violate."""
     import datetime
     today = datetime.date.today().isoformat()
+    settle(body, definition, framework, made)
     for check in definition.get('checks') or []:
         for unit in _units(body, check.get('lines')):
             right = today if check['right'] == 'today' else unit.get(check['right'])
@@ -211,6 +309,74 @@ def _line(fields, framework, made, quantity):
     return body
 
 
+def conditions(report, definition, framework, made, new_body, post, api):
+    """Fields that depend on another field: there only when, required only when, locked when - each tried both ways where a value for the other way exists."""
+    header = {field['name']: field for field in definition.get('fields') or []}
+
+    def unit_of(body, table):
+        return body if table is None else (body.get(table) or [None])[0]
+    for table, part_label, fields in [(None, '', definition.get('fields') or [])] + [(name, part['label'] + ' 줄의 ', part['fields']) for name, part in _sets(definition)]:
+        own = {field['name']: field for field in fields}
+        for field in fields:
+            for part in ('showWhen', 'requiredWhen', 'lockWhen'):
+                when = field.get(part)
+                target = when and (own.get(when['field']) or header.get(when['field']))
+                if not target:
+                    continue
+                in_own = when['field'] in own
+
+                def body_with(value):
+                    """A sample whose condition field holds this value (the rest settled again around it), or None when there is no line to try on."""
+                    body = new_body()
+                    unit = unit_of(body, table)
+                    if unit is None:
+                        return None, None
+                    (unit if in_own else body)[when['field']] = value
+                    for fields2, unit2, above2 in _groups(body, definition):      # what the new value hides is emptied, what it asks for is filled
+                        for other in fields2:
+                            if _computed(other) or other is field:
+                                continue
+                            if other.get('showWhen') and not _holds(other['showWhen'], unit2, above2):
+                                unit2[other['name']] = False if other.get('type') == 'yesno' else None
+                            elif unit2.get(other['name']) is None and other.get('type') != 'yesno' and (other.get('required') or _holds(other.get('requiredWhen'), unit2, above2)):
+                                unit2[other['name']] = sample(other, framework, made)
+                    return body, unit
+                on, off = _wanted(target, when['is'][0]), _unwanted(target, when, framework)
+                words = f"{target['label']} 이(가) {'·'.join(when['is']) or '비어 있음'}"
+                value = sample(field, framework, made) if field.get('type') != 'ref' else None
+                if part == 'showWhen' and off is not NONE and value is not None and not (target.get('required') and off is None):
+                    body, unit = body_with(off)
+                    if body is not None:
+                        unit[field['name']] = value
+                        code, row = post(body)
+                        stored = unit_of(row, table) if code == 201 else {}
+                        report.add(f"조건: {part_label}{field['label']} 은(는) {words} 아닐 때는 없는 항목이라, 보내도 비워져 저장된다", code == 201 and (stored or {}).get(field['name']) in (None, False), f'{code} {row}')
+                if part == 'requiredWhen':
+                    body, unit = body_with(on)
+                    if body is not None and _there(field, unit, body if table else None):
+                        unit[field['name']] = None
+                        code, answer = post(body)
+                        report.add(f"조건: {part_label}{field['label']} 은(는) {words} 일 때 비우면 거절된다", code == 400, f'{code} {answer}')
+                    if off is not NONE:
+                        body, unit = body_with(off)
+                        if body is not None:
+                            unit[field['name']] = None
+                            code, answer = post(body)
+                            report.add(f"조건: {part_label}{field['label']} 은(는) {words} 아닐 때는 비워도 저장된다", code == 201, f'{code} {answer}')
+                if part == 'lockWhen' and table is None and field.get('type') in ('text', 'number', 'date', 'time', 'memo', None):
+                    body, unit = body_with(on)
+                    if body is None or not _there(field, unit) or unit.get(field['name']) is None:
+                        continue
+                    code, row = post(body)
+                    if code != 201:
+                        report.add(f"조건: {field['label']} 이(가) 잠기는 값({words})으로도 새로 등록된다", False, f'{code} {row}')
+                        continue
+                    again = json.loads(json.dumps(body))
+                    again[field['name']] = (str(body[field['name']]) + '2') if field.get('type', 'text') in ('text', 'memo') else _shift(body[field['name']], -1 if field.get('max') is not None else 1)
+                    code, after = framework.call('PUT', f"{api}/{row['id']}", again)
+                    report.add(f"조건: {field['label']} 은(는) {words} 일 때 잠겨, 고쳐 보내도 저장된 값이 남는다", code == 200 and after.get(field['name']) == row.get(field['name']), f"{code} 보낸 값 {again[field['name']]}, 남은 값 {(after or {}).get(field['name']) if isinstance(after, dict) else after}")
+
+
 def record_checks(key, definition, framework):
     """Every data rule the definition states, tried against /api/data/<key>. A screen is its parts, and so are its
     checks: fields always; numbering, lines, computed values, ranges, uniqueness, status only where the definition has them."""
@@ -220,12 +386,15 @@ def record_checks(key, definition, framework):
     low, high = (lines.get('min', 1), lines.get('max')) if lines else (0, None)
     plain = [field for field in fields if not _computed(field)]
     usual = 0 if not lines else max(low, 1) if high == 1 else max(low, 2) if high is None else min(max(low, 2), high)
+    more = _sets(definition)[1:]
 
     def new_body(count=None):
         body = {field['name']: sample(field, framework, made) for field in plain}
         if lines:
             body['lines'] = [_line(line_fields, framework, made, 3 - index % 2) for index in range(usual if count is None else count)]
-        return fit(body, definition, framework, made) if count is None else body      # the line-count tests keep their count
+        for name, part in more:
+            body[name] = [_line(part['fields'], framework, made, 2 + index) for index in range(min(max(part.get('min', 0), 2), part.get('max') or 2))]
+        return fit(body, definition, framework, made) if count is None else settle(body, definition, framework, made)      # the line-count tests keep their count
 
     def post(body):
         code, answer = framework.call('POST', api, body)
@@ -239,10 +408,11 @@ def record_checks(key, definition, framework):
     try:
         body = new_body()
         sent = json.loads(json.dumps(body))
-        for line in sent.get('lines', []):                 # values the server must ignore and work out itself
-            for field in line_fields:
-                if field.get('formula'):
-                    line[field['name']] = 1
+        for name, part in _sets(definition):               # values the server must ignore and work out itself
+            for line in sent.get(name, []):
+                for field in part['fields']:
+                    if field.get('formula'):
+                        line[field['name']] = 1
         code, row = post(sent)
         if not report.add('등록: 항목' + ('과 줄 표' if lines else '') + '를 채워 저장된다', code == 201, f'{code} {row}'):
             return report
@@ -253,8 +423,25 @@ def record_checks(key, definition, framework):
             got = [line.get(field['name']) for line in row.get('lines', [])]
             report.add(f"계산: 줄의 {field['label']} = {field['formula']} (보낸 값은 무시된다)", got == expected, f'기대 {expected}, 실제 {got}')
         for field in [item for item in fields if item.get('sum')]:
-            expected = sum(line.get(field['sum']) or 0 for line in row.get('lines', []))
-            report.add(f"합계: {field['label']} 은(는) 줄의 {field['sum']} 을(를) 더한 값이다", row.get(field['name']) == expected, f"기대 {expected}, 실제 {row.get(field['name'])}")
+            table, column = field['sum'].split('.', 1) if '.' in field['sum'] else ('lines', field['sum'])
+            expected = sum(line.get(column) or 0 for line in row.get(table, []))
+            report.add(f"합계: {field['label']} 은(는) {'줄' if table == 'lines' else dict(more)[table]['label']}의 {column} 을(를) 더한 값이다", row.get(field['name']) == expected, f"기대 {expected}, 실제 {row.get(field['name'])}")
+        for name, part in more:
+            got, wanted_lines = row.get(name) or [], body.get(name) or []
+            typed = [field for field in part['fields'] if not _computed(field)]
+            same = len(got) == len(wanted_lines) and all(mine.get(field['name']) == theirs.get(field['name']) for mine, theirs in zip(wanted_lines, got) for field in typed if mine.get(field['name']) is not None)
+            report.add(f"줄 표 {part['label']}: 보낸 줄이 그대로 저장된다 ({len(wanted_lines)}줄)", same, f'보낸 것 {wanted_lines}, 저장된 것 {got}')
+            for field in [item for item in part['fields'] if item.get('formula')]:
+                expected = [_calc(field['formula'], line) for line in wanted_lines]
+                report.add(f"계산: {part['label']} 줄의 {field['label']} = {field['formula']}", [line.get(field['name']) for line in got] == expected, f"기대 {expected}, 실제 {[line.get(field['name']) for line in got]}")
+            if part.get('min', 0) > 0:
+                short = new_body()
+                short[name] = short[name][:part['min'] - 1]
+                refused(f"줄 표 {part['label']}: {part['min']}줄보다 적으면 거절된다", short)
+            if part.get('max') is not None:
+                long = new_body()
+                long[name] = [dict(long[name][0]) for _ in range(part['max'] + 1)] if long[name] else [_line(part['fields'], framework, made, 2) for _ in range(part['max'] + 1)]
+                refused(f"줄 표 {part['label']}: {part['max']}줄보다 많으면 거절된다", long)
         for field in [item for item in fields if item.get('formula')]:
             expected = _calc(field['formula'], {name: value for name, value in row.items() if isinstance(value, (int, float))})
             report.add(f"계산: {field['label']} = {field['formula']}", row.get(field['name']) == expected, f"기대 {expected}, 실제 {row.get(field['name'])}")
@@ -270,12 +457,16 @@ def record_checks(key, definition, framework):
             _, miss = framework.call('GET', f"{api}?{field['name']}=없는값zzqq")
             report.add(f"조회 조건 {field['label']}: 맞는 값은 찾고 없는 값은 못 찾는다", any(item['id'] == row['id'] for item in hit or []) and not miss, f'hit={len(hit or [])} miss={len(miss or [])}')
         for field in [item for item in plain if item['required']]:
-            refused(f"필수 항목 {field['label']}: 비우면 거절된다", dict(new_body(), **{field['name']: '' if field.get('type', 'text') == 'text' else None}))
+            broken = new_body()
+            if _there(field, broken):            # a field that is not there under the sample's values is asked for nothing
+                refused(f"필수 항목 {field['label']}: 비우면 거절된다", dict(broken, **{field['name']: '' if field.get('type', 'text') == 'text' else None}))
         if usual:
             for field in [item for item in line_fields if item['required']]:
                 broken = new_body()
-                broken['lines'][0][field['name']] = None
-                refused(f"줄의 필수 항목 {field['label']}: 비우면 거절된다", broken)
+                if _there(field, broken['lines'][0], broken):
+                    broken['lines'][0][field['name']] = None
+                    refused(f"줄의 필수 항목 {field['label']}: 비우면 거절된다", broken)
+        conditions(report, definition, framework, made, new_body, post, api)
         minimal = {field['name']: value for field, value in ((field, sample(field, framework, made)) for field in plain if field['required'])}
         if lines and low > 0:
             minimal['lines'] = [{field['name']: value for field, value in ((field, _line([field], framework, made, 2)[field['name']]) for field in line_fields if field['required'])} for _ in range(low)]
@@ -283,18 +474,24 @@ def record_checks(key, definition, framework):
         report.add('선택 항목은 모두 비워도 저장된다', code == 201, f'{code} {answer}')
         wrong_values = {'number': '열 개', 'date': '1월 15일', 'time': '아침 일찍', 'code': '없는코드zz', 'ref': 999999999}
         for field in [item for item in plain if item.get('type', 'text') in wrong_values]:
-            refused(f"{field['label']}: 맞지 않는 값({wrong_values[field['type']]})은 거절된다", dict(new_body(), **{field['name']: wrong_values[field['type']]}))
+            broken = new_body()
+            if _there(field, broken) and not _holds(field.get('lockWhen'), broken):
+                refused(f"{field['label']}: 맞지 않는 값({wrong_values[field['type']]})은 거절된다", dict(broken, **{field['name']: wrong_values[field['type']]}))
         for where, group in (('', plain), ('줄의 ', [item for item in line_fields if not _computed(item)] if usual else [])):
             for field in group:
                 for edge, value, word in (('min', None if field.get('min') is None else field['min'] - 1, '보다 작은'), ('max', None if field.get('max') is None else field['max'] + 1, '보다 큰')):
                     if value is None:
                         continue
                     broken = new_body()
+                    if not _there(field, broken['lines'][0] if where else broken, broken if where else None):
+                        continue
                     (broken['lines'][0] if where else broken)[field['name']] = value
                     refused(f"{where}{field['label']}: {field[edge]:g} {word} 값({value:g})은 거절된다", broken)
         for where, group in (('', plain), ('줄의 ', [item for item in line_fields if not _computed(item)] if usual else [])):
             for field in [item for item in group if item.get('decimals') is not None]:
                 broken, value = new_body(), 10 + 10 ** -(field['decimals'] + 1)
+                if not _there(field, broken['lines'][0] if where else broken, broken if where else None):
+                    continue
                 (broken['lines'][0] if where else broken)[field['name']] = value
                 refused(f"{where}{field['label']}: 소수 {field['decimals']}자리를 넘는 값({value:g})은 거절된다", broken)
         by = closing_field(definition)
@@ -339,7 +536,8 @@ def record_checks(key, definition, framework):
         changed = new_body()
         code, updated = framework.call('PUT', f"{api}/{row['id']}", changed)
         same_number = all(updated.get(field['name']) == row.get(field['name']) for field in fields if field.get('type') == 'serial') if code == 200 else False
-        kept = [field['label'] for field in plain if field.get('type', 'text') in ('text', 'number', 'date', 'time', 'yesno', 'memo') and code == 200 and updated.get(field['name']) != changed[field['name']]]
+        kept = [field['label'] for field in plain if field.get('type', 'text') in ('text', 'number', 'date', 'time', 'yesno', 'memo') and code == 200 and updated.get(field['name']) != changed[field['name']]
+                and changed[field['name']] is not None and not _holds(field.get('lockWhen'), changed)]
         report.add('수정: 고쳐 저장하면 고친 값이 남는다' + (' (번호는 그대로)' if any(f.get('type') == 'serial' for f in fields) else ''), code == 200 and same_number and not kept, f'{code} {kept or updated}')
         if code == 200:
             log_code, log = framework.call('GET', f"/api/data/{key}/{row['id']}/history")
@@ -874,11 +1072,18 @@ def document_screen_criteria(definition):
     for field in definition['fields']:
         if field.get('formula') or field.get('sum') or field['type'] == 'serial':
             items.append((f"입력 영역에 {field['label']} 이(가) 보인다", {'op': 'text', 'selector': editor, 'contains': field['label']}))
+        elif field.get('showWhen') and not _holds(field['showWhen'], {}):
+            pass                                  # there only under another field's value: an empty form does not show it
         else:
             items.append((f"입력 영역에 {field['label']} 입력칸이 있다", {'op': 'visible', 'selector': f'{editor} >> {standard_contract.by_label(field["label"])}'}))
         items.append((f"목록에 {field['label']} 열이 있다", {'op': 'text', 'selector': '[data-ui="record-grid"]', 'contains': field['label']}))
     for field in (definition.get('lines') or {}).get('fields', []):
         items.append((f"줄 표에 {field['label']} 열이 있다", {'op': 'text', 'selector': table, 'contains': field['label']}))
+    for more in definition.get('moreLines') or []:
+        other = f'[data-ui="document-lines-{more["name"]}"]'
+        items.append((f"줄 표 {more['label']} 이(가) 있다", {'op': 'visible', 'selector': other}))
+        for field in more['fields']:
+            items.append((f"줄 표 {more['label']} 에 {field['label']} 열이 있다", {'op': 'text', 'selector': other, 'contains': field['label']}))
     return [{'id': f'C{index + 1}', 'requirement_id': 'R1', 'description': description, 'check': check} for index, (description, check) in enumerate(items)]
 
 
@@ -897,7 +1102,8 @@ def screen_checks(title, definition, record_to, app):
     elif rich(definition):
         criteria = document_screen_criteria(definition)
     else:
-        sheet = {'path': '/api/x', 'fields': [{'name': field['name'], 'label': field['label'], 'required': field['required'], 'sample': 'x'} for field in definition['fields']]}
+        sheet = {'path': '/api/x', 'fields': [{'name': field['name'], 'label': field['label'], 'required': field['required'], 'sample': 'x'} for field in definition['fields']
+                                              if not field.get('showWhen') or _holds(field['showWhen'], {})]}
         criteria = standard_contract.screen_criteria(sheet)
     if not any(definition.get(part) for part in ('summary', 'dashboard', 'over', 'calendar', 'tree')):
         criteria.append({'id': f'C{len(criteria) + 1}', 'requirement_id': 'R1', 'description': '한 건을 양식으로 뽑는 출력 버튼이 있다',

@@ -56,7 +56,8 @@ def build_jar(backend, label, digest):
         if len(jars) != 1:
             raise DeployError(f'빌드 산출 JAR를 하나로 특정하지 못했습니다: {[p.name for p in jars]}')
         site().artifacts.mkdir(parents=True, exist_ok=True)
-        target = site().artifacts / f'app-{label}-{digest[:12]}.jar'
+        import re
+        target = site().artifacts / f"app-{re.sub(r'[^A-Za-z0-9_-]+', '-', str(label)).strip('-') or 'build'}-{digest[:12]}.jar"     # the label becomes a file name docker is given: letters only
         shutil.copy2(jars[0], target)
     return target
 
