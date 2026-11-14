@@ -12,7 +12,6 @@ users, roles and permissions are never touched by a pack.
 Every pack is tried before it is handed over: it is installed from nothing in a throwaway copy, checked (the server
 starts, every screen was accepted, the administrator can sign in) and removed again.
 
-"운영에 배포해줘" builds a pack and installs it on this machine's own operating copy (port 5300).
 """
 import hashlib
 from contextlib import contextmanager
@@ -36,7 +35,6 @@ import windows_pack
 from sites import site      # the project in hand: every name below comes from it
 
 TRIAL_PORT = 5390
-OLD_CONTAINER = 'mdi-prod-api'      # the first project's first operating copy (before packs); stopped when the pack-based one takes its port
 VENDOR = live.SHARE / 'vendor/windows'      # the Windows runtime pieces (Java, PostgreSQL ...), downloaded once
 PWSH = live.SHARE / 'tools/pwsh/pwsh'        # PowerShell, to parse-check the Windows scripts (they cannot be run on this machine)
 APP_IMAGE = 'eclipse-temurin:17-jre'
@@ -170,7 +168,7 @@ def write_bundle(project):
             path.write_text(text, encoding='utf-8')
     readme = folder / 'README.md'
     if not readme.is_file():
-        readme.write_text('# 배포 묶음\n\n플랫폼이 "커밋해줘", "운영에 배포해줘" 요청 때 개발 DB에서 뽑아 적는 파일입니다. 손으로 고치지 않습니다.\n\n'
+        readme.write_text('# 배포 묶음\n\n플랫폼이 커밋하거나 셋업 팩을 만들 때 개발 DB에서 뽑아 적는 파일입니다. 손으로 고치지 않습니다.\n\n'
                           '- `definitions/` 화면 정의 (화면 하나에 파일 하나)\n- `codes.json` 공통 코드\n- `menus.json` 모듈과 메뉴 편성\n- `settings.json` 시스템 이름·로고·테마 (새로 설치할 때만 쓰임)\n', encoding='utf-8')
     return definitions
 
@@ -802,79 +800,6 @@ def pack(project, state, log=None):
     return out
 
 
-# ---- this machine's own operating copy: the pack, installed here ----
-
-def _copy_home():
-    return site().ops_home / 'copy'
-
-
-def _install_here(folder, note):
-    """Put a pack's contents into the local copy (its .env and backups stay) and start it. Returns (status, detail, first)."""
-    home = _copy_home()
-    first = not (home / '.env').is_file()
-    home.mkdir(parents=True, exist_ok=True)
-    if first:
-        if site().first:
-            subprocess.run(['docker', 'rm', '-f', OLD_CONTAINER], capture_output=True)       # it holds port 5300; its database (mdi_prod) is left where it is
-    else:
-        note('운영 DB 백업')
-        (home / 'backups').mkdir(exist_ok=True)
-        dump = _compose(home, 'exec', '-T', 'db', 'pg_dump', '-U', 'mdi', '-Fc', 'app', stdin=b'', check=False)
-        if dump.returncode != 0 or not dump.stdout:
-            raise ReleaseError('운영 DB 백업 실패: ' + dump.stderr.decode(errors='replace')[-300:])
-        (home / 'backups' / f"db-{time.strftime('%Y%m%d-%H%M%S')}.dump").write_bytes(dump.stdout)
-    live.sh(['rsync', '-a', '--delete', '--exclude', '.env', '--exclude', 'backups', str(folder) + '/', str(home) + '/'], timeout=300)
-    values = _write_env(home, site().ops_project, site().ops_port, '127.0.0.1')
-    login = site().state / 'auth/prod-login.json'
-    login.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    if first:       # the first administrator's password, where the other sign-in files are kept (0600)
-        descriptor = os.open(login, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(descriptor, 'w') as out:
-            json.dump({'username': 'admin', 'password': values['ADMIN_PASSWORD'], 'url': site().ops_url}, out)
-    note('운영 서버 시작')
-    _compose(home, 'up', '-d', '--force-recreate', 'app') if not first else _compose(home, 'up', '-d')
-    status, detail = _wait_copy(home)
-    return status, detail, first
-
-
-def deploy(project, state, log=None, previous=False):
-    """Build a pack and install it on this machine's operating copy. previous: install the pack before the one in effect instead."""
-    note = log or (lambda *_: None)
-    out = {'kind': 'deploy', 'stamp': time.strftime('%Y%m%d%H%M%S') + '1', 'started_at': time.strftime('%Y-%m-%dT%H:%M:%S'), 'url': site().ops_url, 'rollback': previous}
-    step = 'pack'
-    try:
-        if previous:
-            done = [item for item in history(state, 200) if item.get('success') and item.get('kind') == 'deploy' and Path(item.get('pack_folder', '')).is_dir()]
-            target = next((item for item in done[1:] if item.get('pack_folder') != done[0].get('pack_folder')), None) if done else None
-            if not target:
-                raise ReleaseError('되돌릴 이전 배포(의 팩)가 남아 있지 않습니다.')
-            made = {'folder': target['pack_folder'], 'name': target.get('pack'), 'shipped': target.get('shipped'), 'screens': target.get('screens')}
-        else:
-            made = pack(project, state, note)
-            if not made.get('success'):
-                raise ReleaseError(f"팩을 만들지 못했습니다({made.get('step')}): {made.get('error', '')[:600]}")
-        out.update(pack=made.get('name'), pack_folder=made['folder'], shipped=made.get('shipped'), screens=made.get('screens'))
-        step = 'install'
-        status, detail, first = _install_here(Path(made['folder']), note)
-        out.update(first=first, detail=detail)
-        if status != 'ok':
-            before = next((item for item in history(state, 200) if item.get('success') and item.get('kind') == 'deploy' and Path(item.get('pack_folder', '')).is_dir()), None)
-            if before:       # the screens were refused as a whole and nothing of them changed; put the earlier program and screens back too
-                _install_here(Path(before['pack_folder']), note)
-                out['restored'] = True
-            raise ReleaseError('운영에서 화면이 받아들여지지 않았습니다: ' + detail)
-        out['success'] = True
-    except Exception as error:
-        out.update(success=False, step=step, error=str(error)[-1200:])
-    out['finished_at'] = time.strftime('%Y-%m-%dT%H:%M:%S')
-    (_releases(state) / f"{out['stamp']}.json").write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding='utf-8')
-    return out
-
-
-def rollback(project, state, log=None):
-    return deploy(project, state, log, previous=True)
-
-
 def _program(project):
     """A mark of the program itself (server and screens sources), to tell whether a pack still holds the current one."""
     return {'server': live.source_hash(Path(project) / 'backend')[:12], 'web': _web_hash(Path(project) / 'frontend')[:16]}
@@ -925,15 +850,13 @@ def pack_file(state, name):
 
 COMMANDS = (('platform-pack', re.compile(r'플랫폼.*(팩|패키지|꾸러미)')),
             ('model-pack', re.compile(r'모델 ?(팩|패키지|꾸러미)')),
-            ('rollback', re.compile(r'(배포|운영|버전).*(되돌|롤백|이전으로)|(되돌|롤백).*(배포|운영)')),
-            ('pack', re.compile(r'(셋업|셋팅|세팅|설치|운영|배포) ?(팩|패키지|꾸러미|묶음)|setup ?pack')),
-            ('deploy', re.compile(r'배포|운영 ?(에|으로|서버|환경).*(올려|반영|내보내|적용|설치)|릴리[스즈]')),
+            ('pack', re.compile(r'(셋업|셋팅|세팅|설치|운영|배포) ?(팩|패키지|꾸러미|묶음)|setup ?pack|배포|릴리[스즈]|운영 ?(에|으로|서버|환경).*(올려|반영|내보내|적용|설치)')),       # "배포해줘" means: make the setup packs
             ('record', re.compile(r'커밋|깃 ?(에|으로|허브)|저장소에|버전.*(남겨|기록|저장)|변경.*(기록|저장)해')))
 
 
 # An order may also come already decided, from a tool instead of a sentence (platform/ctl.py): the same kinds, the same work.
 ORDER_KINDS = {'record': '변경 기록 (깃)', 'git-undo': '기록한 변경 취소 (깃)', 'git-branch': '작업 공간 옮기기 (깃)', 'git-push': '원격에 올리기 (깃)', 'git-remote': '원격 저장소 연결 (깃)',
-               'git-log': '변경 이력 (깃)', 'git-sync': '깃 상태로 맞추기', 'pack': '운영 셋업 팩 만들기', 'deploy': '셋업 팩을 만들어 이 맥의 운영에 설치', 'rollback': '이전 팩으로 되돌리기',
+               'git-log': '변경 이력 (깃)', 'git-sync': '깃 상태로 맞추기', 'pack': '운영 셋업 팩 만들기',
                'platform-pack': '플랫폼 셋업 팩 만들기', 'model-pack': '모델 팩 만들기',
                'replay': '적어 둔 화면 정의 적용'}       # a definition already written (a recorded answer of the model, or a tool's own): checked and applied like any request, without asking the model
 
@@ -978,10 +901,6 @@ def carry_out(kind, named, project, state, note=None):
         return git_sync(project)
     if kind == 'pack':
         return pack(project, state, note)
-    if kind == 'deploy':
-        return deploy(project, state, note)
-    if kind == 'rollback':
-        return rollback(project, state, note)
     import platform_pack
     return platform_pack.build(project, note) if kind == 'platform-pack' else platform_pack.model_pack(note)
 
@@ -1019,12 +938,14 @@ def git_order(goal):
 
 
 def command(goal):
-    """Is this request an order to record, pack or deploy (not a screen to make)? Returns 'record' | 'pack' | 'deploy' | 'rollback' | None."""
+    """Is this request an order to record, pack or deploy (not a screen to make)? Returns 'record' | 'pack' | 'platform-pack' | 'model-pack' | None."""
     text = ' '.join((goal or '').split())
     # An order is short and does not describe a screen; "배포 현황 화면 만들어줘" is a screen to make.
     if not text or len(text) > 60 or re.search(r'화면|항목|추가|집계|현황|등록 ?해|고쳐|바꿔|삭제', text):
         return None
-    return next((name for name, pattern in COMMANDS if pattern.search(text)), None)
+    kind = next((name for name, pattern in COMMANDS if pattern.search(text)), None)
+    # Taking an operating server back is done by hand there, with its own packs; a sentence about that is not an order to make a pack.
+    return None if kind == 'pack' and re.search(r'되돌|롤백|이전', text) else kind
 
 
 def _size(count):
@@ -1060,12 +981,4 @@ def say(kind, result):
                 f"팩에 든 프로그램·화면·화면 정의는 빈 환경에 설치해 확인했습니다 ({result.get('trial', '')}; 관리자 로그인 확인).\n"
                 f"⚠ 윈도우용 설치 스크립트는 문법 검사만 했습니다 (이 맥에서는 윈도우 설치를 돌려 볼 수 없음). 실제 윈도우에서 한 번 설치해 보고 쓰세요.\n"
                 f"파일 위치: {site().packs}")
-    if not result.get('success'):
-        back = ' 운영은 이전 팩으로 되돌렸습니다.' if result.get('restored') else ' 운영은 그대로입니다.'
-        return f"배포하지 못했습니다 ({result.get('step')} 단계): {result.get('error', '')[:400]}{back}"
-    lines = [('이전 팩으로 되돌렸습니다' if result.get('rollback') else '이 맥에 운영 한 벌을 새로 설치했습니다' if result.get('first') else '운영에 배포했습니다') + f" - {result['url']} ({result.get('detail', '')})"]
-    if result.get('pack'):
-        lines.append(f"설치한 팩: {result['pack']}")
-    if result.get('first'):
-        lines.append(f"운영 관리자(admin)의 첫 비밀번호는 {site().state / 'auth/prod-login.json'} 에 있습니다. 들어가서 바꾸세요.")
-    return '\n'.join(lines)
+    return str(result)

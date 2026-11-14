@@ -296,7 +296,7 @@ class QueueManager:
             self._finish(queue_id, 'failed', '큐 실행 오류: ' + str(error)[:300])
 
     def _release_route(self, queue_id):
-        """An order to record, pack or deploy ("커밋해줘", "셋업 팩 만들어줘", "운영에 배포해줘", "이전 배포로 되돌려줘") is carried out by the
+        """An order to record, pack or deploy ("커밋해줘", "셋업 팩 만들어줘", "배포해줘") is carried out by the
         platform itself - no model is asked. Returns False for every other request."""
         if os.environ.get('PLATFORM_DEFINITION_ROUTE') == '0' or not getattr(self.app, 'definition_route', False):
             return False

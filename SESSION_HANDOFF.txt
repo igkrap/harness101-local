@@ -1055,3 +1055,5 @@ Orca CLI selected /Applications/Orca.app/Contents/Resources/bin/orca, skill read
   platform/state/auth/prod-deployer.json. Databases mdi, mdi_test, mdi_auth_probe_* are older leftovers I did not make - untouched.
 
 - 2026-11-14: user: "이전버전 팩은 필요가없다" - the earlier-version list is gone from the home strip; release.pack keeps only the current version's packs (older folders and zips are deleted when a new pack is made); old pack files of local-only were deleted. The order "이전 배포로 되돌려줘" (this Mac's copy on 5300) therefore has nothing to go back to.
+
+- 2026-11-15: at the user's word the local operating copy is gone: compose project local-only-ops (port 5300, empty) removed with its volume, prod-login.json deleted, release.deploy/rollback/_install_here and the orders deploy/rollback removed. "배포해줘"/"운영에 배포해줘" now mean: make the setup packs. Sentences about rolling back are not orders. control_check --pack 24/24 after the change. sites.Site still carries ops_port/ops_project (unused now; ops_home/builds holds the built screens).
