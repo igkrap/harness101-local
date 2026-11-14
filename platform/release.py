@@ -131,30 +131,31 @@ def _titles(project, paths):
     return out
 
 
-def record(project, message=None):
+def record(project, message=None, author=None):
     """Write the bundle and commit every pending change of the project. Returns what was recorded (commit None = nothing new).
     Another git command may be at work in the project at the same moment (the platform's own pages read its state): then it waits and tries again."""
     for attempt in range(6):
         try:
-            return _record(project, message)
+            return _record(project, message, author)
         except RuntimeError as error:
             if 'index.lock' not in str(error) or attempt == 5:
                 raise
             time.sleep(1.5)
 
 
-def _record(project, message=None):
+def _record(project, message=None, author=None):
     vcs.ensure_repo(project)
     write_bundle(project)
     changed = [line[3:].strip().strip('"') for line in vcs._git(project, 'status', '--porcelain', '--untracked-files=all', raw=True).splitlines() if line.strip()]
     screens = _titles(project, [path for path in changed if path.startswith('release/definitions/') and (Path(project) / path).is_file()])
     removed = [Path(path).stem for path in changed if path.startswith('release/definitions/') and not (Path(project) / path).is_file()]
     other = [path for path in changed if not path.startswith('release/')]
-    title = message or ('화면 ' + ', '.join(screens[:3]) + (f' 외 {len(screens) - 3}개' if len(screens) > 3 else '') if screens else '변경 기록')
+    title = (message or '').strip().splitlines()[0] if (message or '').strip() else ('화면 ' + ', '.join(screens[:3]) + (f' 외 {len(screens) - 3}개' if len(screens) > 3 else '') if screens else '변경 기록')
     body = '\n'.join(filter(None, [f"화면 정의: {', '.join(screens)}" if screens else '', f"지워진 화면: {', '.join(removed)}" if removed else '',
                                    '공통 코드 변경' if 'release/codes.json' in changed else '', '메뉴 편성 변경' if 'release/menus.json' in changed else '',
                                    f'소스 파일 {len(other)}개' if other else '']))
-    sha = vcs.commit(project, title[:72] + ('\n\n' + body if body else ''), author=vcs.PLATFORM_AUTHOR)
+    detail = '\n\n'.join(filter(None, [('요청: ' + message.strip()[:2000]) if message and len(message.strip()) > 72 else '', body]))
+    sha = vcs.commit(project, title[:72] + ('\n\n' + detail if detail else ''), author=author or vcs.PLATFORM_AUTHOR)
     pushed = None
     if sha and vcs.status(project).get('remote'):
         try:
@@ -164,6 +165,129 @@ def _record(project, message=None):
             pushed = str(error)[:200]
     return {'commit': sha, 'screens': screens, 'removed': removed, 'codes': 'release/codes.json' in changed, 'menus': 'release/menus.json' in changed,
             'source_files': len(other), 'pushed': pushed}
+
+
+# ---- git as a control, not only a record ----
+# The screens live in the development database; the files under release/ are their written form. Recording writes the
+# files from the database. The other way round - taking a change back, moving to another work space - changes the
+# files, and then the development site is brought to what the files say, so that git decides what the screens are.
+
+CARRIED = ('rules', 'effects', 'limits')      # parts that may name a screen made later: put in with a second pass
+REMOTE = re.compile(r'(https://[\w.-]+(:\d+)?/[\w./~-]+|git@[\w.-]+:[\w./~-]+|ssh://[\w.@:/~-]+)')
+
+
+def apply_files(project):
+    """Bring the development site to what release/ holds. Returns what changed there, in plain words."""
+    import sys
+    harness = str(Path(__file__).resolve().parents[1] / 'harness2')
+    if harness not in sys.path:
+        sys.path.insert(0, harness)
+    import define
+    from framework import Framework
+    folder = Path(project) / 'release'
+    files = {path.stem: json.loads(path.read_text(encoding='utf-8')) for path in sorted((folder / 'definitions').glob('*.json'))} if (folder / 'definitions').is_dir() else {}
+    held = _definitions(site().db)
+    todo = {key: row for key, row in files.items() if key not in held or held[key]['definition'] != row['definition']}
+    gone = [key for key in held if key not in files]
+    lines = []
+    if (folder / 'codes.json').is_file():
+        codes = json.loads((folder / 'codes.json').read_text(encoding='utf-8'))
+        if codes.get('groups') or codes.get('codes'):
+            _psql(site().db, f"""
+                INSERT INTO sys_code_groups SELECT * FROM json_populate_recordset(NULL::sys_code_groups, {_literal(codes.get('groups', []))}::json)
+                ON CONFLICT (group_code) DO UPDATE SET group_name = EXCLUDED.group_name, description = EXCLUDED.description, enabled = EXCLUDED.enabled;
+                INSERT INTO sys_codes SELECT * FROM json_populate_recordset(NULL::sys_codes, {_literal(codes.get('codes', []))}::json)
+                ON CONFLICT (group_code, code) DO UPDATE SET code_name = EXCLUDED.code_name, sort_order = EXCLUDED.sort_order, enabled = EXCLUDED.enabled;""")
+    if not todo and not gone:
+        return lines
+    framework = Framework()
+
+    def put(key, definition):
+        body = {'definition': define.clean(definition), 'status': 'PUBLISHED'}
+        if key not in held:
+            body['programCode'] = files[key].get('programCode')
+        code, answer = framework.call('PUT', f'/api/system/definitions/{key}', body)
+        return None if code == 200 else str((answer or {}).get('detail') or answer)[:200]
+    waiting, problems = dict(todo), {}
+    while waiting:
+        done = []
+        for key, row in waiting.items():
+            problems[key] = put(key, {name: value for name, value in row['definition'].items() if name not in CARRIED})
+            if problems[key] is None:
+                done.append(key)
+        if not done:
+            break
+        for key in done:
+            waiting.pop(key)
+            problems.pop(key)
+    for key, row in todo.items():
+        if key not in waiting:
+            problem = put(key, row['definition']) if any(row['definition'].get(name) for name in CARRIED) else None
+            lines.append(f"{row['definition']['title']}: " + ('이 기록의 모습으로 바꿨습니다.' if key in held else '화면을 다시 만들었습니다.') if not problem else f"{row['definition']['title']}: 반영하지 못했습니다 - {problem}")
+    for key, problem in problems.items():
+        if problem:
+            lines.append(f"{todo[key]['definition']['title']}: 반영하지 못했습니다 - {problem}")
+    # Screens the files no longer have: last made first, so one that points at another goes before it.
+    for key in sorted(gone, key=lambda name: held[name]['programCode'], reverse=True):
+        code, answer = framework.delete_definition(key)
+        title = held[key]['definition']['title']
+        lines.append(f'{title}: 화면을 없앴습니다.' if code == 200 else f"{title}: 없애지 못했습니다 - {(answer or {}).get('detail') or answer} (화면은 남겨 두었습니다)")
+    return lines
+
+
+def _settled(project):
+    """Before the files are changed by git, what the development site holds now is recorded - nothing made is lost by moving."""
+    made = record(project, '옮기기 전 상태 기록')
+    return [f"옮기기 전에 아직 기록하지 않은 변경을 먼저 기록했습니다 ({made['commit'][:7]})."] if made.get('commit') else []
+
+
+def git_undo(project, sha=None):
+    """Take one recorded change back (the newest when none is named): a new commit that undoes it, and the development site follows."""
+    lines = _settled(project)
+    target = sha or vcs.head(project)
+    subject = vcs._git(project, 'log', '-1', '--format=%s', target)
+    done = vcs.revert(project, target)
+    lines.append(f'"{subject}" 을(를) 취소했습니다 ({done[:7]}).')
+    return {'success': True, 'sha': done, 'lines': lines + apply_files(project)}
+
+
+def git_switch(project, name, create=False):
+    """Move to another work space (branch), making it first when asked. The development site becomes what that work space holds."""
+    lines = _settled(project)
+    state = vcs.switch(project, name, create)
+    lines.append(f"작업 공간 {state['branch']} " + ('을(를) 만들고 그리로 옮겼습니다 (지금 상태에서 갈라집니다).' if create else '(으)로 옮겼습니다.'))
+    return {'success': True, 'status': state, 'lines': lines + ([] if create else apply_files(project))}
+
+
+def git_remote(project, url):
+    """Say where the project's remote repository is (a private repository of the user's own)."""
+    vcs._require_repo(project)
+    url = (url or '').strip()
+    if not REMOTE.fullmatch(url) or len(url) > 300:
+        raise ValueError('원격 저장소 주소는 https://… 또는 git@…:… 모양이어야 합니다.')
+    has = vcs._git(project, 'remote', 'get-url', 'origin', check=False)
+    vcs._git(project, 'remote', 'set-url' if has else 'add', 'origin', url)
+    return {'success': True, 'lines': [f'원격 저장소를 연결했습니다: {url}', '"원격에 올려줘" 라고 하면 지금까지의 기록을 올립니다.']}
+
+
+def git_push(project):
+    lines = _settled(project)
+    state = vcs.status(project)
+    if not state['remote']:
+        raise ValueError('원격 저장소가 연결되어 있지 않습니다. "원격 저장소 연결해줘 <주소>" 라고 하거나 변경 이력 화면에서 주소를 넣으세요.')
+    vcs.push(project)
+    return {'success': True, 'lines': lines + [f"원격 저장소에 올렸습니다: {state['remote']} ({state['branch']})"]}
+
+
+def git_log(project, limit=10):
+    vcs._require_repo(project)
+    state = vcs.status(project)
+    rows = vcs._git(project, 'log', f'-{int(limit)}', '--date=format:%m-%d %H:%M', '--format=%h|%ad|%an|%s').splitlines()
+    lines = [f"작업 공간 {state['branch']}" + (f" · 원격 {state['remote']}" + (f" (올리지 않은 기록 {state['ahead']}개)" if state.get('ahead') else '') if state['remote'] else ' · 원격 없음')]
+    for row in rows:
+        sha, when, who, subject = row.split('|', 3)
+        lines.append(f"{when}  {sha}  {subject}  ({'모델' if who.startswith(vcs.MODEL_AUTHOR[0]) else '플랫폼' if who == vcs.PLATFORM_AUTHOR[0] else who})")
+    return {'success': True, 'lines': lines}
 
 
 # ---- the setup pack ----
@@ -645,6 +769,37 @@ COMMANDS = (('platform-pack', re.compile(r'플랫폼.*(팩|패키지|꾸러미)'
             ('record', re.compile(r'커밋|깃 ?(에|으로|허브)|저장소에|버전.*(남겨|기록|저장)|변경.*(기록|저장)해')))
 
 
+BRANCH = r'(?:브랜치|작업 ?공간)'
+GIT_ORDERS = (('git-remote', re.compile(r'(원격|저장소|깃허브|깃 ?랩|리모트).*(연결|등록|설정|바꿔)')),
+              ('git-log', re.compile(r'(변경 ?이력|커밋 ?(이력|목록|기록)|깃 ?(이력|로그)|히스토리).*(보여|알려|뭐|확인)')),
+              ('git-branch', re.compile(BRANCH + r'.*(만들|생성|전환|바꿔|옮겨|이동|가줘)')),
+              ('git-push', re.compile(r'(원격|깃허브|깃 ?랩|리모트).*(올려|푸시|보내)|푸시해')),
+              ('git-undo', re.compile(r'(방금|마지막|직전|최근).*(커밋|변경|기록|요청).*(취소|되돌)|커밋.*(취소|되돌)')))
+
+
+def git_order(goal):
+    """An order about the project's git, with what it names: ('git-branch', {'name': ..., 'create': ...}) and so on; None otherwise."""
+    text = ' '.join((goal or '').split())
+    if not text or len(text) > 400:
+        return None
+    kind = next((name for name, pattern in GIT_ORDERS if pattern.search(text)), None)
+    if not kind or (kind != 'git-remote' and (len(text) > 60 or re.search(r'화면|항목|집계|현황', text))):
+        return None
+    if kind == 'git-remote':
+        url = REMOTE.search(text)
+        return (kind, {'url': url.group(1)}) if url else None
+    if kind == 'git-branch':
+        action = r'\s*(?:을|를|으로|로|에)?\s*(?:새로 )?(?:만들|생성|전환|바꿔|옮겨|이동|가줘)'
+        quote = '["\'“”‘’]?'
+        found = [match.group(1) for match in (re.search(quote + r'([A-Za-z0-9가-힣._/-]+)' + quote + r'\s*' + BRANCH + action, text),
+                                              re.search(BRANCH + r'\s*' + quote + r'([A-Za-z0-9가-힣._/-]+?)' + quote + action, text)) if match]
+        names = [name for name in found if name not in ('으로', '로', '을', '를', '에', '새', '새로', '다른', '새로운')]
+        if not names:
+            return None
+        return kind, {'name': names[0], 'create': bool(re.search(r'만들|생성', text))}
+    return kind, {}
+
+
 def command(goal):
     """Is this request an order to record, pack or deploy (not a screen to make)? Returns 'record' | 'pack' | 'deploy' | 'rollback' | None."""
     text = ' '.join((goal or '').split())
@@ -667,6 +822,8 @@ def say(kind, result):
                  '공통 코드' if result.get('codes') else '', '메뉴 편성' if result.get('menus') else '', f"소스 파일 {result['source_files']}개" if result.get('source_files') else '']
         tail = ' 원격 저장소에도 올렸습니다.' if result.get('pushed') is True else f" 원격 저장소에는 올리지 못했습니다: {result['pushed']}" if result.get('pushed') else ''
         return f"기록했습니다 ({result['commit'][:7]}): " + ', '.join(filter(None, parts)) + '.' + tail
+    if kind.startswith('git-'):
+        return '\n'.join(result.get('lines') or ['했습니다.'])
     if kind == 'platform-pack':
         version = result['version']
         return (f"플랫폼 셋업 팩을 만들었습니다 (맥·애플 실리콘용): {result['name']} ({result['size'] / 1024 / 1024:.1f}MB)\n"

@@ -1007,3 +1007,18 @@ Orca CLI selected /Applications/Orca.app/Contents/Resources/bin/orca, skill read
 - Limits: a new project only takes requests a definition can answer (the older code route knows only local-only's servers; such requests are refused with
   a message). There is no "delete project" in the platform. Framework changes made later in local-only do not flow into existing projects.
   Previews of new projects are started by the platform on demand (not by start.sh).
+
+[2026-11-14, night] Deployment strip; git as a control; commit inside the harness
+- Home strip is now: 커밋 / 이전 버전 (download list of earlier packs) / 현재 버전 배포 다운로드 (makes the packs first when the newest is behind,
+  then opens the two downloads). Buttons act at once. "이 맥의 운영에 설치" and rollback buttons removed (user: "이전 버전은 직접 내가 돌리는게 맞지 않나");
+  the order "운영에 배포해줘" and the copy on 5300 still exist.
+- Harness pattern (user: "하네스에 커밋까지 포함", "성공시에", "개발사이트 배포 + 커밋 패턴"): harness2/run.py commit() runs as the last step of a
+  request that was applied - one commit per request, titled with the request, authored as the local model; undo commits too ("되돌림: ...").
+  A failed commit does not undo the request; it is reported in the result.
+- Git controls the screens now: release.apply_files() brings the development site to what release/ holds (definitions through the dev API, codes
+  upserted; menus not). release.git_undo / git_switch record first, do the git step, then apply the files. /api/history/undo|branch|push|remote use them.
+  History page: remote address field. Orders in the request box (release.git_order): "방금 커밋 취소해줘", "<이름> 브랜치 만들어줘",
+  "main 브랜치로 바꿔줘", "원격 저장소 연결해줘 <주소>", "원격에 올려줘", "변경 이력 보여줘".
+  Tried on local-only: request -> commit; order undo -> screen back; work space made, changed, moved back and forth -> screen follows. Test branch deleted.
+  Not tried: a real push (local-only has no remote); deleting a screen through a revert when it holds records (it is kept and reported).
+- Still open from the list I gave the user: a screen for looking at definitions and comparing versions field by field; server log / DB diagnostics.

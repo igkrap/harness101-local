@@ -716,9 +716,11 @@ class Handler(BaseHTTPRequestHandler):
                 app.require_idle('변경 이력을 바꾸는 작업')
                 action=parsed.path.rsplit('/',1)[1]
                 if action=='record':self.send_json({'sha':vcs.commit_now(app.project,body.get('message'))});return
-                if action=='undo':self.send_json({'sha':vcs.revert(app.project,body.get('sha'))});return
-                if action=='branch':self.send_json(vcs.switch(app.project,body.get('name'),bool(body.get('create'))));return
-                if action=='push':self.send_json(vcs.push(app.project));return
+                import release      # taking back and moving also bring the development site to what the files then say
+                if action=='undo':self.send_json(release.git_undo(app.project,vcs._sha(app.project,body.get('sha'))));return
+                if action=='branch':done=release.git_switch(app.project,body.get('name'),bool(body.get('create')));self.send_json({**done['status'],'lines':done['lines']});return
+                if action=='push':release.git_push(app.project);self.send_json(vcs.status(app.project));return
+                if action=='remote':release.git_remote(app.project,body.get('url'));self.send_json(vcs.status(app.project));return
             if parsed.path=='/api/queues':self.send_json(app.queues.create(body),201);return
             match=re.fullmatch(r'/api/queues/([a-f0-9]{32})/undo',parsed.path)
             if match:self.send_json(app.queues.undo(match.group(1)));return

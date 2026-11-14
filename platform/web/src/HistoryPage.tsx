@@ -53,7 +53,7 @@ function Changes({ base }: { base: string }) {
 
 export default function HistoryPage({ token, busy, onOpenJob }: { token: string; busy: boolean; onOpenJob: (id: string) => void }) {
   const [status, setStatus] = useState<Status | null>(null), [commits, setCommits] = useState<Commit[]>([]), [error, setError] = useState(""), [notice, setNotice] = useState("");
-  const [selected, setSelected] = useState(""), [message, setMessage] = useState(""), [pending, setPending] = useState(false), [undoing, setUndoing] = useState<Commit | null>(null), [branch, setBranch] = useState("");
+  const [selected, setSelected] = useState(""), [message, setMessage] = useState(""), [pending, setPending] = useState(false), [undoing, setUndoing] = useState<Commit | null>(null), [branch, setBranch] = useState(""), [remote, setRemote] = useState("");
   const load = useCallback(async () => {
     try { const r = await apiFetch("/api/history"); const d = await r.json(); if (!r.ok) throw Error(d.error); setStatus(d.status); setCommits(d.commits); setError(""); }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
@@ -63,7 +63,7 @@ export default function HistoryPage({ token, busy, onOpenJob }: { token: string;
     setPending(true); setNotice("");
     try {
       const r = await apiFetch(`/api/history/${action}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Platform-Token": token }, body: JSON.stringify(body) });
-      const d = await r.json(); if (!r.ok) throw Error(d.error); setNotice(done); setError(""); await load();
+      const d = await r.json(); if (!r.ok) throw Error(d.error); setNotice(Array.isArray(d.lines) && d.lines.length ? d.lines.join(" ") : done); setError(""); await load();
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setPending(false); }
   };
@@ -106,7 +106,7 @@ export default function HistoryPage({ token, busy, onOpenJob }: { token: string;
         </li>)}
         {status && commits.length === 0 && <Text color="secondary">아직 기록이 없습니다.</Text>}
       </ol>
-      {status && <Collapsible trigger="고급: 작업 공간(브랜치)과 원격 저장소" defaultIsOpen={false}>
+      {status && <Collapsible trigger="작업 공간(브랜치)과 원격 저장소" defaultIsOpen={false}>
         <VStack gap={3} padding={2}>
           <Text color="secondary">작업 공간을 나누면 시험 삼아 바꿔 본 것을 지금 화면과 섞지 않고 보관할 수 있습니다. 현재: <b>{status.branch}</b></Text>
           <HStack gap={2} style={{ flexWrap: "wrap" }}>{status.branches.filter(b => b !== status.branch).map(b => <Button key={b} label={`${b}(으)로 전환`} size="sm" variant="ghost" isDisabled={locked} onClick={() => void act("branch", { name: b }, `${b} 작업 공간으로 전환했습니다.`)} />)}</HStack>
@@ -114,6 +114,8 @@ export default function HistoryPage({ token, busy, onOpenJob }: { token: string;
             <Button label="만들고 전환" size="sm" isDisabled={locked || !branch.trim()} onClick={() => void act("branch", { name: branch.trim(), create: true }, "새 작업 공간을 만들었습니다.").then(() => setBranch(""))} /></HStack>
           {status.remote ? <HStack gap={2}><Text color="secondary">원격: {status.remote}{status.ahead ? ` · 올리지 않은 기록 ${status.ahead}개` : ""}</Text><Button label="원격에 올리기" size="sm" variant="secondary" isDisabled={locked} onClick={() => void act("push", {}, "원격 저장소에 올렸습니다.")} /></HStack>
             : <Text color="secondary">원격 저장소가 연결되어 있지 않습니다.</Text>}
+          <HStack gap={2} vAlign="end"><div style={{ flex: 1 }}><TextInput label={status.remote ? "원격 저장소 주소 바꾸기" : "원격 저장소 주소 (깃허브 등의 비공개 저장소)"} value={remote} onChange={setRemote} placeholder="https://github.com/내계정/프로젝트.git" /></div>
+            <Button label="연결" size="sm" isDisabled={locked || !remote.trim()} onClick={() => void act("remote", { url: remote.trim() }, "원격 저장소를 연결했습니다.").then(() => setRemote(""))} /></HStack>
         </VStack>
       </Collapsible>}
     </VStack>

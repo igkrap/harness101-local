@@ -299,10 +299,12 @@ class QueueManager:
             return False
         import release
         goal = self.get(queue_id)['goal']
-        kind = release.command(goal)
+        ordered = release.git_order(goal)
+        kind, named = ordered if ordered else (release.command(goal), {})
         if not kind:
             return False
-        title = {'record': '변경 기록 (깃)', 'platform-pack': '플랫폼 셋업 팩 만들기', 'model-pack': '모델 팩 만들기', 'pack': '운영 셋업 팩 만들기', 'deploy': '셋업 팩을 만들어 이 맥의 운영에 설치', 'rollback': '이전 팩으로 되돌리기'}[kind]
+        title = {'git-undo': '기록한 변경 취소 (깃)', 'git-branch': '작업 공간 옮기기 (깃)', 'git-push': '원격에 올리기 (깃)', 'git-remote': '원격 저장소 연결 (깃)', 'git-log': '변경 이력 (깃)',
+                 'record': '변경 기록 (깃)', 'platform-pack': '플랫폼 셋업 팩 만들기', 'model-pack': '모델 팩 만들기', 'pack': '운영 셋업 팩 만들기', 'deploy': '셋업 팩을 만들어 이 맥의 운영에 설치', 'rollback': '이전 팩으로 되돌리기'}[kind]
         item = {'domain': 'release', 'title': title, 'checks': [], 'status': 'running', 'job_id': None, 'attempts': 1}
         self._update(queue_id, items=[item], status='running', route='release')
 
@@ -311,7 +313,10 @@ class QueueManager:
         try:
             project, state = self.app.project, self.app.state
             import platform_pack
-            result = (platform_pack.build(project, note) if kind == 'platform-pack' else platform_pack.model_pack(note) if kind == 'model-pack'
+            result = (release.git_undo(project) if kind == 'git-undo' else release.git_switch(project, named['name'], named['create']) if kind == 'git-branch'
+                      else release.git_push(project) if kind == 'git-push' else release.git_remote(project, named['url']) if kind == 'git-remote'
+                      else release.git_log(project) if kind == 'git-log'
+                      else platform_pack.build(project, note) if kind == 'platform-pack' else platform_pack.model_pack(note) if kind == 'model-pack'
                       else release.record(project) if kind == 'record' else release.pack(project, state, note) if kind == 'pack'
                       else release.rollback(project, state, note) if kind == 'rollback' else release.deploy(project, state, note))
             ok = bool(result.get('success', True))

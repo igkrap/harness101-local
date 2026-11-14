@@ -22,6 +22,25 @@ RUNS = Path(__file__).resolve().parent / 'runs'
 TRIAL = 'trial_'
 
 
+def commit(result, message, model=True):
+    """The last step of a request that succeeded: what it made is written into the project's files and committed to its git,
+    one commit per request, in the request's own words. A failure here does not undo the request - it is said, and the next
+    commit (or "커밋해줘") carries the change."""
+    try:
+        import llm
+        import release
+        from sites import site
+        import project_git
+        author = (f"{project_git.MODEL_AUTHOR[0]} ({llm.model_id()})", project_git.MODEL_AUTHOR[1]) if model else None
+        recorded = release.record(site().root, message, author=author)
+        result['commit'] = recorded.get('commit')
+        if recorded.get('pushed') not in (None, True):
+            result['commit_note'] = '원격 저장소에는 올리지 못했습니다: ' + str(recorded['pushed'])
+    except Exception as problem:
+        result['commit_note'] = '깃에 기록하지 못했습니다: ' + str(problem)[:200]
+    return result
+
+
 def impact(framework, key, old, new):
     """What a change means for the rows that already exist."""
     notes, blocking = [], []
@@ -76,6 +95,9 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
                 if outcome.get('status') not in ('applied', 'checked'):
                     break
             finished = len(done) == len(proposal['steps']) and done[-1].get('status') in ('applied', 'checked')
+            if finished and not dry:
+                result['status'] = 'applied'
+                commit(result, request)
             result.update(status=('checked' if dry else 'applied') if finished else 'partial', steps=done, planned=proposal['steps'],
                           checks=sum(item.get('checks') or 0 for item in done), title=' → '.join(item.get('title') or '?' for item in done if item.get('title')))
             return result
@@ -204,6 +226,8 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
             still = checks.clear_since(framework, mark, framework.username)
         if still:
             result['leftover_rows'] = still
+        if result.get('status') == 'applied' and part_of is None:      # a step of a larger request is committed with the whole request
+            commit(result, request)
         result['seconds'] = round(time.time() - started, 1)
         (folder / 'result.json').write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding='utf-8')
 
@@ -241,6 +265,12 @@ def undo(result):
             break
     if not lines:
         lines, done = ['되돌릴 것이 없습니다 (적용된 것이 없는 요청입니다).'], False
+    if done:
+        noted = commit({}, '되돌림: ' + str(result.get('request') or result.get('title') or '')[:60], model=False)
+        if noted.get('commit'):
+            lines.append(f"깃에 기록했습니다 ({noted['commit'][:7]}).")
+        elif noted.get('commit_note'):
+            lines.append('⚠ ' + noted['commit_note'])
     return done, lines
 
 
@@ -306,6 +336,10 @@ def say(result):
         lines.append('· ' + note)
     if status == 'applied':
         lines.append(f"검사 {result['checks']}개 통과 → 적용했습니다. ({result['seconds']}초)")
+        if result.get('commit'):
+            lines.append(f"깃에 기록했습니다 ({result['commit'][:7]}).")
+        if result.get('commit_note'):
+            lines.append('⚠ ' + result['commit_note'])
     elif status == 'checked':
         lines.append(f"검사 {result['checks']}개 통과. 적용은 하지 않았습니다(--dry).")
     elif status == 'unchanged':
