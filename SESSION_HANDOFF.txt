@@ -971,3 +971,19 @@ Orca CLI selected /Applications/Orca.app/Contents/Resources/bin/orca, skill read
 - JVM runs with -Duser.timezone=UTC and PostgreSQL with timezone UTC on Windows, because the app treats stored timestamps as UTC.
 - release.record retries when another git command holds the project's index.lock (seen once).
 - The Linux/Docker pack zip is no longer produced; the compose-based folder remains internal (trial install, this Mac's copy on 5300).
+
+[2026-11-14, late night] Platform setup pack (user: "플랫폼 자체도 셋업팩이 있으면 좋겠는디"; targets: Mac and Windows, model separate)
+- Mac (Apple silicon) pack is done: "플랫폼 셋업 팩 만들어줘" -> platform/platform_pack.py build() -> ~/.local/share/local-workshop/packs/platform/
+  platform-pack-<stamp>-mac.zip (~6MB): git archive of the outer repo and of local-only (committed files only), install.sh, update.sh, patch_mlx.py.
+  install.sh: tools (brew installs node@22, python@3.13, colima+docker when missing) -> unpack to ~/harness-platform -> platform/first_setup.py
+  (networks, Maven cache, mdi-db, build, admin/admin + server.env, API container started once with release/ so the project's screens load, verifier
+  account) -> npm ci + build -> playwright headless shell + runtime.json -> MLX venv, mlx-lm pinned, cache-bytes patch -> model (model pack tar beside
+  it, else hf download). update.sh replaces only the platform side; keeps platform/state, local-only and the dev DB; refuses older packs.
+- Tried on this Mac beside the running platform (suffix -trial, ports 5443/8093, own Maven cache volume, temp dirs for MLX venv and browser tool,
+  model skipped): install.sh end to end, the installed server.py answered on 5393, update.sh with a newer pack kept state and project. Removed after.
+  Not tried: a Mac without the tools (brew/colima branch), the model download/unpack step, start.sh/stop.sh on a fresh machine.
+  Side effect of the trial: playwright removed an unused old browser cache (webkit-2123) on this Mac; the one in use is intact.
+- "모델 팩 만들어줘" -> model_pack(): tar of the HF cache folder (15GB) - NOT made yet (this Mac has 24GB free).
+- platform/first_setup.py is new and reusable (--suffix/--remove for trials). qwen-serve-forever.sh no longer has /Users/igkrap in it.
+- Windows platform pack: NOT started. Needs decisions: local model runtime on Windows (MLX is Mac-only -> llama.cpp/GGUF or similar, unverifiable here),
+  and whether the dev DB/API may use Docker Desktop/WSL2 or must run natively like the operating pack.
