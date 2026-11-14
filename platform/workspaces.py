@@ -143,6 +143,10 @@ class Workspaces:
         import projects
         return projects.create(self, body)
 
+    def remove(self, body):
+        import projects
+        return projects.remove(self, body.get('id'), body.get('confirm'))
+
     def pick(self):
         from folder_dialog import choose_folder
         return choose_folder()

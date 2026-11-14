@@ -31,7 +31,7 @@ function examplesFor(screens: string[]) {
 
 type PackFile = { name: string; size: number };
 type Pack = { stamp: string; started_at: string; screens: number; files: { install: PackFile; update: PackFile } };
-type ReleaseStatus = { project: string; packs: Pack[]; current: boolean; pending: { new: string[]; changed: string[]; removed: number; program: boolean } | null; error?: string };
+type ReleaseStatus = { project: string; packs: Pack[]; current: boolean; unrecorded?: { site: string[]; files: string[] }; git?: { branch: string; remote: string; ahead: number | null } | null; pending: { new: string[]; changed: string[]; removed: number; program: boolean } | null; error?: string };
 const mb = (bytes: number) => `${Math.round(bytes / 1024 / 1024)}MB`;
 function PackLinks({ pack }: { pack: Pack }) {
   return <>
@@ -58,6 +58,7 @@ function Operation({ refreshKey, busy, onOrder }: { refreshKey: string; busy: bo
   const waiting = pending ? pending.new.length + pending.changed.length + pending.removed : 0;
   const names = pending ? [...pending.new, ...pending.changed] : [];
   const behind = !status.current;
+  const loose = [...(status.unrecorded?.site ?? []), ...(status.unrecorded?.files ?? [])];
   const download = () => { if (behind) { setOpen(false); setWanted(true); onOrder("운영 셋업 팩 만들어줘"); } else setOpen(value => !value); };
   return <section className="home-ops-box" aria-label="배포">
     <div className="home-ops">
@@ -68,7 +69,8 @@ function Operation({ refreshKey, busy, onOrder }: { refreshKey: string; busy: bo
       {wanted && <span className="dim">현재 버전을 만드는 중… 끝나면 받기가 열립니다</span>}
       {status.error && <span className="dim" title={status.error}>상태를 읽지 못함</span>}
       <span style={{ flex: 1 }} />
-      <button type="button" className="home-btn" disabled={busy} title="지금까지 만든 화면을 깃에 기록합니다" onClick={() => onOrder("지금까지 만든 것을 커밋해줘")}>커밋</button>
+      {status.git && <span className="dim" title={status.git.remote ? `원격: ${status.git.remote}` : "원격 저장소 없음"}>작업 공간 {status.git.branch}{status.git.ahead ? ` · 올리지 않은 기록 ${status.git.ahead}` : ""}</span>}
+      <button type="button" className={`home-btn${loose.length ? " is-waiting" : ""}`} disabled={busy} title={loose.length ? `아직 기록하지 않은 변경: ${loose.join(", ")}` : "요청이 성공하면 자동으로 기록됩니다. 그 밖에 바뀐 것이 있으면 여기서 기록합니다."} onClick={() => onOrder("지금까지 만든 것을 커밋해줘")}>커밋{loose.length ? ` (${loose.length})` : ""}</button>
       {status.packs.length > (status.current ? 1 : 0) && <button type="button" className="home-btn" aria-expanded={older} title="전에 만든 버전의 팩 (운영 서버를 이전 버전으로 직접 돌릴 때)" onClick={() => setOlder(value => !value)}>이전 버전</button>}
       <button type="button" className="home-btn primary" disabled={busy || wanted} aria-expanded={open} title={behind ? "지금 상태로 셋업 팩을 만든 뒤 받습니다" : "현재 버전의 셋업 팩을 받습니다"} onClick={download}>현재 버전 배포 다운로드</button>
     </div>

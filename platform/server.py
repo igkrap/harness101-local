@@ -595,6 +595,9 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path=='/api/release':
                 import release
                 self.send_json({'status':release.status(app.project,app.state),'history':release.history(app.state,10)});return
+            if parsed.path=='/api/release/screens':
+                import release
+                self.send_json({'screens':release.screens()});return
             match=re.fullmatch(r'/api/release/packs/([A-Za-z0-9.-]+)',parsed.path)
             if match:
                 import release
@@ -700,6 +703,7 @@ class Handler(BaseHTTPRequestHandler):
                     with hub.lock:hub.testing_model=False
                 self.send_json(result);return
             if parsed.path=='/api/projects/pick' and hasattr(hub,'pick'):self.send_json(hub.pick());return
+            if parsed.path=='/api/projects/remove' and hasattr(hub,'remove'):self.send_json(hub.remove(body));return
             if parsed.path=='/api/projects/create' and hasattr(hub,'create'):self.send_json(hub.create(body),201);return
             if parsed.path=='/api/projects' and hasattr(hub,'add'):self.send_json(hub.add(body),201);return
             if parsed.path=='/api/preview' and hasattr(hub,'previews'):self.send_json(hub.previews.ensure(app.metadata),202);return

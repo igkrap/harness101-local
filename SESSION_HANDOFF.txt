@@ -1022,3 +1022,22 @@ Orca CLI selected /Applications/Orca.app/Contents/Resources/bin/orca, skill read
   Tried on local-only: request -> commit; order undo -> screen back; work space made, changed, moved back and forth -> screen follows. Test branch deleted.
   Not tried: a real push (local-only has no remote); deleting a screen through a revert when it holds records (it is kept and reported).
 - Still open from the list I gave the user: a screen for looking at definitions and comparing versions field by field; server log / DB diagnostics.
+
+[2026-11-14, late night] The control layer hardened, with a tool and a check
+(user: "이쪽 상당히 단단하게 만들어주면 좋겠고, 사실상 나중에 니가 컨트롤할때도 얘 기능 이용해서")
+- platform/ctl.py: the platform from a command line, always THROUGH the running platform (same queue, same records): projects, create, remove, status,
+  screens, ask, apply (a written definition, no model), commit, undo, branch, sync, remote, push, log, pack, undo-request. JSON out, exit code 0 = done.
+  USE THIS instead of ad hoc scripts, psql or direct git when working on projects.
+- release.carry_out(kind, named, ...) is the one place every order ends in (button, sentence, tool). Orders may arrive decided: POST /api/queues
+  {goal, order:{kind,...}} (release.given_order validates). Kinds in release.ORDER_KINDS, plus 'replay' {file} = apply a written definition.
+- One change at a time per project: release.exclusive() (flock on <state>/control.lock, re-entrant within one piece of work).
+- release.unrecorded(): what the site holds that git does not (screens, codes, menus, settings, hand-changed files) - in status, on the 커밋 button.
+- Following git is now complete: definitions (dev API), common codes (mirrored exactly, deletions too), menus (mirrored), settings (upserted).
+  When part cannot follow the answer is success False with "깃 상태로 맞춰줘" (git-sync) / "커밋해줘" as the two ways out.
+- A new project's starting state is its first commit. projects.remove(id, confirm=slug) (API /api/projects/remove, ctl remove): folder, DB, server,
+  run records, own operating copy; packs kept; refused for the first project.
+- git commits work on a machine with no git identity (PERSON_AUTHOR fallback).
+- platform/tests/control_check.py [--pack]: makes project ctl-check, walks all of the above through ctl.py, removes it. 24/24 pass (with --pack).
+  It found and I fixed: new project without a first record; menus/settings not following git; removed codes not following git.
+  RUN IT after touching release.py, project_git.py, projects.py, sites.py, task_queue release/definition routes, or harness2/run.py commit.
+- /api/release/screens lists the site's screens (key, title, fields).

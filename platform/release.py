@@ -15,6 +15,7 @@ starts, every screen was accepted, the administrator can sign in) and removed ag
 "운영에 배포해줘" builds a pack and installs it on this machine's own operating copy (port 5300).
 """
 import hashlib
+from contextlib import contextmanager
 import http.cookiejar
 import json
 import os
@@ -43,6 +44,35 @@ APP_IMAGE = 'eclipse-temurin:17-jre'
 
 class ReleaseError(RuntimeError):
     pass
+
+
+import threading
+_holding = threading.local()
+
+
+@contextmanager
+def exclusive(what):
+    """One thing at a time changes a project's git and development site, whoever asks (a page, the request box, a command line)."""
+    import fcntl
+    held = _holding.__dict__.setdefault('projects', set())
+    if site().slug in held:        # this same piece of work already has the project (taking back records first, a pack records first)
+        yield
+        return
+    site().state.mkdir(parents=True, exist_ok=True)
+    with open(site().state / 'control.lock', 'a+') as handle:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            handle.seek(0)
+            raise ReleaseError(f"다른 작업이 이 프로젝트의 깃·배포를 쓰고 있어 {what}을(를) 하지 못했습니다 ({handle.read().strip()[:80] or '진행 중'}). 잠시 뒤 다시 하세요.")
+        handle.seek(0); handle.truncate(); handle.write(f'{what} {time.strftime("%H:%M:%S")}'); handle.flush()
+        held.add(site().slug)
+        try:
+            yield
+        finally:
+            held.discard(site().slug)
+            handle.seek(0); handle.truncate()
+            fcntl.flock(handle, fcntl.LOCK_UN)
 
 
 def _psql(db, sql, rows=False):
@@ -97,6 +127,30 @@ def _dump(value):
     return json.dumps(value, ensure_ascii=False, indent=1, sort_keys=True) + '\n'
 
 
+def _bundle():
+    """What the development site holds, in the written form of release/ (file name -> text)."""
+    out = {f'definitions/{key}.json': _dump(row) for key, row in _definitions(site().db).items()}
+    settings = _psql(site().db, "SELECT row_to_json(s) FROM sys_settings s WHERE setting_key NOT LIKE 'release\\_%' ORDER BY setting_key", rows=True)
+    out.update({'codes.json': _dump(_codes(site().db)), 'menus.json': _dump(_menus(site().db)), 'settings.json': _dump(settings)})
+    return out
+
+
+def unrecorded(project):
+    """What the development site holds that git does not yet: screens made or changed outside a request (through the
+    administrator's screens or API), menus arranged, codes added - and files changed by hand. Nothing is written."""
+    folder, held = Path(project) / 'release', _bundle()
+    names = {'codes.json': '공통 코드', 'menus.json': '메뉴 편성', 'settings.json': '시스템 설정'}
+    out = []
+    for name, text in held.items():
+        path = folder / name
+        if not path.is_file() or path.read_text(encoding='utf-8') != text:
+            out.append(names.get(name) or json.loads(text)['definition']['title'])
+    if (folder / 'definitions').is_dir():
+        out += [f'{path.stem} (지워진 화면)' for path in (folder / 'definitions').glob('*.json') if f'definitions/{path.name}' not in held]
+    dirty = [line[3:].strip().strip('"') for line in vcs._git(project, 'status', '--porcelain', '--untracked-files=all', raw=True).splitlines() if line.strip()] if (Path(project) / '.git').exists() else []
+    return {'site': out, 'files': [path for path in dirty if not path.startswith('release/')]}
+
+
 def write_bundle(project):
     """Write development's definitions, common codes and menus under release/ (files that are no longer true are removed)."""
     folder = Path(project) / 'release'
@@ -136,7 +190,8 @@ def record(project, message=None, author=None):
     Another git command may be at work in the project at the same moment (the platform's own pages read its state): then it waits and tries again."""
     for attempt in range(6):
         try:
-            return _record(project, message, author)
+            with exclusive('기록'):
+                return _record(project, message, author)
         except RuntimeError as error:
             if 'index.lock' not in str(error) or attempt == 5:
                 raise
@@ -173,7 +228,55 @@ def _record(project, message=None, author=None):
 # files, and then the development site is brought to what the files say, so that git decides what the screens are.
 
 CARRIED = ('rules', 'effects', 'limits')      # parts that may name a screen made later: put in with a second pass
-REMOTE = re.compile(r'(https://[\w.-]+(:\d+)?/[\w./~-]+|git@[\w.-]+:[\w./~-]+|ssh://[\w.@:/~-]+)')
+REMOTE = re.compile(r'(https://[\w.-]+(:\d+)?/[\w./~-]+|git@[\w.-]+:[\w./~-]+|ssh://[\w.@:/~-]+|file:///[\w./~ -]+|/[\w./~ -]+\.git)')      # also a folder on this machine or a mounted disk
+
+
+def _apply_menus(menus):
+    """The development site's menu tree becomes what the files say: a program's menu keeps its row (so the permissions given on it stay),
+    folders are matched by their place, and what the files no longer have is removed."""
+    if not menus['modules']:
+        return
+    statements = [f"""INSERT INTO sys_modules SELECT * FROM json_populate_recordset(NULL::sys_modules, {_literal(menus['modules'])}::json)
+        ON CONFLICT (module_code) DO UPDATE SET module_name = EXCLUDED.module_name, icon = EXCLUDED.icon, sort_order = EXCLUDED.sort_order, enabled = EXCLUDED.enabled;"""]
+    _psql(site().db, '\n'.join(statements))
+    programs = {row for row in _psql(site().db, "SELECT to_json(program_code) FROM sys_programs", rows=True)}
+    current = _psql(site().db, "SELECT row_to_json(m) FROM sys_menus m", rows=True)
+    by_id = {row['menu_id']: row for row in current}
+
+    def place(row):
+        names, at = [], row
+        while at.get('parent_id') in by_id:
+            at = by_id[at['parent_id']]
+            names.insert(0, at['menu_name'])
+        return tuple(names)
+    folder_ids = {(row['module_code'], place(row), row['menu_name']): row['menu_id'] for row in current if row['menu_type'] == 'FOLDER'}
+    program_ids = {row['program_code']: row['menu_id'] for row in current if row['menu_type'] == 'PROGRAM'}
+    kept = set()
+    text = lambda value: 'NULL' if value is None else "'" + str(value).replace("'", "''") + "'"
+    for item in menus['menus']:              # folders come before what they hold (sorted by depth)
+        folders = tuple(item['folders'])
+        parent = folder_ids.get((item['module'], folders[:-1], folders[-1])) if folders else None
+        if folders and parent is None:
+            continue                          # its folder could not be made (should not happen)
+        fields = f"module_code = {text(item['module'])}, parent_id = {parent or 'NULL'}, menu_name = {text(item['name'])}, sort_order = {int(item['sort'])}, enabled = {'TRUE' if item['enabled'] else 'FALSE'}, icon = {text(item.get('icon'))}"
+        if item['type'] == 'FOLDER':
+            key = (item['module'], folders, item['name'])
+            if key in folder_ids:
+                _psql(site().db, f"UPDATE sys_menus SET {fields} WHERE menu_id = {folder_ids[key]};")
+            else:
+                folder_ids[key] = int(_psql(site().db, f"""INSERT INTO sys_menus (module_code, parent_id, menu_name, sort_order, enabled, icon, menu_type)
+                    VALUES ({text(item['module'])}, {parent or 'NULL'}, {text(item['name'])}, {int(item['sort'])}, {'TRUE' if item['enabled'] else 'FALSE'}, {text(item.get('icon'))}, 'FOLDER') RETURNING menu_id;""").strip())
+            kept.add(folder_ids[key])
+        elif item['program'] in programs:     # a screen that is not there has no menu
+            if item['program'] in program_ids:
+                _psql(site().db, f"UPDATE sys_menus SET {fields} WHERE menu_id = {program_ids[item['program']]};")
+            else:
+                program_ids[item['program']] = int(_psql(site().db, f"""INSERT INTO sys_menus (module_code, parent_id, program_code, menu_name, sort_order, enabled, icon, menu_type)
+                    VALUES ({text(item['module'])}, {parent or 'NULL'}, {text(item['program'])}, {text(item['name'])}, {int(item['sort'])}, {'TRUE' if item['enabled'] else 'FALSE'}, {text(item.get('icon'))}, 'PROGRAM') RETURNING menu_id;""").strip())
+            kept.add(program_ids[item['program']])
+    gone = [row['menu_id'] for row in current if row['menu_id'] not in kept]
+    if gone:
+        _psql(site().db, f"DELETE FROM sys_menus WHERE menu_id IN ({', '.join(str(item) for item in gone)});")
 
 
 def apply_files(project):
@@ -192,14 +295,18 @@ def apply_files(project):
     lines = []
     if (folder / 'codes.json').is_file():
         codes = json.loads((folder / 'codes.json').read_text(encoding='utf-8'))
-        if codes.get('groups') or codes.get('codes'):
+        if codes != _codes(site().db) and (codes.get('groups') or codes.get('codes')):
+            # The common codes become exactly what the files say (records keep the code values they hold; a code that is gone just reads as its value).
             _psql(site().db, f"""
                 INSERT INTO sys_code_groups SELECT * FROM json_populate_recordset(NULL::sys_code_groups, {_literal(codes.get('groups', []))}::json)
                 ON CONFLICT (group_code) DO UPDATE SET group_name = EXCLUDED.group_name, description = EXCLUDED.description, enabled = EXCLUDED.enabled;
                 INSERT INTO sys_codes SELECT * FROM json_populate_recordset(NULL::sys_codes, {_literal(codes.get('codes', []))}::json)
-                ON CONFLICT (group_code, code) DO UPDATE SET code_name = EXCLUDED.code_name, sort_order = EXCLUDED.sort_order, enabled = EXCLUDED.enabled;""")
+                ON CONFLICT (group_code, code) DO UPDATE SET code_name = EXCLUDED.code_name, sort_order = EXCLUDED.sort_order, enabled = EXCLUDED.enabled;
+                DELETE FROM sys_codes c WHERE NOT EXISTS (SELECT 1 FROM json_populate_recordset(NULL::sys_codes, {_literal(codes.get('codes', []))}::json) f WHERE f.group_code = c.group_code AND f.code = c.code);
+                DELETE FROM sys_code_groups g WHERE NOT EXISTS (SELECT 1 FROM json_populate_recordset(NULL::sys_code_groups, {_literal(codes.get('groups', []))}::json) f WHERE f.group_code = g.group_code);""")
+            lines.append('공통 코드: 이 기록의 모습으로 바꿨습니다.')
     if not todo and not gone:
-        return lines
+        return lines + _apply_rest(folder)
     framework = Framework()
 
     def put(key, definition):
@@ -232,6 +339,23 @@ def apply_files(project):
         code, answer = framework.delete_definition(key)
         title = held[key]['definition']['title']
         lines.append(f'{title}: 화면을 없앴습니다.' if code == 200 else f"{title}: 없애지 못했습니다 - {(answer or {}).get('detail') or answer} (화면은 남겨 두었습니다)")
+    return lines + _apply_rest(folder)
+
+
+def _apply_rest(folder):
+    """After the screens: the menu arrangement and the system's settings, where the files say something else than the site holds."""
+    lines = []
+    if (folder / 'menus.json').is_file():
+        menus = json.loads((folder / 'menus.json').read_text(encoding='utf-8'))
+        if menus != _menus(site().db):
+            _apply_menus(menus)
+            lines.append('메뉴 편성: 이 기록의 모습으로 바꿨습니다.' if menus == _menus(site().db) else '메뉴 편성: 일부를 반영하지 못했습니다 (없는 화면의 메뉴는 넣지 않습니다).')
+    if (folder / 'settings.json').is_file():
+        settings = json.loads((folder / 'settings.json').read_text(encoding='utf-8'))
+        held = _psql(site().db, "SELECT row_to_json(s) FROM sys_settings s WHERE setting_key NOT LIKE 'release\\_%' ORDER BY setting_key", rows=True)
+        if settings != held and settings:
+            _psql(site().db, f"INSERT INTO sys_settings SELECT * FROM json_populate_recordset(NULL::sys_settings, {_literal(settings)}::json) ON CONFLICT (setting_key) DO UPDATE SET setting_value = EXCLUDED.setting_value;")
+            lines.append('시스템 설정: 이 기록의 모습으로 바꿨습니다.')
     return lines
 
 
@@ -241,22 +365,46 @@ def _settled(project):
     return [f"옮기기 전에 아직 기록하지 않은 변경을 먼저 기록했습니다 ({made['commit'][:7]})."] if made.get('commit') else []
 
 
+def _follow(project, lines):
+    """After git changed the files: bring the development site along. When part of it could not follow, the answer says so and
+    how to put it right - "깃 상태로 맞춰줘" tries again, "커밋해줘" keeps what the site holds instead."""
+    try:
+        moved = apply_files(project)
+    except Exception as error:
+        moved = [f'개발 사이트에 반영하지 못했습니다 - {str(error)[:300]}']
+    failed = [line for line in moved if '못했습니다' in line]
+    if failed:
+        moved.append('⚠ 깃과 개발 사이트가 어긋나 있습니다. 원인을 고친 뒤 "깃 상태로 맞춰줘" 라고 하면 다시 맞추고, 지금 화면을 그대로 두려면 "커밋해줘" 라고 하세요.')
+    return {'success': not failed, 'lines': lines + moved}
+
+
 def git_undo(project, sha=None):
     """Take one recorded change back (the newest when none is named): a new commit that undoes it, and the development site follows."""
-    lines = _settled(project)
-    target = sha or vcs.head(project)
-    subject = vcs._git(project, 'log', '-1', '--format=%s', target)
-    done = vcs.revert(project, target)
-    lines.append(f'"{subject}" 을(를) 취소했습니다 ({done[:7]}).')
-    return {'success': True, 'sha': done, 'lines': lines + apply_files(project)}
+    with exclusive('기록 취소'):
+        lines = _settled(project)
+        target = sha or vcs.head(project)
+        subject = vcs._git(project, 'log', '-1', '--format=%s', target)
+        done = vcs.revert(project, target)
+        lines.append(f'"{subject}" 을(를) 취소했습니다 ({done[:7]}).')
+        return {**_follow(project, lines), 'sha': done}
 
 
 def git_switch(project, name, create=False):
     """Move to another work space (branch), making it first when asked. The development site becomes what that work space holds."""
-    lines = _settled(project)
-    state = vcs.switch(project, name, create)
-    lines.append(f"작업 공간 {state['branch']} " + ('을(를) 만들고 그리로 옮겼습니다 (지금 상태에서 갈라집니다).' if create else '(으)로 옮겼습니다.'))
-    return {'success': True, 'status': state, 'lines': lines + ([] if create else apply_files(project))}
+    with exclusive('작업 공간 옮기기'):
+        lines = _settled(project)
+        state = vcs.switch(project, name, create)
+        lines.append(f"작업 공간 {state['branch']} " + ('을(를) 만들고 그리로 옮겼습니다 (지금 상태에서 갈라집니다).' if create else '(으)로 옮겼습니다.'))
+        return {**(_follow(project, lines) if not create else {'success': True, 'lines': lines}), 'status': state}
+
+
+def git_sync(project):
+    """Bring the development site to what git holds now (after a step that could not finish, or after files were changed by hand)."""
+    with exclusive('깃 상태로 맞추기'):
+        out = _follow(project, [])
+        if out['success'] and not out['lines']:
+            out['lines'] = ['개발 사이트는 이미 깃과 같습니다.']
+        return out
 
 
 def git_remote(project, url):
@@ -271,8 +419,8 @@ def git_remote(project, url):
 
 
 def git_push(project):
-    lines = _settled(project)
     state = vcs.status(project)
+    lines = _settled(project) if state['remote'] else []
     if not state['remote']:
         raise ValueError('원격 저장소가 연결되어 있지 않습니다. "원격 저장소 연결해줘 <주소>" 라고 하거나 변경 이력 화면에서 주소를 넣으세요.')
     vcs.push(project)
@@ -605,47 +753,48 @@ def pack(project, state, log=None):
     out = {'kind': 'pack', 'stamp': stamp, 'started_at': time.strftime('%Y-%m-%dT%H:%M:%S')}
     step = 'record'
     try:
-        note('기록')
-        out['recorded'] = record(project)
-        out['commit'] = vcs.head(project)
-        step = 'program'
-        note('서버 프로그램 확인')
-        shipped = live.deploy(project, state, 'pack', note)       # development runs the same sources first, so what is packed is what was tried
-        if not shipped.get('success'):
-            raise ReleaseError(f"개발 서버 반영 실패({shipped.get('step')}): {shipped.get('error', '')[:300]}")
-        jar = Path(_mounted(site().api_container, '/app/app.jar'))
-        step = 'screens'
-        built = _build_web(project, note)
-        step = 'assemble'
-        note('팩 조립')
-        definitions = _definitions(site().db)
-        name = f'{site().slug}-setup-{stamp}'
-        folder = site().packs / name
-        (folder / 'app').mkdir(parents=True)
-        shutil.copy2(jar, folder / 'app/app.jar')
-        shutil.copytree(built, folder / 'web')
-        shutil.copytree(Path(project) / 'release', folder / 'release')
-        version = {'made_at': out['started_at'], 'stamp': stamp, 'commit': out['commit'] or '', 'screens': len(definitions), 'server': jar.name,
-                   'database_version': (live.flyway_versions() or [''])[-1]}
-        (folder / 'VERSION.json').write_text(_dump(version), encoding='utf-8')
-        for file, text in (('docker-compose.yml', COMPOSE), ('.env.example', ENV_EXAMPLE), ('README.md', _readme(version)),
-                           ('install.sh', INSTALL), ('update.sh', UPDATE), ('backup.sh', BACKUP), ('restore.sh', RESTORE), ('wait.sh', WAIT)):
-            (folder / file).write_text(text, encoding='utf-8')
-            if file.endswith('.sh'):
-                (folder / file).chmod(0o755)
-        step = 'trial'
-        out['trial'] = _try_pack(folder, len(definitions), note)
-        step = 'windows'
-        note('윈도우용 팩 만들기 (최초 셋업, 업데이트)')
-        made = windows_pack.write_zips(folder, version, VENDOR, site().packs, name, PWSH, service=site().service, title=site().title)
-        files = {kind: {'name': made[kind].name, 'file': str(made[kind]), 'size': made[kind].stat().st_size} for kind in ('install', 'update')}
-        out.update(success=True, folder=str(folder), name=name, files=files, program=_program(project), postgres=made['postgres'], scripts_parsed=made['script_check'] is not None,
-                   screens=len(definitions), shipped=_marks(definitions), tag=f'pack-{stamp}')
-        vcs.tag(project, out['tag'], '운영 셋업 팩 ' + out['started_at'])
-        for old in sorted((path for path in site().packs.glob('*setup-*') if path.is_dir()), key=lambda path: path.name[-15:])[:-5]:       # the five newest packs are kept
-            shutil.rmtree(old, ignore_errors=True)
-            for file in site().packs.glob(old.name + '*.zip'):
-                file.unlink()
+        with exclusive('셋업 팩 만들기'):
+            note('기록')
+            out['recorded'] = record(project)
+            out['commit'] = vcs.head(project)
+            step = 'program'
+            note('서버 프로그램 확인')
+            shipped = live.deploy(project, state, 'pack', note)       # development runs the same sources first, so what is packed is what was tried
+            if not shipped.get('success'):
+                raise ReleaseError(f"개발 서버 반영 실패({shipped.get('step')}): {shipped.get('error', '')[:300]}")
+            jar = Path(_mounted(site().api_container, '/app/app.jar'))
+            step = 'screens'
+            built = _build_web(project, note)
+            step = 'assemble'
+            note('팩 조립')
+            definitions = _definitions(site().db)
+            name = f'{site().slug}-setup-{stamp}'
+            folder = site().packs / name
+            (folder / 'app').mkdir(parents=True)
+            shutil.copy2(jar, folder / 'app/app.jar')
+            shutil.copytree(built, folder / 'web')
+            shutil.copytree(Path(project) / 'release', folder / 'release')
+            version = {'made_at': out['started_at'], 'stamp': stamp, 'commit': out['commit'] or '', 'screens': len(definitions), 'server': jar.name,
+                       'database_version': (live.flyway_versions() or [''])[-1]}
+            (folder / 'VERSION.json').write_text(_dump(version), encoding='utf-8')
+            for file, text in (('docker-compose.yml', COMPOSE), ('.env.example', ENV_EXAMPLE), ('README.md', _readme(version)),
+                               ('install.sh', INSTALL), ('update.sh', UPDATE), ('backup.sh', BACKUP), ('restore.sh', RESTORE), ('wait.sh', WAIT)):
+                (folder / file).write_text(text, encoding='utf-8')
+                if file.endswith('.sh'):
+                    (folder / file).chmod(0o755)
+            step = 'trial'
+            out['trial'] = _try_pack(folder, len(definitions), note)
+            step = 'windows'
+            note('윈도우용 팩 만들기 (최초 셋업, 업데이트)')
+            made = windows_pack.write_zips(folder, version, VENDOR, site().packs, name, PWSH, service=site().service, title=site().title)
+            files = {kind: {'name': made[kind].name, 'file': str(made[kind]), 'size': made[kind].stat().st_size} for kind in ('install', 'update')}
+            out.update(success=True, folder=str(folder), name=name, files=files, program=_program(project), postgres=made['postgres'], scripts_parsed=made['script_check'] is not None,
+                       screens=len(definitions), shipped=_marks(definitions), tag=f'pack-{stamp}')
+            vcs.tag(project, out['tag'], '운영 셋업 팩 ' + out['started_at'])
+            for old in sorted((path for path in site().packs.glob('*setup-*') if path.is_dir()), key=lambda path: path.name[-15:])[:-5]:       # the five newest packs are kept
+                shutil.rmtree(old, ignore_errors=True)
+                for file in site().packs.glob(old.name + '*.zip'):
+                    file.unlink()
     except Exception as error:
         out.update(success=False, step=step, error=str(error)[-1200:])
     out['finished_at'] = time.strftime('%Y-%m-%dT%H:%M:%S')
@@ -731,14 +880,27 @@ def _program(project):
     return {'server': live.source_hash(Path(project) / 'backend')[:12], 'web': _web_hash(Path(project) / 'frontend')[:16]}
 
 
+def screens():
+    """The screens the development site holds, briefly: key, title, kind and the labels of their fields."""
+    out = []
+    for key, row in _definitions(site().db).items():
+        definition = row['definition']
+        out.append({'key': key, 'title': definition.get('title'), 'type': definition.get('type'), 'program': row['programCode'],
+                    'fields': [field['label'] for field in definition.get('fields') or []],
+                    'lines': [field['label'] for field in (definition.get('lines') or {}).get('fields') or []]})
+    return out
+
+
 def status(project, state):
     """For the platform's home: the packs made so far (newest first) and whether the newest still holds everything made."""
     made = [item for item in history(state, 200) if item.get('success') and item.get('kind') == 'pack' and item.get('files')
             and all(Path(file['file']).is_file() for file in item['files'].values())][:6]
     packs = [{'stamp': item['stamp'], 'started_at': item['started_at'], 'screens': item.get('screens'),
               'files': {kind: {'name': file['name'], 'size': file['size']} for kind, file in item['files'].items()}} for item in made]
-    out = {'project': site().title, 'packs': packs, 'pending': None, 'current': False}
+    out = {'project': site().title, 'slug': site().slug, 'packs': packs, 'pending': None, 'current': False}
     try:
+        out['unrecorded'] = unrecorded(project)
+        out['git'] = vcs.status(project) if (Path(project) / '.git').exists() else None
         here = _definitions(site().db)
         marks, shipped = _marks(here), ((made[0] if made else {}).get('shipped') or {})
         program = bool(made) and made[0].get('program') is not None and made[0]['program'] != _program(project)
@@ -769,8 +931,64 @@ COMMANDS = (('platform-pack', re.compile(r'플랫폼.*(팩|패키지|꾸러미)'
             ('record', re.compile(r'커밋|깃 ?(에|으로|허브)|저장소에|버전.*(남겨|기록|저장)|변경.*(기록|저장)해')))
 
 
+# An order may also come already decided, from a tool instead of a sentence (platform/ctl.py): the same kinds, the same work.
+ORDER_KINDS = {'record': '변경 기록 (깃)', 'git-undo': '기록한 변경 취소 (깃)', 'git-branch': '작업 공간 옮기기 (깃)', 'git-push': '원격에 올리기 (깃)', 'git-remote': '원격 저장소 연결 (깃)',
+               'git-log': '변경 이력 (깃)', 'git-sync': '깃 상태로 맞추기', 'pack': '운영 셋업 팩 만들기', 'deploy': '셋업 팩을 만들어 이 맥의 운영에 설치', 'rollback': '이전 팩으로 되돌리기',
+               'platform-pack': '플랫폼 셋업 팩 만들기', 'model-pack': '모델 팩 만들기',
+               'replay': '적어 둔 화면 정의 적용'}       # a definition already written (a recorded answer of the model, or a tool's own): checked and applied like any request, without asking the model
+
+
+def given_order(order):
+    """Check an order that came decided: {'kind': ..., and what that kind needs}. Returns (kind, named)."""
+    if not isinstance(order, dict) or order.get('kind') not in ORDER_KINDS:
+        raise ValueError('알 수 없는 명령입니다: ' + str((order or {}).get('kind') if isinstance(order, dict) else order)[:40])
+    kind, named = order['kind'], {}
+    if kind == 'git-branch':
+        if not isinstance(order.get('name'), str) or not vcs.BRANCH_NAME.fullmatch(order['name']):
+            raise ValueError('작업 공간 이름이 올바르지 않습니다.')
+        named = {'name': order['name'], 'create': bool(order.get('create'))}
+    elif kind == 'git-remote':
+        named = {'url': str(order.get('url') or '')}
+    elif kind == 'git-undo' and order.get('sha'):
+        named = {'sha': str(order['sha'])}
+    elif kind == 'replay':
+        if not isinstance(order.get('file'), str) or not Path(order['file']).is_file():
+            raise ValueError('적용할 화면 정의 파일을 찾지 못했습니다.')
+        named = {'file': order['file']}
+    elif kind == 'record' and order.get('message'):
+        named = {'message': str(order['message'])[:2000]}
+    return kind, named
+
+
+def carry_out(kind, named, project, state, note=None):
+    """Do one order. The single place every way of asking ends in: a button, a sentence in the request box, a tool."""
+    if kind == 'record':
+        return record(project, named.get('message'))
+    if kind == 'git-undo':
+        return git_undo(project, vcs._sha(project, named['sha']) if named.get('sha') else None)
+    if kind == 'git-branch':
+        return git_switch(project, named['name'], named['create'])
+    if kind == 'git-push':
+        return git_push(project)
+    if kind == 'git-remote':
+        return git_remote(project, named['url'])
+    if kind == 'git-log':
+        return git_log(project)
+    if kind == 'git-sync':
+        return git_sync(project)
+    if kind == 'pack':
+        return pack(project, state, note)
+    if kind == 'deploy':
+        return deploy(project, state, note)
+    if kind == 'rollback':
+        return rollback(project, state, note)
+    import platform_pack
+    return platform_pack.build(project, note) if kind == 'platform-pack' else platform_pack.model_pack(note)
+
+
 BRANCH = r'(?:브랜치|작업 ?공간)'
-GIT_ORDERS = (('git-remote', re.compile(r'(원격|저장소|깃허브|깃 ?랩|리모트).*(연결|등록|설정|바꿔)')),
+GIT_ORDERS = (('git-sync', re.compile(r'깃 ?(상태|기록|대로|기준).*(맞춰|맞추|되돌|동기)')),
+              ('git-remote', re.compile(r'(원격|저장소|깃허브|깃 ?랩|리모트).*(연결|등록|설정|바꿔)')),
               ('git-log', re.compile(r'(변경 ?이력|커밋 ?(이력|목록|기록)|깃 ?(이력|로그)|히스토리).*(보여|알려|뭐|확인)')),
               ('git-branch', re.compile(BRANCH + r'.*(만들|생성|전환|바꿔|옮겨|이동|가줘)')),
               ('git-push', re.compile(r'(원격|깃허브|깃 ?랩|리모트).*(올려|푸시|보내)|푸시해')),

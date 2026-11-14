@@ -148,7 +148,10 @@ class QueueManager:
             busy = hub.busy() if hub else any(p.poll() is None for p in self.app.processes.values())
             if busy or self.app.external():
                 raise RuntimeError('실행 중인 작업이 있습니다. 완료 또는 중지 후 시작하세요.')
-            queue = {'id': uuid.uuid4().hex, 'goal': goal, 'model': model, 'status': 'planning', 'created_at': now(),
+            if body.get('order') is not None:
+                import release
+                release.given_order(body['order'])        # refused here, before anything is queued
+            queue = {'id': uuid.uuid4().hex, 'goal': goal, 'model': model, 'status': 'planning', 'created_at': now(), **({'order': body['order']} if body.get('order') is not None else {}),
                      'finished_at': None, 'items': [], 'plan_raw': '', 'detail': '',
                      'options': {k: body[k] for k in ('rounds', 'thinking', 'edit_format', 'origin') if k in body}}
             self._write(queue)
@@ -299,12 +302,12 @@ class QueueManager:
             return False
         import release
         goal = self.get(queue_id)['goal']
-        ordered = release.git_order(goal)
+        given = self.get(queue_id).get('order')
+        ordered = release.given_order(given) if given else release.git_order(goal)
         kind, named = ordered if ordered else (release.command(goal), {})
-        if not kind:
+        if not kind or kind == 'replay':        # a written definition goes the definition way (checks, apply, commit)
             return False
-        title = {'git-undo': '기록한 변경 취소 (깃)', 'git-branch': '작업 공간 옮기기 (깃)', 'git-push': '원격에 올리기 (깃)', 'git-remote': '원격 저장소 연결 (깃)', 'git-log': '변경 이력 (깃)',
-                 'record': '변경 기록 (깃)', 'platform-pack': '플랫폼 셋업 팩 만들기', 'model-pack': '모델 팩 만들기', 'pack': '운영 셋업 팩 만들기', 'deploy': '셋업 팩을 만들어 이 맥의 운영에 설치', 'rollback': '이전 팩으로 되돌리기'}[kind]
+        title = release.ORDER_KINDS[kind]
         item = {'domain': 'release', 'title': title, 'checks': [], 'status': 'running', 'job_id': None, 'attempts': 1}
         self._update(queue_id, items=[item], status='running', route='release')
 
@@ -312,13 +315,7 @@ class QueueManager:
             self._update(queue_id, items=[dict(item, note=str(step)[:60])])
         try:
             project, state = self.app.project, self.app.state
-            import platform_pack
-            result = (release.git_undo(project) if kind == 'git-undo' else release.git_switch(project, named['name'], named['create']) if kind == 'git-branch'
-                      else release.git_push(project) if kind == 'git-push' else release.git_remote(project, named['url']) if kind == 'git-remote'
-                      else release.git_log(project) if kind == 'git-log'
-                      else platform_pack.build(project, note) if kind == 'platform-pack' else platform_pack.model_pack(note) if kind == 'model-pack'
-                      else release.record(project) if kind == 'record' else release.pack(project, state, note) if kind == 'pack'
-                      else release.rollback(project, state, note) if kind == 'rollback' else release.deploy(project, state, note))
+            result = release.carry_out(kind, named, project, state, note)
             ok = bool(result.get('success', True))
             said = release.say(kind, result)
         except Exception as error:
@@ -362,7 +359,8 @@ class QueueManager:
             self._preview_ready()
             self._update(queue_id, items=[{'domain': 'definition', 'title': '화면 정의 작성과 검사', 'checks': ['definition'], 'status': 'running', 'job_id': None, 'attempts': 1}],
                          status='running', route='definition')
-            result = definition_run.run(goal)
+            given = self.get(queue_id).get('order') or {}
+            result = definition_run.run(goal, definition_file=given['file']) if given.get('kind') == 'replay' else definition_run.run(goal)
         except Exception as error:
             self._update(queue_id, items=[], status='planning', route_error=str(error)[:300])
             return False

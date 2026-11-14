@@ -94,6 +94,10 @@ def create(hub, body, log=None):
         installed = subprocess.run(['npm', 'ci', '--prefer-offline', '--no-audit', '--no-fund'], cwd=root / 'frontend', capture_output=True, text=True, timeout=900)
         if installed.returncode != 0:
             raise ValueError('화면 도구를 설치하지 못했습니다: ' + installed.stderr[-300:])
+        # The starting state is the project's first record: its codes, menus and settings are in git from the beginning.
+        import release
+        with sites.use(sites.of(record, state)):
+            release.record(root, '프로젝트 시작 상태')
     except Exception:
         # Nothing half made stays: the folder, the server and the databases of a project that was never registered are taken away again.
         subprocess.run(['docker', 'rm', '-f', f'mdi-{slug}-api'], capture_output=True)
@@ -106,3 +110,44 @@ def create(hub, body, log=None):
         hub.persist()
     hub.previews.ensure(record)
     return record
+
+
+def remove(hub, project_id, confirm):
+    """Take a project away for good: its folder, development database, server and run records. Its setup packs already made
+    are kept (they may be installed somewhere). The first project cannot be removed, and the project's English name must be
+    given again as confirmation - this cannot be undone."""
+    with hub.lock:
+        record = next((item for item in hub.records if item['id'] == project_id), None)
+        if record is None:
+            raise ValueError('등록된 프로젝트가 아닙니다.')
+        own = record.get('site')
+        if not own or record is hub.records[0]:
+            raise ValueError('이 프로젝트는 플랫폼에서 지울 수 없습니다 (처음부터 있던 프로젝트이거나, 플랫폼이 만든 프로젝트가 아닙니다).')
+        if confirm != own['slug']:
+            raise ValueError(f"지우려면 프로젝트의 영문 이름({own['slug']})을 그대로 적어 확인해 주세요.")
+        app = hub.apps.get(project_id)
+        if app is not None and (any(process.poll() is None for process in app.processes.values()) or (getattr(app, 'queues', None) and app.queues.active())):
+            raise RuntimeError('이 프로젝트에서 진행 중인 작업이 있습니다. 끝난 뒤 지우세요.')
+        hub.records.remove(record)
+        hub.persist()
+        hub.apps.pop(project_id, None)
+        item = hub.previews.items.pop(project_id, None)
+    process = (item or {}).get('process')
+    if process is not None and process.poll() is None:
+        import os, signal
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    slug, root = own['slug'], Path(record['root'])
+    subprocess.run(['docker', 'rm', '-f', own['api_container']], capture_output=True)
+    for name in (own['db'], own['db'] + '_test'):
+        subprocess.run(['docker', 'exec', sites.DB_CONTAINER, 'psql', '-U', sites.DB_USER, '-d', 'postgres', '-c', f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'], capture_output=True)
+    copy = sites.SHARE / 'prod' / slug / 'copy'
+    if (copy / 'docker-compose.yml').is_file():        # this machine's own operating copy of it, if one was installed
+        subprocess.run(['docker', 'compose', 'down', '-v', '--remove-orphans'], cwd=copy, capture_output=True)
+    if root.is_dir() and root.resolve().is_relative_to(HOME.resolve()):
+        shutil.rmtree(root, ignore_errors=True)
+    for folder in (hub.state / 'projects' / project_id, sites.SHARE / 'artifacts' / slug, sites.SHARE / 'backups' / slug, sites.SHARE / 'prod' / slug):
+        shutil.rmtree(folder, ignore_errors=True)
+    return {'removed': slug, 'packs_kept': str(sites.SHARE / 'packs' / slug) if (sites.SHARE / 'packs' / slug).is_dir() else None}

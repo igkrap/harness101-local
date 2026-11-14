@@ -169,3 +169,5 @@ select, input:not([type=checkbox]):not([type=radio]) { font-size: 13px; }
 .home-ops-older li.dim { color: var(--color-text-secondary); font-size: 12px; }
 .home-ops-files a, .home-ops-older a { color: var(--color-accent); text-decoration: none; }
 .home-ops-files a:hover, .home-ops-older a:hover { text-decoration: underline; }
+
+.home-btn.is-waiting { border-color: var(--color-accent); color: var(--color-accent); font-weight: 600; }

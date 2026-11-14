@@ -20,10 +20,13 @@ target/
 """
 MODEL_AUTHOR = ('Local model', 'local-model@localhost')
 PLATFORM_AUTHOR = ('Platform', 'platform@localhost')
+PERSON_AUTHOR = ('사용자', 'user@localhost')
 
 
 def _git(project, *args, author=None, check=True, raw=False):
     cmd = ['git']
+    if not author and args and args[0] in ('commit', 'revert', 'tag') and not subprocess.run(['git', 'config', 'user.name'], cwd=project, capture_output=True, text=True).stdout.strip():
+        author = PERSON_AUTHOR       # a machine where git was never told who its user is: the commit must still be made
     if author:
         cmd += ['-c', f'user.name={author[0]}', '-c', f'user.email={author[1]}']
     result = subprocess.run(cmd + list(args), cwd=project, capture_output=True, text=True, timeout=120)
