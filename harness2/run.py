@@ -108,6 +108,13 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
             result['effects'] = [('등록하면 ' if effect['on'] == 'create' else names.get(effect['on'], effect['on']) + ' 하면 ')
                                  + (f"{effect['create']['entity']} 을(를) 자동으로 만든다" if effect.get('create') else f"{effect['act']['via']} 이(가) 가리키는 자료에 {effect['act']['action']} 을(를) 한다")
                                  for effect in definition['effects']]
+        if definition.get('over'):
+            part = definition['over']
+            result['over'] = f"{part['entity']} 자료를 여는 업무 화면 - " + ('상태 ' + ', '.join(part['statuses']) + ' 인 건만' if part.get('statuses') else '모든 건') \
+                + (' / 동작: ' + ', '.join(part['actions']) if part.get('actions') else ' / 동작 없음') + (' / 내용 수정 가능' if part.get('edit') else ' / 내용은 못 고침')
+        separate = [action['label'] for action in (definition.get('status') or {}).get('actions', []) if action.get('separate')]
+        if separate:
+            result['separate'] = separate
         if definition.get('dashboard'):
             words = {'bar': '막대', 'line': '선', 'pie': '원', 'figures': '핵심 숫자'}
             result['panels'] = [f"{panel['title']} - {words[panel['chart']]}" + ('' if panel['chart'] == 'figures' else f"({panel['value']})") + f", 너비 {panel['width']}/3" for panel in definition['dashboard']['panels']]
@@ -132,7 +139,7 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
 
         current = next((item for item in framework.definitions() if item['key'] == key), None)
         if current and action == 'change':
-            notes, blocking = ([], []) if definition.get('summary') or current['definition'].get('summary') or definition.get('dashboard') or current['definition'].get('dashboard') else impact(framework, key, current['definition'], definition)
+            notes, blocking = ([], []) if definition.get('summary') or current['definition'].get('summary') or definition.get('dashboard') or current['definition'].get('dashboard') or definition.get('over') or current['definition'].get('over') else impact(framework, key, current['definition'], definition)
             result.update(impact=notes, needs_decision=blocking)
             result['changes'], result['removed'] = define.differences(current['definition'], definition)
             if not result['changes']:
@@ -149,7 +156,7 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
         # Effects are left out of the trial as well: they would make and change records of real entities while the trial is checked.
         trial = {name: value for name, value in definition.items() if name not in ('rules', 'effects')}
         framework.save_definition(trial_key, dict(trial, title=trial_title), 'DRAFT')
-        data = (checks.dashboard_checks if definition.get('dashboard') else checks.summary_checks if definition.get('summary') else checks.record_checks)(trial_key, definition, framework)
+        data = (checks.over_checks if definition.get('over') else checks.dashboard_checks if definition.get('dashboard') else checks.summary_checks if definition.get('summary') else checks.record_checks)(trial_key, definition, framework)
         screen = checks.screen_checks(trial_title, definition, folder / '2-check', APP)
         results = data.results + screen.results
         (folder / '2-check').mkdir(exist_ok=True)
@@ -254,7 +261,9 @@ def say(result):
     status = result.get('status')
     if result.get('title'):
         lines.append(f"{'새 화면' if result.get('action') == 'create' else '화면 수정'}: {result['title']}  ({result['key']})")
-        if result.get('panels'):
+        if result.get('over'):
+            lines.append('업무 화면: ' + result['over'])
+        elif result.get('panels'):
             lines.append(f"현황판: 차트 패널 {len(result['panels'])}개")
             lines += ['  · ' + panel for panel in result['panels']]
         elif result.get('summary'):
@@ -274,6 +283,8 @@ def say(result):
             lines.append('상태: ' + ' → '.join(result['statuses']) + ' / 동작: ' + ', '.join(result.get('actions', [])))
         if result.get('print'):
             lines.append('출력 양식: ' + result['print'])
+        if result.get('separate'):
+            lines.append('업무 화면에서만 하는 동작: ' + ', '.join(result['separate']))
         for rule in result.get('checks_rules', []):
             lines.append('비교 규칙: ' + rule)
         for rule in result.get('limits', []):

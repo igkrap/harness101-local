@@ -479,6 +479,75 @@ def summary_checks(key, definition, framework):
     return report
 
 
+def over_checks(key, definition, framework):
+    """A work screen: it lists only its statuses, takes only its actions, changes nothing else - tried on records made in the entity it is over."""
+    report, made, part = Report(), [], definition['over']
+    base = next(item['definition'] for item in framework.definitions() if item['key'] == part['entity'])
+    status, api, own = base.get('status') or {}, f'/api/over/{key}', f"/api/data/{part['entity']}"
+    names = {value['code']: value['label'] for value in status.get('values', [])}
+
+    def fresh():
+        body = {field['name']: sample(field, framework, made) for field in base['fields'] if not _computed(field)}
+        if base.get('lines') and base['lines'].get('min', 1) > 0:
+            body['lines'] = [_line(base['lines']['fields'], framework, made, 2)]
+        row = framework.ok('POST', own, fit(body, base, framework, made))
+        made.append((part['entity'], row['id']))
+        return row
+    try:
+        row = fresh()
+        code, rows = framework.call('GET', api)
+        if not report.add('목록이 조회된다', code == 200, f'{code} {rows}'):
+            return report
+        if part.get('statuses'):
+            shown = ', '.join(names.get(item, item) for item in part['statuses'])
+            report.add(f'정한 상태({shown})의 건만 보인다', all(item.get('status') in part['statuses'] for item in rows), f"{sorted({item.get('status') for item in rows})}")
+            inside = row.get('status') in part['statuses']
+            report.add(f"방금 등록한 건({names.get(row.get('status'), row.get('status'))} 상태)이 목록에 {'있다' if inside else '없다'}", any(item['id'] == row['id'] for item in rows) == inside, '')
+        code, answer = framework.call('POST', api, {})
+        report.add('이 화면에서는 새로 등록할 수 없다', code in (403, 404, 405), f'{code} {answer}')
+        code, answer = framework.call('DELETE', f"{api}/{row['id']}")
+        report.add('이 화면에서는 지울 수 없다', code in (403, 404, 405), f'{code} {answer}')
+        visible = not part.get('statuses') or row.get('status') in part['statuses']
+        if visible:
+            again = {name: value for name, value in row.items() if name not in ('id', 'status', 'statusLabel', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt')}
+            code, answer = framework.call('PUT', f"{api}/{row['id']}", again)
+            report.add('내용을 고칠 수 있다' if part.get('edit') else '내용은 고칠 수 없다', code == (200 if part.get('edit') else 403), f'{code} {answer}')
+        for action in status.get('actions', []):
+            listed = action['name'] in part.get('actions', [])
+            if row.get('status') not in action['from'] or not visible:
+                continue
+            target = fresh()
+            if listed:
+                code, after = framework.call('POST', f"{api}/{target['id']}/actions/{action['name']}")
+                report.add(f"동작 {action['label']}: 이 화면에서 되고 {names.get(action['to'], action['to'])} 상태가 된다", code == 200 and after.get('status') == action['to'], f'{code} {after}')
+                if part.get('statuses') and action['to'] not in part['statuses']:
+                    code, _ = framework.call('GET', f"{api}/{target['id']}")
+                    report.add(f"동작 {action['label']} 뒤에는 그 건이 이 화면에서 빠진다", code == 404, f'{code}')
+            else:
+                code, answer = framework.call('POST', f"{api}/{target['id']}/actions/{action['name']}")
+                report.add(f"동작 {action['label']}: 이 화면의 동작이 아니라서 거절된다", code == 404, f'{code} {answer}')
+            if action.get('separate'):
+                other = fresh()
+                code, answer = framework.call('POST', f"{own}/{other['id']}/actions/{action['name']}")
+                report.add(f"동작 {action['label']}: 등록 화면에서는 거절된다 (이 화면에서만 한다)", code == 403, f'{code} {answer}')
+    finally:
+        report.leftover = sweep(framework, made)
+    return report
+
+
+def over_screen_criteria(definition):
+    toolbar = '[role="toolbar"][aria-label="업무 버튼"]'
+    items = [('화면 틀이 있다', {'op': 'visible', 'selector': '[data-ui="business-workspace"]'}),
+             ('목록이 있다', {'op': 'visible', 'selector': '[data-ui="record-grid"]'}),
+             ('내용을 보는 영역이 있다', {'op': 'visible', 'selector': '[data-ui="document-editor"]'}),
+             ('공통 버튼 조회 이(가) 있다', {'op': 'visible', 'selector': f'{toolbar} >> role=button[name="조회"]'}),
+             ('신규 버튼이 없다', {'op': 'absent', 'selector': f'{toolbar} >> role=button[name="신규"]'}),
+             ('삭제 버튼이 없다', {'op': 'absent', 'selector': f'{toolbar} >> role=button[name="삭제"]'})]
+    items.append(('저장 버튼이 있다' if definition['over'].get('edit') else '저장 버튼이 없다',
+                  {'op': 'visible' if definition['over'].get('edit') else 'absent', 'selector': f'{toolbar} >> role=button[name="저장"]'}))
+    return [{'id': f'C{index + 1}', 'requirement_id': 'R1', 'description': description, 'check': check} for index, (description, check) in enumerate(items)]
+
+
 def dashboard_checks(key, definition, framework):
     """A dashboard stores nothing and computes nothing of its own: every panel must point at a summary that answers."""
     report = Report()
@@ -672,7 +741,9 @@ def screen_checks(title, definition, record_to, app):
     """Open the screen in a real browser (read-only) and look for what the definition promises."""
     sys.path.insert(0, str(HARNESS))
     import standard_contract
-    if definition.get('dashboard'):
+    if definition.get('over'):
+        criteria = over_screen_criteria(definition)
+    elif definition.get('dashboard'):
         criteria = dashboard_screen_criteria(definition)
     elif definition.get('summary'):
         criteria = summary_screen_criteria(definition)
@@ -681,7 +752,7 @@ def screen_checks(title, definition, record_to, app):
     else:
         sheet = {'path': '/api/x', 'fields': [{'name': field['name'], 'label': field['label'], 'required': field['required'], 'sample': 'x'} for field in definition['fields']]}
         criteria = standard_contract.screen_criteria(sheet)
-    if not definition.get('summary') and not definition.get('dashboard'):
+    if not definition.get('summary') and not definition.get('dashboard') and not definition.get('over'):
         criteria.append({'id': f'C{len(criteria) + 1}', 'requirement_id': 'R1', 'description': '한 건을 양식으로 뽑는 출력 버튼이 있다',
                          'check': {'op': 'visible', 'selector': '[role="toolbar"][aria-label="업무 버튼"] >> role=button[name="출력"]'}})
     out = Path(record_to) / 'browser'

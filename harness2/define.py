@@ -28,6 +28,7 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
   요청의 말을 바꾸지 않는다("등록하면"을 "확정하면"으로 바꾸지 않는다). 요청에 없는 조건을 덧붙이지 않는다.
   먼저 있어야 하는 것부터 차례로 적는다(가리킬 자료 → 그것을 쓰는 화면, 집계 화면 → 그것을 담는 현황판, 상태·동작 추가 → 그 동작을 쓰는 자동 처리). 각 문장은 화면 하나에 대한 것이고, 앞뒤 문장 없이도 뜻이 통하게 화면 이름과 할 일을 다 적는다.
 - 현황·합계·통계·차트처럼 이미 있는 자료를 모아서 보는 요청은 새 자료를 만들지 말고 집계 화면(summary)으로 한다. 모을 자료는 이미 있어야 한다.
+- 승인 화면·처리 화면·대기 목록·조회 전용 화면처럼 이미 있는 자료를 다른 화면으로 여는 요청은 새 자료를 만들지 말고 over 로 한다. 권한은 화면 단위이므로 "팀장만 승인"은 승인 화면을 따로 만드는 것으로 푼다(누구에게 그 화면을 줄지는 사람이 정한다). 그 동작을 등록 화면에서는 못 하게 하려면 steps 로: 먼저 그 자료의 등록 화면에서 동작에 separate 를 붙이고(없는 상태·동작이면 추가하고), 다음에 업무 화면을 만든다.
 - 현황판·대시보드처럼 차트만 모아 보는 요청은 dashboard 로 한다. 패널은 이미 있는 집계 화면만 가리킬 수 있으므로, 맞는 집계 화면이 있으면 그것을 쓰고, 없으면 steps 로 필요한 집계 화면들을 먼저 만들고 마지막에 현황판을 만든다.
 - 잔량·미출하·미입고·재고처럼 한 자료에서 다른 자료를 뺀 나머지는 compare minus 로, 처리 기간·소요 일수는 values 의 between 으로, 누계는 cumulative 로 한다.
 - 계획 대비·목표 대비·달성률은 compare plan 으로, 전월 대비·전년 대비·증감은 compare previous 로, 비중·점유율은 share 로, 순위·상위 N 은 top 으로 한다. 계획을 담은 자료가 없으면 이 요청으로는 그 등록 화면(예: 수주 계획 등록)부터 만든다.
@@ -81,6 +82,10 @@ def describe(key, definition):
             text += f' / {label}: ' + '; '.join(rule['message'] for rule in definition[part])
     if definition.get('effects'):
         text += ' / 자동 처리: ' + '; '.join(('등록할 때' if effect['on'] == 'create' else f"{effect['on']} 동작을 할 때") + ' → ' + (f"{effect['create']['entity']} 한 건을 만든다" if effect.get('create') else f"{effect['act']['via']} 이(가) 가리키는 자료에 {effect['act']['action']} 동작을 한다") for effect in definition['effects'])
+    if definition.get('over'):
+        part = definition['over']
+        text = f"- key {key} / 화면 이름 {definition['title']} / 업무 화면: {part['entity']} 자료 중 " + (f"상태 {part['statuses']} 인 건" if part.get('statuses') else '모든 건') \
+            + f" / 이 화면의 동작: {part.get('actions') or '없음'}" + (' / 내용 수정 가능' if part.get('edit') else '')
     if definition.get('dashboard'):
         text = f"- key {key} / 화면 이름 {definition['title']} / 현황판: 패널 " + ', '.join(f"{panel['summary']}({panel['chart']})" for panel in definition['dashboard']['panels'])
     if definition.get('summary'):
@@ -231,6 +236,8 @@ def differences(old, new):
                 note(f'패널이 생기거나 바뀜: {panel}')
         if was != now and sorted(was) == sorted(now):
             note('패널 순서가 바뀜')
+    if (old.get('over') or None) != (new.get('over') or None):
+        note(f"업무 화면: {json.dumps(old.get('over'), ensure_ascii=False)} → {json.dumps(new.get('over'), ensure_ascii=False)}")
     if (old.get('print') or None) != (new.get('print') or None):
         tidy = lambda block: {name: value for name, value in (block or {}).items() if value not in (None, [], '')}
         if tidy(old.get('print')) != tidy(new.get('print')):
