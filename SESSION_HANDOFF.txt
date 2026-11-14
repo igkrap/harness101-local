@@ -1165,3 +1165,23 @@ print = standard form adjusted by definition, calendar and tree both)
 - OPEN, waiting for the user: "기존건 없애도됨" - I read it as the old 출하 등록 may go, but did not delete: replacing it with a shipment registered from
   출하지시 also takes down what hangs on it (shipment_from_order, 수주별 출하 잔량 현황 and whatever shows that summary, the confirm effect on the order).
 - ctl.py undo without --sha undoes the newest record - run twice it undoes the undo. Use --sha to take back two things.
+
+== 2026-11-15: a real table per screen; 지시 + 실적 tables per business ==
+- User's decision: "화면 마다 실제 테이블을 따로 만드는 방식으로 가자". RecordStore.java: r_<key> (typed f_<field> columns, indexes on refs/search/
+  serial/date/unique) + r_<key>__<lines> (record_id FK cascade, line_no). ensure() on every definition save and at start (ReleaseLoader.load ->
+  store.prepare(), which also carried the 21 records out of app_records with their ids; app_records is now empty and unused). A removed field
+  keeps its column. A kind change converts the column or refuses. Deleting a screen drops its tables.
+- Readers get whole records as JSON built by SQL (RecordStore.json / select / source(key) - a subquery written in place of "app_records").
+  Converted to columns: list paging/filters/sort, limits and open quantities (store.sums: GROUP BY in SQL), unique, serial, usage counts,
+  status changes. Still reading every record of an entity as JSON: SummaryController, tree, import lookup, lookup q-search - next to convert.
+- devtools.py reads r_ tables (records: data = the row's own columns).
+- Process model (user): "업무별 지시 테이블 + 업무별 실적 테이블". shipping_instruction (출하지시) <- 수주; shipping_result (출하실적) <- 출하지시,
+  each by a take screen. Old shipment + shipment_from_order deleted. sales_order rule now points at shipping_instruction.orderId (a rule may
+  be pointed at from lines now); the two balance summaries subtract shipping_result. Gone with the old shipment: its 확정/취소 status and the
+  effect that set the order to 출하 완료 - nothing sets SHIPPED now.
+- A request's record holds only release/ (release.record(site_only=True)). Before this, harness commits swept framework source along; undoing
+  two trial screens took the grouping code with them (restored from the record that held it). Records 1337a9c .. a6f5d8d in local-only are
+  mixed that way: do not `undo` them without looking at what they carry.
+- control_check --pack: 29/29 on the second run; the first run failed "이름을 바꾼 뒤에도 요청이..." once (not reproduced - timing after rename?).
+- Not done: operation servers that already hold data are migrated by prepare() at start - never tried on a real operating copy; real FK
+  constraints between screens (refs are BIGINT + index, guarded by the framework); performance not measured again with many rows.

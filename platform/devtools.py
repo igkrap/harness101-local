@@ -3,6 +3,7 @@ records), the records its development site holds, and what its server wrote to i
 changes the project; changing goes through requests and the controls in release.py.
 """
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -45,7 +46,10 @@ def _field(field):
 
 def screens(project):
     """Every screen of the development site: what it is, how many records it holds, when git last recorded a change of it."""
-    counts = dict(row for row in release._psql(site().db, "SELECT json_build_array(entity_key, COUNT(*)) FROM app_records GROUP BY entity_key", rows=True))
+    # Each screen keeps its records in a table of its own (r_<key>; its lines in r_<key>__<lines>).
+    tables = [name for name in release._psql(site().db, "SELECT to_json(table_name) FROM information_schema.tables WHERE table_schema = current_schema() AND table_name LIKE 'r\\_%' AND table_name NOT LIKE '%\\_\\_%'", rows=True)
+              if re.fullmatch(r'r_[a-z][a-z0-9_]{1,39}', name)]
+    counts = dict(release._psql(site().db, ' UNION ALL '.join(f"SELECT json_build_array('{name[2:]}', (SELECT COUNT(*) FROM {name}))" for name in tables), rows=True)) if tables else {}
     out = []
     for item in release.screens():
         last = vcs._git(project, 'log', '-1', '--date=format:%m-%d %H:%M', '--format=%ad|%s', '--', f"release/definitions/{item['key']}.json", check=False) if (Path(project) / '.git').exists() else ''
@@ -87,11 +91,17 @@ def screen(project, key, rev=None):
 def records(key, limit=50):
     """The newest records of a screen as the development site holds them (read only)."""
     limit = max(1, min(200, int(limit)))
-    safe = str(key).replace("'", "''")
-    total = int(release._psql(site().db, f"SELECT COUNT(*) FROM app_records WHERE entity_key = '{safe}'").strip() or 0)
-    rows = release._psql(site().db, f"""SELECT json_build_object('id', id, 'status', status, 'data', data, 'updated_by', updated_by, 'updated_at', updated_at)
-        FROM app_records WHERE entity_key = '{safe}' ORDER BY id DESC LIMIT {limit}""", rows=True)
-    return {'key': key, 'total': total, 'rows': rows}
+    if not re.fullmatch(r'[a-z][a-z0-9_]{1,39}', str(key)):
+        raise ValueError('그런 화면이 없습니다: ' + str(key)[:60])
+    table = 'r_' + key
+    if not release._psql(site().db, f"SELECT 1 FROM information_schema.tables WHERE table_schema = current_schema() AND table_name = '{table}'").strip():
+        return {'key': key, 'table': None, 'total': 0, 'rows': []}       # a screen that keeps no records of its own (a summary, a work screen ...)
+    total = int(release._psql(site().db, f'SELECT COUNT(*) FROM {table}').strip() or 0)
+    # data: the row's own columns as the table holds them (f_<field>); lines are in the tables named in line_tables
+    rows = release._psql(site().db, f"""SELECT json_build_object('id', t.id, 'status', t.status, 'data', to_jsonb(t) - 'id' - 'status' - 'created_by' - 'created_at' - 'updated_by' - 'updated_at',
+        'updated_by', t.updated_by, 'updated_at', t.updated_at) FROM {table} t ORDER BY t.id DESC LIMIT {limit}""", rows=True)
+    lines = release._psql(site().db, f"SELECT to_json(table_name) FROM information_schema.tables WHERE table_schema = current_schema() AND left(table_name, {len(table) + 2}) = '{table}__'", rows=True)
+    return {'key': key, 'table': table, 'line_tables': lines, 'total': total, 'rows': rows}
 
 
 def server_log(lines=300):

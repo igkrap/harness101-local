@@ -32,7 +32,7 @@ def commit(result, message, model=True):
         from sites import site
         import project_git
         author = (f"{project_git.MODEL_AUTHOR[0]} ({llm.model_id()})", project_git.MODEL_AUTHOR[1]) if model else None
-        recorded = release.record(site().root, message, author=author)
+        recorded = release.record(site().root, message, author=author, site_only=True)
         result['commit'] = recorded.get('commit')
         if recorded.get('pushed') not in (None, True):
             result['commit_note'] = '원격 저장소에는 올리지 못했습니다: ' + str(recorded['pushed'])

@@ -816,7 +816,13 @@ def take_checks(key, definition, framework):
                 report.add(f'함께 넘긴 값: {into} 에 앞 단계의 {come} 이(가) 들어 있다', new.get(into) == source.get(come), f'{new.get(into)} / {source.get(come)}')
         if shape.get('combinable'):          # two earlier records alike above their lines: one record for both, or one each
             def twin():
-                row = framework.ok('POST', f"/api/data/{part['from']}", {name: value for name, value in source.items() if name not in ('id', 'status', 'statusLabel', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt', '_names', '_files')})
+                # an earlier record of its own (its lines fitted to whatever stage it hangs on in turn), alike the first above its lines
+                again = {field['name']: sample(field, framework, made) for field in earlier['fields'] if not _computed(field)}
+                if earlier.get('lines'):
+                    again['lines'] = [_line(earlier['lines']['fields'], framework, made, 6)]
+                again = fit(again, earlier, framework, made)
+                again.update({field['name']: source.get(field['name']) for field in earlier['fields'] if not _computed(field)})
+                row = framework.ok('POST', f"/api/data/{part['from']}", again)
                 made.append((part['from'], row['id']))
                 for _ in range(4):
                     if not wanted or row.get('status') in wanted:
@@ -1075,9 +1081,20 @@ def rule_checks(key, definition, framework):
             row = target()
             pointer = {field['name']: (row['id'] if field['name'] == rule['field'] else sample(field, framework, made))
                        for field in other['fields'] if (field['required'] or field['name'] == rule['field']) and not _computed(field)}
-            if other.get('lines') and other['lines'].get('min', 1) > 0:
+            in_lines = any(field['name'] == rule['field'] for field in (other.get('lines') or {}).get('fields', []))
+            if other.get('lines') and (other['lines'].get('min', 1) > 0 or in_lines):
                 pointer['lines'] = [_line(other['lines']['fields'], framework, made, 1)]
-            user = framework.ok('POST', f"/api/data/{rule['entity']}", fit(pointer, other, framework, made))
+            pointer = fit(pointer, other, framework, made)
+            if in_lines:                       # the other entity points here from its lines (after fit: a limit may have pointed the line elsewhere)
+                pointer.pop(rule['field'], None)
+                pointer['lines'][0][rule['field']] = row['id']
+                for limit in other.get('limits') or []:      # the line now points at this record: its quantity must fit what this record allows
+                    if limit['entity'] == key and limit.get('lines'):
+                        for mine, theirs in zip(limit['by'], limit['entityBy']):
+                            if theirs != 'id':
+                                pointer['lines'][0][mine] = ((row.get('lines') or [{}])[0] if limit.get('entityLines') else row).get(theirs)
+                        pointer['lines'][0][limit['field']] = ((row.get('lines') or [{}])[0] if limit.get('entityLines') else row).get(limit['entityField']) or 1
+            user = framework.ok('POST', f"/api/data/{rule['entity']}", pointer)
             made.append((rule['entity'], user['id']))
             code, answer = attempt(row)
             report.add(f"규칙: {other['title']} 이(가) 있으면 {rule['action']} 이(가) 거절되고 안내가 나온다 ({rule['message']})",

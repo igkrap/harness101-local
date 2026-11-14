@@ -49,14 +49,20 @@ def ensure_repo(project):
     return True
 
 
-def commit(project, message, author=None):
-    """Commit every pending change; returns the new commit sha, or None when nothing changed."""
+def commit(project, message, author=None, only=None):
+    """Commit every pending change - or, with `only`, just what changed under those paths (the rest stays pending). Returns the new commit sha, or None when nothing changed."""
     project = Path(project)
     if not (project / '.git').exists():
         return None
-    _git(project, 'add', '-A')
-    if not _git(project, 'status', '--porcelain'):
-        return None
+    if only:
+        _git(project, 'reset', '-q')                      # nothing staged by hand rides along
+        _git(project, 'add', '-A', '--', *only)
+        if not _git(project, 'diff', '--cached', '--name-only'):
+            return None
+    else:
+        _git(project, 'add', '-A')
+        if not _git(project, 'status', '--porcelain'):
+            return None
     _git(project, 'commit', '-q', '-m', message, author=author)
     return _git(project, 'rev-parse', 'HEAD')
 

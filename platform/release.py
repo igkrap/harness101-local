@@ -183,32 +183,34 @@ def _titles(project, paths):
     return out
 
 
-def record(project, message=None, author=None):
+def record(project, message=None, author=None, site_only=False):
     """Write the bundle and commit every pending change of the project. Returns what was recorded (commit None = nothing new).
+    site_only: only what the development site holds (release/) is recorded - the record a request ends with. Source files someone is in the
+    middle of changing stay out of it, so taking that request back later (a revert of its record) cannot take their work with it.
     Another git command may be at work in the project at the same moment (the platform's own pages read its state): then it waits and tries again."""
     for attempt in range(6):
         try:
             with exclusive('기록'):
-                return _record(project, message, author)
+                return _record(project, message, author, site_only)
         except RuntimeError as error:
             if 'index.lock' not in str(error) or attempt == 5:
                 raise
             time.sleep(1.5)
 
 
-def _record(project, message=None, author=None):
+def _record(project, message=None, author=None, site_only=False):
     vcs.ensure_repo(project)
     write_bundle(project)
     changed = [line[3:].strip().strip('"') for line in vcs._git(project, 'status', '--porcelain', '--untracked-files=all', raw=True).splitlines() if line.strip()]
     screens = _titles(project, [path for path in changed if path.startswith('release/definitions/') and (Path(project) / path).is_file()])
     removed = [Path(path).stem for path in changed if path.startswith('release/definitions/') and not (Path(project) / path).is_file()]
-    other = [path for path in changed if not path.startswith('release/')]
+    other = [] if site_only else [path for path in changed if not path.startswith('release/')]
     title = (message or '').strip().splitlines()[0] if (message or '').strip() else ('화면 ' + ', '.join(screens[:3]) + (f' 외 {len(screens) - 3}개' if len(screens) > 3 else '') if screens else '변경 기록')
     body = '\n'.join(filter(None, [f"화면 정의: {', '.join(screens)}" if screens else '', f"지워진 화면: {', '.join(removed)}" if removed else '',
                                    '공통 코드 변경' if 'release/codes.json' in changed else '', '메뉴 편성 변경' if 'release/menus.json' in changed else '',
                                    f'소스 파일 {len(other)}개' if other else '']))
     detail = '\n\n'.join(filter(None, [('요청: ' + message.strip()[:2000]) if message and len(message.strip()) > 72 else '', body]))
-    sha = vcs.commit(project, title[:72] + ('\n\n' + detail if detail else ''), author=author or vcs.PLATFORM_AUTHOR)
+    sha = vcs.commit(project, title[:72] + ('\n\n' + detail if detail else ''), author=author or vcs.PLATFORM_AUTHOR, only=['release'] if site_only else None)
     pushed = None
     if sha and vcs.status(project).get('remote'):
         try:
