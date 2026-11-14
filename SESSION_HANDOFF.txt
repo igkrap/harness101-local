@@ -869,3 +869,12 @@ Orca CLI selected /Applications/Orca.app/Contents/Resources/bin/orca, skill read
 - Framework: a field of another screen may be given by its label ("사원명"); the refusal lists name=label for every field (a model failed four times on the old message).
 - Local model through the platform: purchase dashboard (2 summaries + board), "입고 완료" status + inbound effect (2 screens), single-screen control not split,
   two requests applied then both undone. The self-reading step has not yet been seen catching a real mismatch.
+
+[2026-11-14, evening] Ownership, approval roles, cross table, bulk import
+- The user keeps menu placement a human job. Remaining "big items" taken in order: permissions, cross table, import, then notifications, calendar, tree.
+- Framework: access {own: edit|view, except: [roles]}; status.actions[].roles (approval line = statuses + role-restricted actions); rows carry editable /
+  allowedActions and the screens offer only those. Tested with two temporary non-admin accounts (made and removed by /tmp/repro/own_smoke.py): own-only list,
+  404 on another's record, 403 on edit, role-only approval. The harness checks cannot test denial (the verifier is an administrator) - only that it parses.
+- Summary: cross-table view (first grouping down, second across, totals when the figure adds up) - a view switch on screen, nothing in the definition.
+- POST /api/data/{entity}/import {rows:[{label or name: text}]}: refs by code / name / "code name", codes by name, dates in four formats, all or nothing with
+  row-numbered refusals. Not for entities that need lines. Screen: 올리기 (paste from a spreadsheet, CSV file in UTF-8 or EUC-KR, 양식 받기).
