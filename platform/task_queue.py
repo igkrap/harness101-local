@@ -233,6 +233,10 @@ class QueueManager:
     def _run(self, queue_id, plan):
         hub = self.app.coordinator
         try:
+            if plan and self._release_route(queue_id):
+                if hub is not None:
+                    hub.queue_planning = False
+                return
             if plan and self._definition_route(queue_id):
                 if hub is not None:
                     hub.queue_planning = False
@@ -278,6 +282,33 @@ class QueueManager:
             if hub is not None:
                 hub.queue_planning = False
             self._finish(queue_id, 'failed', '큐 실행 오류: ' + str(error)[:300])
+
+    def _release_route(self, queue_id):
+        """An order to record or deploy ("커밋해줘", "운영에 배포해줘", "이전 배포로 되돌려줘") is carried out by the
+        platform itself - no model is asked. Returns False for every other request."""
+        if os.environ.get('PLATFORM_DEFINITION_ROUTE') == '0' or not getattr(self.app, 'definition_route', False):
+            return False
+        import release
+        goal = self.get(queue_id)['goal']
+        kind = release.command(goal)
+        if not kind:
+            return False
+        title = {'record': '변경 기록 (깃)', 'deploy': '운영 배포', 'rollback': '이전 배포로 되돌리기'}[kind]
+        item = {'domain': 'release', 'title': title, 'checks': [], 'status': 'running', 'job_id': None, 'attempts': 1}
+        self._update(queue_id, items=[item], status='running', route='release')
+
+        def note(step, *_):
+            self._update(queue_id, items=[dict(item, note=str(step)[:60])])
+        try:
+            project, state = self.app.project, self.app.state
+            result = release.record(project) if kind == 'record' else release.rollback(project, state, note) if kind == 'rollback' else release.deploy(project, state, note)
+            ok = bool(result.get('success', True))
+            said = release.say(kind, result)
+        except Exception as error:
+            ok, said, result = False, f'{title}에 실패했습니다: {str(error)[:400]}', {'error': str(error)[:400]}
+        self._update(queue_id, items=[dict(item, status='succeeded' if ok else 'failed')], release_result=result)
+        self._finish(queue_id, 'succeeded' if ok else 'failed', said)
+        return True
 
     def _definition_route(self, queue_id):
         """Requests a definition can answer (a new registration screen, a field added, a field made required ...)

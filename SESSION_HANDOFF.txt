@@ -910,3 +910,18 @@ Orca CLI selected /Applications/Orca.app/Contents/Resources/bin/orca, skill read
   line-table lists show code names. Summary group columns are placed by kind (date/month/code/status centre). Dashboard period boxes are yyyy/mm/dd text boxes.
 - Server: limit and min/max messages print 1,234,567; date messages say 2026/01/15; sign-up time is sent as a moment and shown in local time.
 - Verified in a browser (master, order, summaries, dashboard) and with harness2 screen checks on three existing screens (all pass). Not looked at: paper print output by eye.
+
+[2026-11-14, night] Field kinds; record and deploy on request
+- Field kinds added: time (HH:mm:ss), yesno (tick box, never empty), memo (long text, not in lines), number "decimals" (0-6). Checks may compare two times.
+  Local model made 작업 일지 등록 with all four from a plain request (45 checks pass). The self-reading step caught a real mismatch for the first time
+  (it noticed the missing decimal places and the model fixed it).
+- platform/release.py: "커밋해줘" / "운영에 배포해줘" / "이전 배포로 되돌려줘" typed in the request box are carried out by the platform (no model call;
+  release.command() decides - short orders that do not describe a screen). The home page has an 운영 strip with the same three buttons.
+  Record = write local-only/release/ (definitions/<key>.json, codes.json, menus.json) and commit the project's git (push if it has a remote; it has none).
+  Deploy = record + tag release-<stamp> + operating copy on this Mac: container mdi-prod-api, port 5300 (serves the built screens itself),
+  database mdi_prod in mdi-db. Carries server jar, built screens, common codes, definitions (through operation's API, keeping program codes) and menus.
+  Never touches operation's records, users, roles, permissions. Dump before; a failure in codes/definitions/menus restores the dump (tested by forcing one).
+  Rollback re-applies the previous release's bundle, jar and screens (records stay). Screens that exist only in operation are left and reported.
+- Operation's admin password: platform/state/auth/prod-login.json (0600, generated); platform's own account there: prod-deployer.json. Never print them.
+- First release shipped all 39 screens (test screens included - the user has not yet decided which to delete). Port 5300 is bound to 127.0.0.1 only.
+- Still to do from the user's list: large lists (paging), change history of a record, file attachments.

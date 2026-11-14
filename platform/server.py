@@ -590,6 +590,9 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path=='/api/model-configs' and hasattr(self.server.platform,'models'):
                 self.send_json({'models':self.server.platform.models.records,'default':app.metadata.get('model_config','')});return
             if parsed.path=='/api/state':self.send_json(app.snapshot());return
+            if parsed.path=='/api/release':
+                import release
+                self.send_json({'status':release.status(app.project,app.state),'history':release.history(app.state,10)});return
             if parsed.path=='/api/models':self.send_json(app.models());return
             if parsed.path=='/api/preview' and hasattr(self.server.platform,'previews'):
                 self.send_json(self.server.platform.previews.status(app.metadata));return

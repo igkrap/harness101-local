@@ -140,3 +140,10 @@ select, input:not([type=checkbox]):not([type=radio]) { font-size: 13px; }
 .home-card.tone-bad { border-color: var(--color-border-red); }
 .s-ok .home-step-dot, .queue-item.s-succeeded .queue-dot { background: var(--color-success, var(--color-text-success)); border-color: transparent; color: var(--color-on-accent); }
 .s-bad .home-step-dot, .queue-item.s-failed .queue-dot { background: var(--color-error); border-color: transparent; color: var(--color-on-error); }
+
+/* The operating copy, in one line under the request box. */
+.home-ops { display: flex; align-items: center; gap: 12px; padding: 5px 10px; border: 1px solid var(--color-border-emphasized); border-radius: 3px; background: var(--color-background-surface); font-size: 12.5px; }
+.home-ops a { color: var(--color-accent); text-decoration: none; }
+.home-ops a:hover { text-decoration: underline; }
+.home-ops .dim { color: var(--color-text-secondary); }
+.home-ops-wait { color: var(--color-text-primary); font-weight: 600; }

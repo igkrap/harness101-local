@@ -29,6 +29,35 @@ function examplesFor(screens: string[]) {
   return [`${a} 화면에 비고 칸 추가해줘`, `${b || a} 화면 결과 목록에 등록일 열 추가해줘`, "거래처 등록 화면 만들어줘"];
 }
 
+type Release = { stamp: string; started_at: string; success?: boolean; tag?: string; rollback_of?: string | null; screens?: { new: string[]; changed: string[] } };
+type ReleaseStatus = { url: string; exists: boolean; last: Release | null; pending: { new: string[]; changed: string[]; program: boolean } | null; error?: string };
+/** The operating copy in one line: where it is, when it last received a release, and what has been made since. */
+function Operation({ refreshKey, busy, onAsk }: { refreshKey: string; busy: boolean; onAsk: (goal: string) => void }) {
+  const [state, setState] = useState<{ status: ReleaseStatus; history: Release[] } | null>(null);
+  useEffect(() => {
+    const c = new AbortController();
+    apiFetch("/api/release", { signal: c.signal }).then(r => r.json()).then(setState).catch(() => {});
+    return () => c.abort();
+  }, [refreshKey]);
+  if (!state) return null;
+  const { status } = state, pending = status.pending;
+  const waiting = pending ? pending.new.length + pending.changed.length : 0;
+  const names = pending ? [...pending.new, ...pending.changed] : [];
+  const done = state.history.filter(r => r.success).length;
+  return <section className="home-ops" aria-label="운영">
+    <strong>운영</strong>
+    {status.exists ? <a href={status.url} target="_blank" rel="noreferrer">{status.url.replace("http://", "")}</a> : <span className="dim">아직 없음 (첫 배포 때 만들어집니다)</span>}
+    {status.last && <span className="dim">마지막 배포 {when(status.last.started_at)}</span>}
+    {pending && <span className={waiting || pending.program ? "home-ops-wait" : "dim"} title={names.join(", ")}>
+      {waiting ? `아직 안 나간 화면 ${waiting}개${pending.new.length ? ` (새 화면 ${pending.new.length})` : ""}` : pending.program && status.exists ? "프로그램 변경이 아직 안 나감" : status.exists ? "개발과 같음" : ""}</span>}
+    {status.error && <span className="dim" title={status.error}>상태를 읽지 못함</span>}
+    <span style={{ flex: 1 }} />
+    <button type="button" className="home-btn" disabled={busy} onClick={() => onAsk("지금까지 만든 것을 커밋해줘")}>기록(커밋)</button>
+    {done > 1 && <button type="button" className="home-btn" disabled={busy} onClick={() => onAsk("이전 배포로 되돌려줘")}>이전 배포로</button>}
+    <button type="button" className="home-btn primary" disabled={busy} onClick={() => onAsk("운영에 배포해줘")}>운영에 배포</button>
+  </section>;
+}
+
 function Feed({ events }: { events: RunEvent[] }) {
   const items = activities(events);
   if (!items.length) return null;
@@ -39,15 +68,15 @@ function Feed({ events }: { events: RunEvent[] }) {
     </li>)}</ul>;
 }
 
-function Step({ item, index, phase, onDetail, events }: { item: QueueItem & { started_at?: string; finished_at?: string; deploy?: string; deploy_note?: string }; index: number; phase: string; onDetail: (id: string) => void; events: RunEvent[] }) {
+function Step({ item, index, phase, onDetail, events }: { item: QueueItem & { started_at?: string; finished_at?: string; deploy?: string; deploy_note?: string; note?: string }; index: number; phase: string; onDetail: (id: string) => void; events: RunEvent[] }) {
   const state = item.status === "succeeded" ? "ok" : item.status === "failed" ? "bad" : item.status === "running" ? "live" : "wait";
-  const what = item.domain === "backend" ? "데이터·API" : "화면";
+  const what = item.domain === "backend" ? "데이터·API" : item.domain === "release" ? "운영" : "화면";
   return <li className={`home-step s-${state}`}>
     <span className="home-step-dot" aria-hidden>{state === "ok" ? "✓" : state === "bad" ? "!" : index + 1}</span>
     <div className="home-step-body">
       <div className="home-step-title"><span className="home-step-kind">{what}</span>{item.title}</div>
       <div className="home-step-sub">
-        {state === "live" && <span>{doing[phase] || "진행 중"} · {since(item.started_at)}</span>}
+        {state === "live" && <span>{item.domain === "release" ? item.note || "진행 중" : doing[phase] || "진행 중"}{item.started_at ? ` · ${since(item.started_at)}` : ""}</span>}
         {state === "ok" && <span>완료{item.started_at ? ` · ${since(item.started_at, item.finished_at)}` : ""}</span>}
         {state === "bad" && <span className="home-fail">실패</span>}
         {state === "wait" && <span>대기</span>}
@@ -123,6 +152,8 @@ export default function HomePage(props: {
         : !goal.trim() && <div className="home-examples">{examplesFor(props.screens).map(t =>
           <button key={t} type="button" onClick={() => { setGoal(t); area.current?.focus(); }}>{t}</button>)}</div>}
     </section>
+
+    <Operation refreshKey={`${queue?.id}:${queue?.status}`} busy={props.busy || live} onAsk={text => { setGoal(text); area.current?.focus(); }} />
 
     {queue && <section className={`home-card tone-${tone}`} aria-label="진행 상황">
       <header className="home-card-head">
