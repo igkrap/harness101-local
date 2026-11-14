@@ -76,7 +76,7 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
         if definition_file:
             proposal = json.loads(Path(definition_file).read_text(encoding='utf-8'))
             written = proposal['definition']             # goes the same way as a model's answer: the framework takes it first
-            saved = framework.save_definition(define.trial_name(proposal['key'], TRIAL), {name: value for name, value in written.items() if name != 'rules'}, 'DRAFT')
+            saved = define.trial_save(framework, proposal['key'], written, TRIAL, leave=('rules',))
             proposal['definition'] = define.accepted(saved, written)
         else:
             (folder / 'request.txt').write_text(request, encoding='utf-8')
@@ -131,6 +131,14 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
             result['effects'] = [('등록하면 ' if effect['on'] == 'create' else names.get(effect['on'], effect['on']) + ' 하면 ')
                                  + (f"{effect['create']['entity']} 을(를) 자동으로 만든다" if effect.get('create') else f"{effect['act']['via']} 이(가) 가리키는 자료에 {effect['act']['action']} 을(를) 한다")
                                  for effect in definition['effects']]
+        if definition.get('calendar'):
+            part = definition['calendar']
+            result['view'] = f"달력 화면 - {part['entity']} 자료를 {part['date']}" + (f" ~ {part['end']}" if part.get('end') else '') + ' 날짜로 보여 준다'
+        if definition.get('tree'):
+            part = definition['tree']
+            result['view'] = f"트리 화면 - {part['entity']} 자료를 " + (f"{part['parent']} → {part['child']} 쌍으로 잇는다" if part.get('child') else f"{part['parent']} (상위) 아래로 묶는다")
+        if definition.get('period') or definition.get('closing'):
+            result['query'] = ' / '.join(filter(None, [f"처음 조회 기간: {definition['period']}" if definition.get('period') else '', ('마감과 무관' if definition['closing'] == 'none' else f"마감 기준: {definition['closing']}") if definition.get('closing') else '']))
         if definition.get('over'):
             part = definition['over']
             result['over'] = f"{part['entity']} 자료를 여는 업무 화면 - " + ('상태 ' + ', '.join(part['statuses']) + ' 인 건만' if part.get('statuses') else '모든 건') \
@@ -162,7 +170,7 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
 
         current = next((item for item in framework.definitions() if item['key'] == key), None)
         if current and action == 'change':
-            notes, blocking = ([], []) if definition.get('summary') or current['definition'].get('summary') or definition.get('dashboard') or current['definition'].get('dashboard') or definition.get('over') or current['definition'].get('over') else impact(framework, key, current['definition'], definition)
+            notes, blocking = ([], []) if definition.get('summary') or current['definition'].get('summary') or definition.get('dashboard') or current['definition'].get('dashboard') or definition.get('over') or current['definition'].get('over') or any(definition.get(part) or current['definition'].get(part) for part in ('calendar', 'tree')) else impact(framework, key, current['definition'], definition)
             result.update(impact=notes, needs_decision=blocking)
             result['changes'], result['removed'] = define.differences(current['definition'], definition)
             if not result['changes']:
@@ -177,9 +185,11 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
         trial_key, trial_title = define.trial_name(key, TRIAL), definition['title'] + ' (시험)'
         # Rules point at other entities by their real keys, so they are checked after publishing (and undone if they fail).
         # Effects are left out of the trial as well: they would make and change records of real entities while the trial is checked.
-        trial = {name: value for name, value in definition.items() if name not in ('rules', 'effects')}
+        # A field that points at this same screen (a parent department) points at the trial copy while it is the trial that is checked.
+        checked = define.repoint(definition, key, trial_key)
+        trial = {name: value for name, value in checked.items() if name not in ('rules', 'effects')}
         framework.save_definition(trial_key, dict(trial, title=trial_title), 'DRAFT')
-        data = (checks.over_checks if definition.get('over') else checks.dashboard_checks if definition.get('dashboard') else checks.summary_checks if definition.get('summary') else checks.record_checks)(trial_key, definition, framework)
+        data = (checks.view_checks if definition.get('calendar') or definition.get('tree') else checks.over_checks if definition.get('over') else checks.dashboard_checks if definition.get('dashboard') else checks.summary_checks if definition.get('summary') else checks.record_checks)(trial_key, checked, framework)
         screen = checks.screen_checks(trial_title, definition, folder / '2-check', app_url())
         results = data.results + screen.results
         (folder / '2-check').mkdir(exist_ok=True)
@@ -296,6 +306,10 @@ def say(result):
         lines.append(f"{'새 화면' if result.get('action') == 'create' else '화면 수정'}: {result['title']}  ({result['key']})")
         if result.get('over'):
             lines.append('업무 화면: ' + result['over'])
+        if result.get('view'):
+            lines.append(result['view'])
+        if result.get('query'):
+            lines.append(result['query'])
         elif result.get('panels'):
             lines.append(f"현황판: 차트 패널 {len(result['panels'])}개")
             lines += ['  · ' + panel for panel in result['panels']]

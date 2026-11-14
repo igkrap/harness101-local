@@ -297,6 +297,20 @@ def record_checks(key, definition, framework):
                 broken, value = new_body(), 10 + 10 ** -(field['decimals'] + 1)
                 (broken['lines'][0] if where else broken)[field['name']] = value
                 refused(f"{where}{field['label']}: 소수 {field['decimals']}자리를 넘는 값({value:g})은 거절된다", broken)
+        by = closing_field(definition)
+        if by:
+            body = fit(new_body(), definition, framework, made)
+            month = str(body.get(by) or '')[:7]
+            already = any(item.get('period') == month for item in framework.ok('GET', '/api/auth/closings'))
+            if len(month) == 7 and not already:        # a month someone really closed is left alone
+                framework.ok('POST', '/api/system/closings', {'period': month, 'note': '검사 중 잠깐 마감'})
+                try:
+                    code, answer = post(body)
+                    report.add(f"마감: 마감된 달({month})에는 등록이 거절되고 이유가 나온다", code == 409 and '마감' in str((answer or {}).get('detail')), f'{code} {answer}')
+                finally:
+                    framework.call('DELETE', f'/api/system/closings/{month}')
+                code, answer = post(body)
+                report.add('마감: 다시 열면 등록된다', code == 201, f'{code} {answer}')
         for check in definition.get('checks') or []:
             broken = fit(new_body(), definition, framework, made, break_check=check)
             code, answer = post(broken)
@@ -609,6 +623,76 @@ def over_screen_criteria(definition):
     return [{'id': f'C{index + 1}', 'requirement_id': 'R1', 'description': description, 'check': check} for index, (description, check) in enumerate(items)]
 
 
+def closing_field(definition):
+    """The date a month's closing goes by, by the framework's own rule (see AppDefinitions.Definition.closingField)."""
+    fields, named = definition.get('fields') or [], definition.get('closing')
+    if named == 'none' or not fields:
+        return None
+    if named:
+        return named
+    if not (definition.get('lines') or definition.get('status') or any(field.get('type') == 'serial' for field in fields)):
+        return None
+    dates = [field for field in fields if field.get('type') == 'date']
+    return next((field['name'] for field in dates if field.get('required')), dates[0]['name'] if dates else None)
+
+
+def view_checks(key, definition, framework):
+    """A calendar or a tree stores nothing: what it shows is tried on records made in the entity it is of."""
+    report, made = Report(), []
+    part = definition.get('calendar') or definition['tree']
+    base = next(item['definition'] for item in framework.definitions() if item['key'] == part['entity'])
+    own = f"/api/data/{part['entity']}"
+
+    def fresh(**values):
+        body = {field['name']: sample(field, framework, made) for field in base['fields'] if not _computed(field)}
+        if base.get('lines') and base['lines'].get('min', 1) > 0:
+            body['lines'] = [_line(base['lines']['fields'], framework, made, 1)]
+        body = fit(body, base, framework, made)
+        body.update(values)
+        row = framework.ok('POST', own, body)
+        made.append((part['entity'], row['id']))
+        return row
+    try:
+        if definition.get('calendar'):
+            values = {part['date']: '2026-03-10'}
+            if part.get('end'):
+                values[part['end']] = '2026-03-12'
+            row = fresh(**values)
+            code, answer = framework.call('GET', f'/api/calendar/{key}?month=2026-03')
+            found = [item for item in (answer or {}).get('items', []) if item.get('id') == row['id']] if code == 200 else []
+            report.add('달력: 그 달의 자료가 날짜와 함께 나온다', bool(found) and found[0].get('date') == '2026-03-10' and bool(found[0].get('label')), f'{code} {str(answer)[:200]}')
+            if part.get('end'):
+                report.add('달력: 끝 날짜가 함께 나온다 (기간으로 그려진다)', bool(found) and found[0].get('end') == '2026-03-12', f'{found[:1]}')
+            code, answer = framework.call('GET', f'/api/calendar/{key}?month=2026-07')
+            report.add('달력: 다른 달에는 그 자료가 나오지 않는다', code == 200 and all(item.get('id') != row['id'] for item in answer.get('items', [])), f'{code}')
+        elif part.get('child'):
+            row = fresh()
+            code, answer = framework.call('GET', f'/api/tree/{key}')
+            edges = [edge for edge in (answer or {}).get('edges', []) if edge.get('id') == row['id']] if code == 200 else []
+            report.add('트리: 상위-하위 한 쌍이 가지로 나온다', bool(edges) and edges[0]['parent'] == row[part['parent']] and edges[0]['child'] == row[part['child']], f'{code} {str(answer)[:200]}')
+            report.add('트리: 이어진 자료의 이름이 함께 온다', bool(edges) and all(str(edges[0][side]) in (answer.get('names') or {}) for side in ('parent', 'child')), f"{str((answer or {}).get('names'))[:160]}")
+        else:
+            top = fresh(**{part['parent']: None})
+            below = fresh(**{part['parent']: top['id']})
+            code, answer = framework.call('GET', f'/api/tree/{key}')
+            nodes = {node['id']: node for node in (answer or {}).get('nodes', [])} if code == 200 else {}
+            report.add('트리: 상위가 없는 자료는 맨 위에 온다', top['id'] in nodes and nodes[top['id']].get('parent') is None, f'{code} {str(answer)[:200]}')
+            report.add('트리: 하위 자료는 그 상위 아래에 온다', below['id'] in nodes and nodes[below['id']].get('parent') == top['id'] and bool(nodes[below['id']].get('label')), f'{str(nodes.get(below["id"]))[:200]}')
+    finally:
+        LEFTOVER.extend(sweep(framework, made))
+    return report
+
+
+def view_screen_criteria(definition):
+    kind = 'calendar' if definition.get('calendar') else 'tree'
+    items = [('화면 틀이 있다', {'op': 'visible', 'selector': f'[data-ui="{kind}"]'}), ('화면 이름이 보인다', {'op': 'text', 'selector': f'[data-ui="{kind}"]', 'contains': definition['title']})]
+    if kind == 'calendar':
+        items += [('월 달력이 그려져 있다', {'op': 'visible', 'selector': '[data-ui="calendar"] [role="grid"]'}), ('다음 달로 넘기는 버튼이 있다', {'op': 'visible', 'selector': '[data-ui="calendar"] >> role=button[name="다음 달"]'})]
+    else:
+        items += [('트리 표가 있다', {'op': 'visible', 'selector': '[data-ui="tree"] [role="treegrid"]'}), ('모두 접기 버튼이 있다', {'op': 'visible', 'selector': '[data-ui="tree"] >> role=button[name="모두 접기"]'})]
+    return [{'id': f'C{index + 1}', 'requirement_id': 'R1', 'description': description, 'check': check} for index, (description, check) in enumerate(items)]
+
+
 def dashboard_checks(key, definition, framework):
     """A dashboard stores nothing and computes nothing of its own: every panel must point at a summary that answers."""
     report = Report()
@@ -802,7 +886,9 @@ def screen_checks(title, definition, record_to, app):
     """Open the screen in a real browser (read-only) and look for what the definition promises."""
     sys.path.insert(0, str(HARNESS))
     import standard_contract
-    if definition.get('over'):
+    if definition.get('calendar') or definition.get('tree'):
+        criteria = view_screen_criteria(definition)
+    elif definition.get('over'):
         criteria = over_screen_criteria(definition)
     elif definition.get('dashboard'):
         criteria = dashboard_screen_criteria(definition)
@@ -813,7 +899,7 @@ def screen_checks(title, definition, record_to, app):
     else:
         sheet = {'path': '/api/x', 'fields': [{'name': field['name'], 'label': field['label'], 'required': field['required'], 'sample': 'x'} for field in definition['fields']]}
         criteria = standard_contract.screen_criteria(sheet)
-    if not definition.get('summary') and not definition.get('dashboard') and not definition.get('over'):
+    if not any(definition.get(part) for part in ('summary', 'dashboard', 'over', 'calendar', 'tree')):
         criteria.append({'id': f'C{len(criteria) + 1}', 'requirement_id': 'R1', 'description': '한 건을 양식으로 뽑는 출력 버튼이 있다',
                          'check': {'op': 'visible', 'selector': '[role="toolbar"][aria-label="업무 버튼"] >> role=button[name="출력"]'}})
     out = Path(record_to) / 'browser'

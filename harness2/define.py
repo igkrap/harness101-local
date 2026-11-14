@@ -54,6 +54,23 @@ def trial_name(key, prefix='trial_'):
     return (prefix + key)[:40]
 
 
+def repoint(definition, was, now):
+    """The definition with its fields that point at the screen `was` pointing at `now` instead. A screen may point at itself
+    (a parent department); its trial copy must then point at the trial, and what the framework hands back must point home again."""
+    out = json.loads(json.dumps(definition))
+    for field in (out.get('fields') or []) + ((out.get('lines') or {}).get('fields') or []):
+        if isinstance(field.get('ref'), dict) and field['ref'].get('entity') == was:
+            field['ref']['entity'] = now
+    return out
+
+
+def trial_save(framework, key, definition, prefix, leave=('rules', 'effects')):
+    """Save the definition as its trial draft (the framework's judgement of it) and return what the framework stored, pointing home."""
+    name = trial_name(key, prefix)
+    saved = framework.save_definition(name, repoint({part: value for part, value in definition.items() if part not in leave}, key, name), 'DRAFT')
+    return dict(saved, definition=repoint(saved['definition'], name, key)) if isinstance(saved, dict) and isinstance(saved.get('definition'), dict) else saved
+
+
 def real(framework, trial_prefix='trial_'):
     """The definitions there really are: a trial copy left by an interrupted run is not one of them."""
     return [item for item in framework.definitions() if not item['key'].startswith(trial_prefix)]
@@ -86,6 +103,9 @@ def describe(key, definition):
         part = definition['over']
         text = f"- key {key} / 화면 이름 {definition['title']} / 업무 화면: {part['entity']} 자료 중 " + (f"상태 {part['statuses']} 인 건" if part.get('statuses') else '모든 건') \
             + f" / 이 화면의 동작: {part.get('actions') or '없음'}" + (' / 내용 수정 가능' if part.get('edit') else '')
+    for kind, word in (('calendar', '달력 화면'), ('tree', '트리 화면')):
+        if definition.get(kind):
+            text = f"- key {key} / 화면 이름 {definition['title']} / {word}: " + json.dumps({name: value for name, value in definition[kind].items() if value not in (None, [])}, ensure_ascii=False)
     if definition.get('dashboard'):
         text = f"- key {key} / 화면 이름 {definition['title']} / 현황판: 패널 " + ', '.join(f"{panel['summary']}({panel['chart']})" for panel in definition['dashboard']['panels'])
     if definition.get('summary'):
@@ -236,6 +256,9 @@ def differences(old, new):
                 note(f'패널이 생기거나 바뀜: {panel}')
         if was != now and sorted(was) == sorted(now):
             note('패널 순서가 바뀜')
+    for part, word in (('calendar', '달력 화면'), ('tree', '트리 화면'), ('period', '처음 조회 기간'), ('closing', '마감 기준')):
+        if (old.get(part) or None) != (new.get(part) or None):
+            note(f"{word}: {json.dumps(old.get(part), ensure_ascii=False)} → {json.dumps(new.get(part), ensure_ascii=False)}", bool(old.get(part)) and not new.get(part))
     if (old.get('over') or None) != (new.get('over') or None):
         note(f"업무 화면: {json.dumps(old.get('over'), ensure_ascii=False)} → {json.dumps(new.get('over'), ensure_ascii=False)}")
     if (old.get('print') or None) != (new.get('print') or None):
@@ -367,7 +390,7 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
                     raise ValueError('요청하지 않은 것이 사라졌다:\n- ' + '\n- '.join(unasked) + '\n이것들만 원래대로 되살리고, 나머지 고친 것은 그대로 둔다')
             # The framework is the judge: the definition is saved as a trial draft; a refusal is its message.
             trials.add(trial_name(key, trial_prefix))
-            saved = framework.save_definition(trial_name(key, trial_prefix), {name: value for name, value in definition.items() if name not in ('rules', 'effects')}, 'DRAFT')
+            saved = trial_save(framework, key, definition, trial_prefix)
             # Rules and effects name real entities, so they are judged under the real key (nothing is stored): a refusal goes back to the model like any other.
             if definition.get('rules') or definition.get('effects'):
                 framework.validate_definition(key, definition)

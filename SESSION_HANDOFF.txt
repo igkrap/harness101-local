@@ -1068,3 +1068,19 @@ Orca CLI selected /Applications/Orca.app/Contents/Resources/bin/orca, skill read
 - Windows packs: every .ps1 run writes logs\setup-log-<name>-<time>.txt (Start-Log/Stop-Failed in common.ps1, trap in each script); README has
   "잘 안 될 때". Still only parse-checked. Waiting for the user to run install.bat and update.bat on a Windows PC and send the log if it stops.
 - Pack keep-one verified: making a new pack removed the previous one.
+
+[2026-11-15] Framework reinforcement, the rest of the list (user: "전부"; decisions: no approval line, closing = whole system by month,
+print = standard form adjusted by definition, calendar and tree both)
+- Period queries: date conditions are two boxes (_from/_to); definition "period" (all|today|week|month|year); work screens open on this month.
+- Copy (복사), kept conditions (sys_user_queries, /api/auth/queries, QueryPanel saveAs), bulk status actions on several chosen rows.
+- Excel: framework/xlsx.ts (fflate) writes/reads .xlsx; export is xlsx, import takes xlsx (and still CSV/paste).
+- Month closing: sys_closings, ClosingController, screen 마감 관리 (SYS0010, V37 places it in the system menu). Definition "closing": field | "none";
+  default = first required date of a work screen; basic records are not affected. RecordController.open() guards create/update/delete/status.
+- Print: print.logo/company/receiver/fields/columns/vat; company details are settings (company_name, ...) in 시스템 설정.
+- Calendar and tree: definition parts "calendar" {entity,date,end,label} and "tree" {entity,parent,child,label,columns} (own parent, or parent/child pairs
+  = BOM); ViewController (/api/calendar, /api/tree); CalendarScreen, TreeScreen. Program paths per screen as for work screens.
+- harness2: view_checks + view_screen_criteria, closing check in record_checks (closes the sample's month for a moment, skips a month really closed),
+  self-pointing screens (define.repoint / trial_save), links endpoint shows drafts to administrators.
+- Verified in a throwaway project fw-check through ctl apply (written definitions) and a browser: all of the above. Flyway is at 37.
+- Careful: V36 was already applied when I first appended to it - the append was moved to V37 before any deploy saw the changed V36.
+- User said (2026-11-15) "플랫폼은 일렉트론으로 가도 좋을듯" - not started; proposal given to the user.
