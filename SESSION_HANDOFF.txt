@@ -925,3 +925,19 @@ Orca CLI selected /Applications/Orca.app/Contents/Resources/bin/orca, skill read
 - Operation's admin password: platform/state/auth/prod-login.json (0600, generated); platform's own account there: prod-deployer.json. Never print them.
 - First release shipped all 39 screens (test screens included - the user has not yet decided which to delete). Port 5300 is bound to 127.0.0.1 only.
 - Still to do from the user's list: large lists (paging), change history of a record, file attachments.
+
+[2026-11-14, late night] Long lists, change history, attached files
+- Long lists (measured with 50,000 vendors and orders, then removed): the server was fast; what was wrong was silent cutting (lists at the oldest 2,000,
+  lookups at 5,000, a work screen filtering after the cut). Now: GET /api/data/{key}?_limit&_offset&_sort&_desc + X-Total-Count, rows carry _names;
+  /api/lookup/{key}?q=&ids=&_limit= (first 1,000 by default); work-screen statuses filter in SQL. Screens ask 500 at a time (app/pagedList.ts),
+  show "500 / 50,008건" + 더 보기, order on the server, export the whole list; pickers search on the server when the target holds more than was read;
+  line-table screens list newest first. API default without parameters is unchanged (id ascending, 2,000) so harness checks are as before.
+- Change history: V34 app_record_history, RecordHistory service; written on create/update/status (also automatic)/delete and file add/remove;
+  GET .../{id}/history returns sentences (field label, before, after, lines by position). 이력 button on every definition-driven screen.
+  Harness sample rows leave history rows behind in development (history of deleted records is kept on purpose).
+- Attached files: V35 app_record_files (bytea, 20MB each, 30 per record), 첨부 button with count; attach/remove need 저장 and obey the record's lock;
+  downloads are always attachments. Work screens can list and download.
+- capabilities().builtInRules tells the model that history, long lists and attachments are built in.
+- All of it deployed to operation with "운영에 배포해줘" (10 s; V35 and the new jar are live on 5300).
+- Not done / not checked: history of a deleted record has no screen; attachments are not carried by a release (operation's own data, as intended);
+  xlsx import; calendar/tree screens (only if asked); paper print not checked by eye; 39 test screens are also in operation.
