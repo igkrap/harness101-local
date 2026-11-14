@@ -39,6 +39,7 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 - 정해진 값 중에서 고르는 항목은 code 로 하되 있는 공통 코드 그룹만 쓴다. 맞는 그룹이 없으면 글자(text)로 둔다.
 - "~하면 ~못 하게" 같은 요청은 rules 로 적는다. 규칙이 가리키는 자료와 항목은 이미 있어야 한다.
 - effects 의 on 은 요청의 말 그대로 정한다: "등록하면·저장하면·입력하면"은 create, "확정하면·승인하면·완료하면"처럼 상태 버튼을 말하면 그 action 이름이다.
+- "본인 것만"은 access 로, "팀장만 승인" 같은 결재·승인 권한은 그 동작의 roles 로 적는다. roles 에는 목록의 roles 에 있는 역할 코드만 쓴다. 맞는 역할이 없으면 other 로 "그 역할을 먼저 만들어야 한다"고 답한다.
 - 한 건 안에서 두 값을 견주는 조건(날짜 순서 등)은 checks 로, 다른 자료의 수량을 넘지 못하게 하는 것(초과 출하·재고 부족 방지)은 limits 로, "~하면 자동으로 ~된다/만들어진다"는 effects 로 적는다. 그 규칙은 저장이 거절되어야 하는 자료, 일이 시작되는 자료의 정의에 붙인다(출하 수량 제한은 출하에, 수주 확정 시 출하 생성은 수주에).
 - id, 상태, 등록·수정자/일시는 프레임워크가 관리하므로 항목으로 넣지 않는다(상태는 definition.status 로).
 - 정의로 할 수 없는 요청이면 {"action": "other", "reason": "<이유 한 줄>"} 로만 답한다. 해당하는 경우: 아래 '코드로 만든 화면'을 고치는 요청, 로그인·메뉴·권한·디자인 같은 시스템 요청, 프레임워크 안내에 없는 동작.
@@ -76,6 +77,10 @@ def describe(key, definition):
             + ' / 동작: ' + ', '.join(f"{action['name']}({action['label']})" for action in definition['status']['actions'])
     if definition.get('rules'):
         text += ' / 규칙: ' + '; '.join(rule['message'] for rule in definition['rules'])
+    if definition.get('access'):
+        text += ' / 본인 자료: ' + ('본인 것만 보임' if definition['access']['own'] == 'view' else '본인 것만 고침') + (f" (예외 역할 {definition['access']['except']})" if definition['access'].get('except') else '')
+    if any(action.get('roles') for action in (definition.get('status') or {}).get('actions', [])):
+        text += ' / 역할이 정해진 동작: ' + ', '.join(f"{action['name']}→{action['roles']}" for action in definition['status']['actions'] if action.get('roles'))
     for part, label in (('checks', '비교 규칙'), ('limits', '한도')):
         if definition.get(part):
             text += f' / {label}: ' + '; '.join(rule['message'] for rule in definition[part])
@@ -235,6 +240,8 @@ def differences(old, new):
         tidy = lambda block: {name: value for name, value in (block or {}).items() if value not in (None, [], '')}
         if tidy(old.get('print')) != tidy(new.get('print')):
             note(f"출력 양식: {json.dumps(tidy(old.get('print')), ensure_ascii=False)} → {json.dumps(tidy(new.get('print')), ensure_ascii=False)}", bool(tidy(old.get('print'))) and not tidy(new.get('print')))
+    if (old.get('access') or None) != (new.get('access') or None):
+        note(f"본인 자료 규칙: {json.dumps(old.get('access'), ensure_ascii=False)} → {json.dumps(new.get('access'), ensure_ascii=False)}", bool(old.get('access')) and not new.get('access'))
     for part, label in (('checks', '비교 규칙'), ('limits', '한도'), ('effects', '자동 처리')):
         tidy = lambda item: json.dumps({name: value for name, value in item.items() if value not in (None, [], False)}, ensure_ascii=False, sort_keys=True)
         was, now = [tidy(item) for item in old.get(part) or []], [tidy(item) for item in new.get(part) or []]
@@ -314,7 +321,7 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
     entity the request is about, then gets that definition whole. Whatever went missing without being asked
     for goes back to the model once, so a rule or a formula is never dropped silently."""
     capabilities = framework.capabilities()
-    shown = {key: capabilities[key] for key in ('parts', 'fieldTypes', 'builtInRules', 'ruleTypes', 'codeGroups') if key in capabilities}
+    shown = {key: capabilities[key] for key in ('parts', 'fieldTypes', 'builtInRules', 'ruleTypes', 'codeGroups', 'roles') if key in capabilities}
     base = [{'role': 'system', 'content': 'JSON only'},
             {'role': 'user', 'content': PROMPT % {'guide': capabilities.get('guide', ''), 'capabilities': json.dumps(shown, ensure_ascii=False, indent=1), 'existing': _existing(framework), 'request': request,
                                                   'code_screens': ', '.join(code_screens()) or '(없음)'}}]

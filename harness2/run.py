@@ -99,6 +99,11 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
             result['actions'] = [action_['label'] for action_ in definition['status']['actions']]
         if definition.get('rules'):
             result['rules'] = [rule['message'] for rule in definition['rules']]
+        if definition.get('access'):
+            result['access'] = ('본인이 등록한 것만 보입니다' if definition['access']['own'] == 'view' else '모두 보지만 본인이 등록한 것만 고칩니다') + (f" (예외 역할: {', '.join(definition['access']['except'])})" if definition['access'].get('except') else '')
+        roles = [f"{action['label']} = {', '.join(action['roles'])}" for action in (definition.get('status') or {}).get('actions', []) if action.get('roles')]
+        if roles:
+            result['action_roles'] = roles
         if definition.get('checks'):
             result['checks_rules'] = [rule['message'] for rule in definition['checks']]
         if definition.get('limits'):
@@ -274,6 +279,10 @@ def say(result):
             lines.append('상태: ' + ' → '.join(result['statuses']) + ' / 동작: ' + ', '.join(result.get('actions', [])))
         if result.get('print'):
             lines.append('출력 양식: ' + result['print'])
+        if result.get('access'):
+            lines.append('본인 자료: ' + result['access'])
+        if result.get('action_roles'):
+            lines.append('누를 수 있는 역할: ' + ' / '.join(result['action_roles']))
         for rule in result.get('checks_rules', []):
             lines.append('비교 규칙: ' + rule)
         for rule in result.get('limits', []):
