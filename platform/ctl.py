@@ -11,6 +11,9 @@ the thing asked for was done.
   ctl.py remove <slug> --confirm <slug>             a project away for good (its packs are kept)
   ctl.py status [-p slug]                           git (work space, remote, unrecorded changes), packs, what the newest pack lacks
   ctl.py screens [-p slug]                          the screens the development site holds (key, title, fields)
+  ctl.py screen <key> [--rev <commit>] [-p slug]    one screen in full; with --rev as that record held it and what differs from now
+  ctl.py records <key> [-p slug]                    the newest records of a screen (read only)
+  ctl.py server-log [-p slug]                       the last lines of the project's development server
   ctl.py ask "<request>" [-p slug]                  a request in plain words, as typed into the request box (the local model makes the screen)
   ctl.py apply "<request>" --file <json> [-p slug]  a definition already written ({action,key,definition}): checked, applied and committed without asking the model
   ctl.py commit [-m "message"] [-p slug]            record what the development site holds
@@ -89,7 +92,7 @@ def show(queue):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('command', choices=['projects', 'create', 'remove', 'status', 'screens', 'apply', 'ask', 'commit', 'undo', 'branch', 'sync', 'remote', 'push', 'log', 'pack', 'undo-request'])
+    parser.add_argument('command', choices=['projects', 'create', 'remove', 'status', 'screens', 'screen', 'records', 'server-log', 'apply', 'ask', 'commit', 'undo', 'branch', 'sync', 'remote', 'push', 'log', 'pack', 'undo-request'])
     parser.add_argument('values', nargs='*')
     parser.add_argument('-p', '--project')
     parser.add_argument('-m', '--message')
@@ -97,6 +100,7 @@ def main():
     parser.add_argument('--confirm')
     parser.add_argument('--create', action='store_true')
     parser.add_argument('--sha')
+    parser.add_argument('--rev')
     parser.add_argument('--file')
     args = parser.parse_args()
     platform = Platform(args.project)
@@ -121,6 +125,17 @@ def main():
             return 0
         if args.command == 'screens':
             print(json.dumps({'ok': True, **platform.call('GET', '/api/release/screens')}, ensure_ascii=False, indent=1))
+            return 0
+        if args.command == 'screen':
+            need(1, 'screen <key>')
+            print(json.dumps({'ok': True, **platform.call('GET', '/api/tools/screen?key=' + urllib.parse.quote(args.values[0]) + ('&rev=' + urllib.parse.quote(args.rev) if args.rev else ''))}, ensure_ascii=False, indent=1))
+            return 0
+        if args.command == 'records':
+            need(1, 'records <key>')
+            print(json.dumps({'ok': True, **platform.call('GET', '/api/tools/records?key=' + urllib.parse.quote(args.values[0]))}, ensure_ascii=False, indent=1))
+            return 0
+        if args.command == 'server-log':
+            print(json.dumps({'ok': True, **platform.call('GET', '/api/tools/log')}, ensure_ascii=False, indent=1))
             return 0
         if args.command == 'apply':
             need(1, 'apply "<request>" --file <json>')

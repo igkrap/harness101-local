@@ -1041,3 +1041,15 @@ Orca CLI selected /Applications/Orca.app/Contents/Resources/bin/orca, skill read
   It found and I fixed: new project without a first record; menus/settings not following git; removed codes not following git.
   RUN IT after touching release.py, project_git.py, projects.py, sites.py, task_queue release/definition routes, or harness2/run.py commit.
 - /api/release/screens lists the site's screens (key, title, fields).
+
+[2026-11-14, late night] History page in line, developer tools, delete-project button, cleanup
+- History page: "기록하기" now records what the site holds (release.record), shows unrecorded site changes, and any record can be taken back
+  (the old rules - not platform commits, not while dirty - are gone; git_undo records first). tests/history_page_check.cjs clicks through it;
+  control_check.py --ui runs it (27/27 with --ui).
+- platform/devtools.py (read only) + /api/tools/{screens,screen,records,log} + ctl screen/records/server-log + page "화면 정의·자료·서버"
+  (개발자 도구): screen list with record counts, a screen's fields in plain words, any earlier version from git with what differs from now
+  (harness2 define.differences), raw definition, newest 50 records, server log of the project's API container.
+- 프로젝트 page: 지우기 button on projects made by the platform (asks for the English name); kinds 쇼핑몰/홈페이지 shown as 잠금 (user confirmed
+  both names and that they stay locked for now).
+- Removed: database mdi_prod (0 records; dump kept at ~/.local/share/local-workshop/backups/local-only/mdi_prod-before-removal-20261114.dump) and
+  platform/state/auth/prod-deployer.json. Databases mdi, mdi_test, mdi_auth_probe_* are older leftovers I did not make - untouched.

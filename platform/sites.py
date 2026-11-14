@@ -18,7 +18,8 @@ ROOT = Path(__file__).resolve().parents[1]
 SHARE = Path.home() / '.local/share/local-workshop'
 DB_CONTAINER, DB_USER, NETWORK, PUBLIC_NETWORK, MAVEN_CACHE = 'mdi-db', 'mdi', 'mdi-internal', 'mdi-public', 'mdi-m2'
 
-# The kinds of site a new project can be. Only those with a template can be made; the others are shown as coming.
+# The kinds of site a new project can be. Only those with a template can be made; the others are shown locked
+# (the user's decision, 2026-11-14: 쇼핑몰 and 홈페이지 stay listed, locked for now).
 KINDS = [
     {'id': 'business', 'label': '업무 사이트', 'description': '기준 정보, 등록·조회 화면, 집계와 현황판, 권한과 메뉴를 갖춘 사내 업무 시스템', 'enabled': True, 'template': 'local-only'},
     {'id': 'shop', 'label': '쇼핑몰 사이트', 'description': '상품, 장바구니, 주문과 결제', 'enabled': False},

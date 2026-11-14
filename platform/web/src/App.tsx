@@ -9,6 +9,7 @@ import "./actions.css";
 import Preview from "./Preview";
 import HistoryPage from "./HistoryPage";
 import HomePage from "./HomePage";
+import DevTools from "./DevTools";
 import { Selector } from "@astryxdesign/core/Selector";
 import ProjectManager, { ProjectPicker } from "./ProjectManager";
 import ModelManager, {type ModelConfig} from "./ModelManager";
@@ -509,7 +510,7 @@ export default function App() {
   const navGroups: [string, string[][]][] = [
     ["업무", [["home", "만들기"], ["preview", "앱 보기"], ["history", "변경 이력"]]],
     ["설정", [["projects", "프로젝트"], ["models", "AI 모델"]]],
-    ["개발자 도구", [["run", "실행 기록"], ["overview", "통계"], ["source", "프로젝트 소스"], ["chat", "채팅"]]],
+    ["개발자 도구", [["tools", "화면 정의·자료·서버"], ["run", "실행 기록"], ["overview", "통계"], ["source", "프로젝트 소스"], ["chat", "채팅"]]],
   ];
   const navigation = navGroups.flatMap(([, items]) => items);
   const disabled =
@@ -688,6 +689,7 @@ export default function App() {
               </section>
             </div>
           </>}
+          {page === "tools" && <DevTools/>}
           {page === "projects" && <ProjectManager token={data?.token||""}/>}
           {page === "models" && <ModelManager token={data?.token||""}/>}
           {chatOpened && <div style={{display:page === "chat" ? "block" : "none",minWidth:0}}><ChatPanel token={data?.token||""} model={effectiveModel} online={!!data?.model.online} modelBusy={(!!data?.workspace_busy&&!data?.chat_active)||!!data?.active}/></div>}

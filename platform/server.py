@@ -595,6 +595,13 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path=='/api/release':
                 import release
                 self.send_json({'status':release.status(app.project,app.state),'history':release.history(app.state,10)});return
+            if parsed.path.startswith('/api/tools/'):
+                import devtools
+                tool,one=parsed.path.rsplit('/',1)[1],lambda name,default=None:query.get(name,[default])[0]
+                if tool=='screens':self.send_json({'screens':devtools.screens(app.project)});return
+                if tool=='screen':self.send_json(devtools.screen(app.project,one('key'),one('rev')));return
+                if tool=='records':self.send_json(devtools.records(one('key'),one('limit','50')));return
+                if tool=='log':self.send_json(devtools.server_log(one('lines','300')));return
             if parsed.path=='/api/release/screens':
                 import release
                 self.send_json({'screens':release.screens()});return

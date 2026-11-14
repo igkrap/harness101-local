@@ -27,6 +27,14 @@ export default function ProjectManager({token}:{token:string}){
     const existing=projects.find(p=>p.root===folder.root);if(existing){switchProject(existing.id);return;}
     const response=await apiFetch('/api/projects',{method:'POST',headers,body:JSON.stringify({root:folder.root,model_url:modelUrl,test_db_url:db})});const result=await response.json();if(!response.ok)throw Error(result.error);switchProject(result.id);
   }catch(e){setError(String(e));}finally{setBusy(false);}}
+  async function remove(p:Project){
+    const typed=window.prompt(`"${shown(p)}" 프로젝트를 지웁니다. 폴더, 개발 DB, 서버, 실행 기록이 사라지고 되돌릴 수 없습니다 (이미 만든 셋업 팩은 남습니다).\n지우려면 영문 이름 ${p.name} 을(를) 그대로 적으세요.`);
+    if(typed===null)return;
+    setBusy(true);setError('');try{
+      const response=await apiFetch('/api/projects/remove',{method:'POST',headers:{'Content-Type':'application/json','X-Platform-Token':token},body:JSON.stringify({id:p.id,confirm:typed.trim()})});
+      const result=await response.json();if(!response.ok)throw Error(result.error||'지우지 못했습니다.');
+      if(p.id===projectId)forgetProject();else setProjects(list=>list.filter(item=>item.id!==p.id));
+    }catch(e){setError(String(e instanceof Error?e.message:e));}finally{setBusy(false);}}
   const slugOk=/^[a-z][a-z0-9-]{1,23}[a-z0-9]$/.test(slug);
   async function make(){setMaking(true);setMakeError('');try{
     const response=await apiFetch('/api/projects/create',{method:'POST',headers:{'Content-Type':'application/json','X-Platform-Token':token},body:JSON.stringify({title:title.trim(),slug,kind})});
@@ -37,7 +45,7 @@ export default function ProjectManager({token}:{token:string}){
       <Heading level={2}>새 프로젝트 만들기</Heading>
       <div className="project-kinds" role="radiogroup" aria-label="사이트 종류">{kinds.map(k=>
         <button key={k.id} type="button" role="radio" aria-checked={kind===k.id} disabled={!k.enabled||making} className={`project-kind${kind===k.id?' is-chosen':''}`} onClick={()=>setKind(k.id)}>
-          <strong>{k.label}{!k.enabled&&<span className="project-kind-soon">준비 중</span>}</strong><span>{k.description}</span>
+          <strong>{k.label}{!k.enabled&&<span className="project-kind-soon">잠금</span>}</strong><span>{k.description}</span>
         </button>)}</div>
       <HStack gap={3} vAlign="end" style={{flexWrap:'wrap'}}>
         <div style={{flex:'1 1 260px'}}><TextInput label="프로젝트 이름 (화면과 셋업 팩에 보이는 이름)" value={title} onChange={setTitle} placeholder="예: 에이스 업무 시스템" isDisabled={making}/></div>
@@ -47,7 +55,7 @@ export default function ProjectManager({token}:{token:string}){
       <Text color="secondary">기본 프레임워크(공통 화면, 권한·메뉴, 화면 정의 엔진)를 그대로 담은 새 프로젝트를 만들고, 전용 개발 DB·서버·미리보기를 준비합니다. 화면은 0개에서 시작하며 셋업 팩도 이 이름으로 만들어집니다.</Text>
       {makeError&&<Text role="alert">{makeError}</Text>}
     </VStack></Card>
-    {projects.map(p=><Card key={p.id} padding={4}><HStack hAlign="between" gap={3}><VStack gap={2}><Text weight="bold">{shown(p)}{p.id===projectId?' · 현재 프로젝트':''}</Text><Text color="secondary" style={{overflowWrap:'anywhere'}}>{p.root}</Text>{p.active&&<Text>실행 중</Text>}{!p.available&&<Text>프로젝트 폴더를 찾을 수 없습니다.</Text>}</VStack><Button label={`${p.name} 열기`} isDisabled={!p.available||p.id===projectId} onClick={()=>switchProject(p.id)}/></HStack></Card>)}
+    {projects.map(p=><Card key={p.id} padding={4}><HStack hAlign="between" gap={3}><VStack gap={2}><Text weight="bold">{shown(p)}{p.id===projectId?' · 현재 프로젝트':''}</Text><Text color="secondary" style={{overflowWrap:'anywhere'}}>{p.root}</Text>{p.active&&<Text>실행 중</Text>}{!p.available&&<Text>프로젝트 폴더를 찾을 수 없습니다.</Text>}</VStack><HStack gap={2}>{p.site&&<Button label={`${p.name} 지우기`} variant="ghost" isDisabled={busy||making} onClick={()=>void remove(p)}/>}<Button label={`${p.name} 열기`} isDisabled={!p.available||p.id===projectId} onClick={()=>switchProject(p.id)}/></HStack></HStack></Card>)}
     <Card padding={5}><VStack gap={4}><HStack hAlign="between"><Heading level={2}>이미 있는 폴더를 프로젝트로 등록</Heading><Button label={busy?'폴더 선택 중':'폴더 선택'} isDisabled={busy||!token} onClick={add}/></HStack><Collapsible trigger="실행 설정" defaultIsOpen={false}><VStack gap={3}><TextInput label="모델 서버" value={modelUrl} onChange={setModelUrl}/><TextInput label="테스트 DB URL" value={db} onChange={setDb} placeholder="jdbc:postgresql://호스트:5432/프로젝트_test"/><Text color="secondary">백엔드 검사는 프로젝트 전용 테스트 DB를 지정해야 사용할 수 있습니다.</Text></VStack></Collapsible>{error&&<Text role="alert">{error}</Text>}</VStack></Card>
   </VStack>;
 }
