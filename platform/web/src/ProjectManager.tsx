@@ -6,14 +6,15 @@ import { Selector } from '@astryxdesign/core/Selector';
 import { Button } from '@astryxdesign/core/Button';
 import { Card } from '@astryxdesign/core/Card';
 import { Collapsible } from '@astryxdesign/core/Collapsible';
-import { apiFetch, projectId } from './api';
+import { apiFetch, forgetProject, projectId } from './api';
 type Project={id:string;name:string;root:string;preview_url:string;available:boolean;active?:{status:string}|null;site?:{title:string;slug:string;kind:string}};
 type Kind={id:string;label:string;description:string;enabled:boolean};
 const shown=(p:Project)=>p.site?.title?`${p.site.title} (${p.name})`:p.name;
 export function switchProject(id:string){if(id===projectId)return;const url=new URL(window.location.href);url.searchParams.set('project',id);window.location.assign(url);}
 export function ProjectPicker(){
   const [projects,setProjects]=useState<Project[]>([]);
-  useEffect(()=>{const c=new AbortController();apiFetch('/api/projects',{signal:c.signal}).then(r=>r.json()).then(d=>{if(!c.signal.aborted)setProjects(d.projects||[]);}).catch(()=>{});return()=>c.abort();},[]);
+  useEffect(()=>{const c=new AbortController();apiFetch('/api/projects',{signal:c.signal}).then(async r=>{if(r.ok)return r.json();if(projectId!=='default')forgetProject();return {};}).then(d=>{if(c.signal.aborted)return;const list:Project[]=d.projects||[];
+    if(list.length&&projectId!=='default'&&!list.some(p=>p.id===projectId)){forgetProject();return;}setProjects(list);}).catch(()=>{});return()=>c.abort();},[]);
   return <Selector label="프로젝트" size="sm" isLabelHidden value={projectId} options={projects.map(p=>({value:p.id,label:p.site?.title||p.name,disabled:!p.available}))} onChange={switchProject}/>;
 }
 export default function ProjectManager({token}:{token:string}){

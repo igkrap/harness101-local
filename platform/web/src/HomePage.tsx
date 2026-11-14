@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { apiFetch, apiUrl } from "./api";
+import { apiFetch, apiUrl, projectId } from "./api";
 import type { TaskQueue, QueueItem } from "./QueuePanel";
 import "./home.css";
 import { activities, type RunEvent } from "./activity";
@@ -108,6 +108,14 @@ export default function HomePage(props: {
   const { goal, setGoal, queue } = props;
   const area = useRef<HTMLTextAreaElement>(null);
   const [recent, setRecent] = useState<TaskQueue[]>([]), [settings, setSettings] = useState(false);
+  // The project every request here goes to, said out loud beside the request box.
+  const [project, setProject] = useState<{ title: string; name: string; kind: string } | null>(null);
+  useEffect(() => { const c = new AbortController();
+    apiFetch("/api/projects", { signal: c.signal }).then(r => r.json()).then(d => { type P = { id: string; name: string; site?: { title?: string; kind?: string } };
+      const list: P[] = d.projects || [], mine = list.find(p => p.id === projectId) || (projectId === "default" ? list[0] : undefined);
+      const kind = (d.kinds || []).find((k: { id: string; label: string }) => k.id === (mine?.site?.kind || "business"))?.label || "";
+      if (mine) setProject({ title: mine.site?.title || mine.name, name: mine.name, kind }); }).catch(() => {});
+    return () => c.abort(); }, []);
   useEffect(() => { area.current?.focus(); }, [props.focusKey]);
   const [, tick] = useState(0);
   useEffect(() => { const t = setInterval(() => tick(n => n + 1), 1000); return () => clearInterval(t); }, []);
@@ -135,7 +143,7 @@ export default function HomePage(props: {
 
   return <div className="home">
     <section className="home-ask" aria-label="요청">
-      <h1>무엇을 만들까요?</h1>
+      <h1>{project && <span className="home-project" title={`요청은 이 프로젝트에서 진행됩니다 (${project.name})`}>{project.title}{project.kind && <em>{project.kind}</em>}</span>}무엇을 만들까요?</h1>
       <p className="home-lead">만들 화면이나 바꿀 내용을 평소 말투로 적으세요. AI가 화면과 데이터를 만들고, 검사를 통과하면 앱에 반영합니다.</p>
       <div className="home-box">
         <textarea ref={area} aria-label="요청 내용" value={goal} maxLength={16000} placeholder="예: 거래처 등록 화면 만들어줘"
