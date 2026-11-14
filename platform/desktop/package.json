@@ -1,0 +1,15 @@
+{
+  "name": "local-workshop",
+  "productName": "Local Workshop",
+  "version": "0.1.0",
+  "description": "말로 만드는 업무 앱 - 플랫폼 창",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "smoke": "electron . --smoke"
+  },
+  "devDependencies": {
+    "electron": "^39.0.0"
+  }
+}

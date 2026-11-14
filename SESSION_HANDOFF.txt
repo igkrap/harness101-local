@@ -1084,3 +1084,15 @@ print = standard form adjusted by definition, calendar and tree both)
 - Verified in a throwaway project fw-check through ctl apply (written definitions) and a browser: all of the above. Flyway is at 37.
 - Careful: V36 was already applied when I first appended to it - the append was moved to V37 before any deploy saw the changed V36.
 - User said (2026-11-15) "플랫폼은 일렉트론으로 가도 좋을듯" - not started; proposal given to the user.
+
+[2026-11-15] Platform as a desktop app, step 1 (user: "플랫폼은 일렉트론으로 가도 좋을듯", then "ㅇㅇ" to step 1)
+- platform/desktop (Electron 45): main.js opens one window on http://127.0.0.1:5293 and brings up what is not answering - docker start mdi-db
+  mdi-local-api, the model server (qwen-serve-forever.sh, detached), the first project's preview (vite 5292), the platform server (python3 server.py).
+  On quit it stops only what it started; the model server is left running on purpose (menu: 로컬 모델 서버 끄기). Menu: 상태 보기, 다시 확인,
+  기록 폴더 열기. Single instance. Logs: platform/state/desktop-*.log. `--smoke` runs unattended, prints one SMOKE line, saves desktop-smoke.png.
+  Start: double-click "Local Workshop.command" at the repo root, or sh platform/desktop/run.sh.
+- Tried with --smoke: beside a running platform (started nothing) and with the platform stopped (started it, window loaded, stopped it on quit;
+  model server untouched). The platform is back up through nohup as before. Not tried: a real person's session in the window (downloads dialog,
+  menus), docker being down, first start of the model server from the app.
+- window.prompt does not exist in Electron: project deletion (platform) and kept-condition names (framework QueryPanel) now use boxes on the page.
+- Step 2 (installer: electron-builder, bundled Python or a check for it; Mac first) is NOT started - waiting for the user.
