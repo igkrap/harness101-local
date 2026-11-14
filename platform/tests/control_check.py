@@ -8,6 +8,7 @@ their own screens, what is changed outside a request shows as unrecorded, files 
 "sync", records reach a remote, and the project goes away without a trace.
 
   python3 tests/control_check.py            about a minute
+  python3 tests/control_check.py --ui       also clicks through the change-history page in a browser (record, take back, work spaces, remote)
   python3 tests/control_check.py --pack     also builds and trial-installs the project's setup packs (slower, 220MB)
 """
 import json
@@ -54,7 +55,7 @@ def definition(extra=()):
 
 
 def main():
-    with_pack = '--pack' in sys.argv
+    with_pack, with_ui = '--pack' in sys.argv, '--ui' in sys.argv
     work = Path(tempfile.mkdtemp(prefix='control-check-'))
     if any(item['slug'] == SLUG for item in ctl('projects', project=False).get('projects', [])):
         ctl('remove', SLUG, '--confirm', SLUG, project=False)
@@ -125,6 +126,29 @@ def main():
         there = subprocess.run(['git', '--git-dir', str(bare), 'log', '-1', '--format=%s', 'main'], capture_output=True, text=True).stdout.strip()
         check('원격 저장소 연결과 올리기: 기록이 원격에 있다', linked.get('ok') and pushed.get('ok') and there == git('log', '-1', '--format=%s'), pushed.get('said') or pushed)
         check('변경 이력을 읽을 수 있다', ctl('log').get('ok') and '작업 공간 main' in ctl('log').get('said', ''))
+
+        if with_ui:
+            # The same controls from the change-history page, clicked in a browser; judged here by what git and the database then hold.
+            ui_remote = work / 'ui-remote.git'
+            subprocess.run(['git', 'init', '-q', '--bare', str(ui_remote)])
+            subprocess.run(['docker', 'exec', 'mdi-db', 'psql', '-U', 'mdi', '-d', site['db'], '-qc',
+                            "INSERT INTO sys_code_groups (group_code, group_name) VALUES ('UI_KIND', '화면 점검'); INSERT INTO sys_codes (group_code, code, code_name, sort_order) VALUES ('UI_KIND', 'A', '가', 1)"], capture_output=True)
+            ran = subprocess.run(['node', str(HERE / 'history_page_check.cjs'), made['project']['id'], str(ui_remote)], capture_output=True, text=True, timeout=600)
+            steps = {}
+            for line in ran.stdout.splitlines():
+                try:
+                    step = json.loads(line); steps[step['step']] = step
+                except ValueError:
+                    pass
+            ui_codes = lambda: subprocess.run(['docker', 'exec', 'mdi-db', 'psql', '-U', 'mdi', '-d', site['db'], '-Atc', "select count(*) from sys_codes where group_code = 'UI_KIND'"], capture_output=True, text=True).stdout.strip()
+            ok = lambda name: steps.get(name, {}).get('ok')
+            why = lambda name: steps.get(name, steps.get('error', {})).get('detail', ran.stderr[-300:])
+            check('화면: 변경 이력 목록이 보인다', ok('list'), why('list'))
+            check('화면: 기록 안 된 변경이 보이고 "기록하기"로 기록된다', ok('unrecorded-shown') and ok('record') and '화면에서 기록한 변경' in git('log', '-5', '--format=%s'), why('record'))
+            check('화면: "이 변경 취소하기"로 취소되고 사이트가 따라간다', ok('undo') and ui_codes() == '0', why('undo'))
+            check('화면: 작업 공간을 만들고 main 으로 돌아온다', ok('branch-create') and ok('branch-back') and 'ui-trial' in git('branch') and git('branch', '--show-current') == 'main', why('branch-back'))
+            pushed_there = subprocess.run(['git', '--git-dir', str(ui_remote), 'log', '-1', '--format=%s', 'main'], capture_output=True, text=True).stdout.strip()
+            check('화면: 원격 주소 연결과 "원격에 올리기"', ok('remote') and ok('push') and pushed_there == git('log', '-1', '--format=%s'), why('push'))
 
         if with_pack:
             fresh = work / 'third.json'

@@ -615,7 +615,8 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path.startswith('/api/history'):
                 import project_git as vcs
                 if parsed.path=='/api/history':
-                    self.send_json({'status':vcs.status(app.project),'commits':vcs.history(app.project,query.get('limit',[60])[0])});return
+                    import release
+                    self.send_json({'status':{**vcs.status(app.project),'unrecorded':release.unrecorded(app.project)},'commits':vcs.history(app.project,query.get('limit',[60])[0])});return
                 if parsed.path=='/api/history/working':
                     path=query.get('path',[None])[0]
                     self.send_json(vcs.working_file(app.project,path) if path else {'files':vcs.working_files(app.project)});return
@@ -719,8 +720,13 @@ class Handler(BaseHTTPRequestHandler):
                 import project_git as vcs
                 app.require_idle('변경 이력을 바꾸는 작업')
                 action=parsed.path.rsplit('/',1)[1]
-                if action=='record':self.send_json({'sha':vcs.commit_now(app.project,body.get('message'))});return
                 import release      # taking back and moving also bring the development site to what the files then say
+                if action=='record':      # what the site holds is written out first, so screens, menus and codes changed outside a request are in the record
+                    message=(body.get('message') or '').strip()
+                    if not 1<=len(message)<=2000:raise ValueError('무엇을 바꿨는지 적어 주세요.')
+                    made=release.record(app.project,message,author=vcs.PERSON_AUTHOR)
+                    if not made.get('commit'):raise ValueError('기록할 변경이 없습니다.')
+                    self.send_json({'sha':made['commit'],'lines':[release.say('record',made)]});return
                 if action=='undo':self.send_json(release.git_undo(app.project,vcs._sha(app.project,body.get('sha'))));return
                 if action=='branch':done=release.git_switch(app.project,body.get('name'),bool(body.get('create')));self.send_json({**done['status'],'lines':done['lines']});return
                 if action=='push':release.git_push(app.project);self.send_json(vcs.status(app.project));return

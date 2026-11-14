@@ -11,7 +11,7 @@ import "./history.css";
 const DiffEditor = lazy(() => import("./DiffEditor"));
 
 type Commit = { sha: string; short: string; author: string; kind: "model" | "person" | "platform"; date: string; subject: string; body: string; job_id: string | null; tags: string[] };
-type Status = { branch: string; branches: string[]; head: string | null; dirty: { path: string; status: string }[]; remote: string; ahead: number | null };
+type Status = { branch: string; branches: string[]; head: string | null; dirty: { path: string; status: string }[]; remote: string; ahead: number | null; unrecorded?: { site: string[]; files: string[] } };
 type FileChange = { path: string; status: string; added: number; removed: number };
 type Contents = { path: string; before: string; after: string };
 
@@ -68,6 +68,7 @@ export default function HistoryPage({ token, busy, onOpenJob }: { token: string;
     finally { setPending(false); }
   };
   const locked = busy || pending;
+  const loose = [...(status?.unrecorded?.site ?? []), ...(status?.unrecorded?.files ?? [])];
   const current = commits.find(c => c.sha === selected);
   return <div className="history-page">
     <VStack gap={4}>
@@ -75,13 +76,13 @@ export default function HistoryPage({ token, busy, onOpenJob }: { token: string;
       {busy && <Text color="secondary">AI 작업이 진행 중이라 기록·취소는 작업이 끝난 뒤 할 수 있습니다.</Text>}
       {error && <Text role="alert">{error}</Text>}
       {notice && <Text role="status">{notice}</Text>}
-      {status && status.dirty.length > 0 && <div className="history-unrecorded">
+      {status && loose.length > 0 && <div className="history-unrecorded" data-ui="history-unrecorded">
         <VStack gap={3}>
-          <Text weight="bold">아직 기록되지 않은 수정 {status.dirty.length}개</Text>
-          <Text color="secondary">직접 고친 내용입니다. 기록해 두면 나중에 이 시점과 비교하거나 되돌릴 수 있습니다. (AI 작업을 시작하면 자동으로 기록됩니다.)</Text>
-          <HStack gap={2} vAlign="end"><div style={{ flex: 1 }}><TextInput label="무엇을 바꿨나요?" value={message} onChange={setMessage} placeholder="예: 회사 화면 담당자 칸 이름 수정" /></div>
+          <Text weight="bold">아직 기록되지 않은 변경 {loose.length}개</Text>
+          <Text color="secondary">요청 밖에서 바뀐 것입니다 (관리자 화면에서 고친 화면·메뉴 편성·공통 코드, 직접 고친 파일): {loose.slice(0, 8).join(", ")}{loose.length > 8 ? " …" : ""}. 기록해 두면 나중에 이 시점과 비교하거나 되돌릴 수 있습니다.</Text>
+          <HStack gap={2} vAlign="end"><div style={{ flex: 1 }}><TextInput label="무엇을 바꿨나요?" value={message} onChange={setMessage} placeholder="예: 영업 메뉴 편성" /></div>
             <Button label="기록하기" isDisabled={locked || !message.trim()} onClick={() => void act("record", { message }, "기록했습니다.").then(() => setMessage(""))} /></HStack>
-          <Collapsible trigger="바뀐 파일 보기" defaultIsOpen={false}><Changes base="/api/history/working" /></Collapsible>
+          {status.dirty.length > 0 && <Collapsible trigger="바뀐 파일 보기" defaultIsOpen={false}><Changes base="/api/history/working" /></Collapsible>}
         </VStack>
       </div>}
       <ol className="history-list" aria-label="변경 이력 목록">
@@ -96,8 +97,8 @@ export default function HistoryPage({ token, busy, onOpenJob }: { token: string;
             <VStack gap={3}>
               <HStack gap={2} style={{ flexWrap: "wrap" }}>
                 {c.job_id && <Button label="AI 작업 기록 보기" size="sm" variant="secondary" onClick={() => onOpenJob(c.job_id!)} />}
-                {c.kind !== "platform" && <Button label="이 변경 취소하기" size="sm" variant="secondary" isDisabled={locked || (status?.dirty.length ?? 0) > 0} onClick={() => setUndoing(c)} />}
-                {(status?.dirty.length ?? 0) > 0 && <Text color="secondary">기록되지 않은 수정이 있으면 취소할 수 없습니다. 먼저 기록하세요.</Text>}
+                <Button label="이 변경 취소하기" size="sm" variant="secondary" isDisabled={locked} onClick={() => setUndoing(c)} />
+                {loose.length > 0 && <Text color="secondary">기록되지 않은 변경은 취소하기 전에 먼저 자동으로 기록됩니다.</Text>}
               </HStack>
               {c.body && <Collapsible trigger="요청 원문" defaultIsOpen={false}><pre className="history-body">{c.body}</pre></Collapsible>}
               <Collapsible trigger="바뀐 파일과 코드 보기" defaultIsOpen={false}><Changes base={`/api/history/${c.sha}`} /></Collapsible>
@@ -120,7 +121,7 @@ export default function HistoryPage({ token, busy, onOpenJob }: { token: string;
       </Collapsible>}
     </VStack>
     <AlertDialog isOpen={!!undoing} onOpenChange={open => { if (!open) setUndoing(null); }} title="이 변경 취소하기"
-      description={undoing ? `"${undoing.subject}" 변경을 취소합니다. 이후의 다른 변경은 그대로 두고, 취소한 것도 새 기록으로 남습니다.` : ""}
+      description={undoing ? `"${undoing.subject}" 변경을 취소합니다. 개발 사이트의 화면·메뉴·공통 코드도 따라 되돌아갑니다. 이후의 다른 변경은 그대로 두고, 취소한 것도 새 기록으로 남습니다.` : ""}
       cancelLabel="닫기" actionLabel="취소하기" actionVariant="destructive"
       onAction={() => { const c = undoing; setUndoing(null); if (c) void act("undo", { sha: c.sha }, `"${c.subject}" 변경을 취소했습니다.`); }} />
   </div>;
