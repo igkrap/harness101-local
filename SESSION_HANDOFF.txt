@@ -897,3 +897,6 @@ Orca CLI selected /Applications/Orca.app/Contents/Resources/bin/orca, skill read
 - Kept: numbers right-aligned (GridColumn.align), one period control for a whole dashboard (each summary's own date filter), bulk import for screens with
   lines (one sheet row per line; consecutive rows with the same header values are one record; all or nothing), 올리기 on line-table screens.
 - 38 screens exist, mostly made by test requests and all unplaced; the user decides which to delete (list given in the conversation).
+- Display standard (user's rule): numbers right; dates yyyy/mm/dd, date-times yyyy/mm/dd HH:MM:SS, common codes and statuses centre; variable text left.
+  GridColumn.align 'right'|'center'; showDate/storeDate/isDate/formatDateTime in gridExport; inputs show and accept slashes (also dots, digits only); API.txt updated.
+  There is no time-only field type yet; print forms and summary group labels use the same date form.
