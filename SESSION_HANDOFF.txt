@@ -987,3 +987,5 @@ Orca CLI selected /Applications/Orca.app/Contents/Resources/bin/orca, skill read
 - platform/first_setup.py is new and reusable (--suffix/--remove for trials). qwen-serve-forever.sh no longer has /Users/igkrap in it.
 - Windows platform pack: NOT started. Needs decisions: local model runtime on Windows (MLX is Mac-only -> llama.cpp/GGUF or similar, unverifiable here),
   and whether the dev DB/API may use Docker Desktop/WSL2 or must run natively like the operating pack.
+
+- 2026-11-14: user put platform-side packs on hold ("플랫폼쪽은 일단 하지말자"). Mac platform pack stays as built; no Windows platform pack, no dockerising of the platform until asked.
