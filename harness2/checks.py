@@ -716,6 +716,16 @@ def effect_checks(key, definition, framework):
                     got = [[line.get(into) for into in make['lines']['set']] for line in new[0].get('lines', [])]
                     want = [[line.get(come) for come in make['lines']['set'].values()] for line in row.get('lines', [])]
                     report.add('자동 처리: 줄 표도 줄마다 옮겨진다', got == want, f'기대 {want}, 실제 {got}')
+            elif effect.get('notify'):
+                # Who is told depends on who has the screen; the account that runs the checks caused the event, so it is never told itself.
+                # What can be shown here: the event still goes through, and the notifications written for the record carry the message.
+                tell = effect['notify']
+                row = source()
+                code, answer = trigger(row, effect['on'])
+                told = framework.ok('GET', f"/api/system/notifications?entity={key}&record={row['id']}")
+                target = f"{tell['screen']} 화면을 쓰는 사람들" if tell.get('screen') else '등록한 사람'
+                report.add(f"자동 처리: {when} {target}에게 알림이 나간다 (지금 받을 사람 {len(told)}명, 일을 한 본인은 빼고)",
+                           code in (200, 201) and all(item['message'].startswith(tell['message']) for item in told), f'{code} {answer} / {told}')
             else:
                 act = effect['act']
                 pointer = next(field for field in definition['fields'] if field['name'] == act['via'])
