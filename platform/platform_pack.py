@@ -110,7 +110,7 @@ NEW="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['stamp'])
 OLD="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['stamp'])" "$TARGET/PLATFORM_VERSION.json" 2>/dev/null || echo 0)"
 [ "$NEW" = "$OLD" ] && { echo "이미 이 버전($NEW)입니다."; exit 0; }
 [ "$NEW" \< "$OLD" ] && [ "${2:-}" != "--force" ] && fail "설치된 버전($OLD)이 이 팩($NEW)보다 새것입니다. 일부러 되돌리려면 끝에 --force 를 붙이세요."
-bash "$TARGET/stop.sh" platform || true
+[ "${PACK_NO_STOP:-}" = "1" ] || bash "$TARGET/stop.sh" platform || true      # (시험 설치에서는 끄지 않는다: 같은 맥의 실제 플랫폼이 꺼지므로)
 KEEP="$TARGET/previous-platform-$OLD"
 rm -rf "$KEEP"; mkdir -p "$KEEP"
 STAGE="$(mktemp -d)"
