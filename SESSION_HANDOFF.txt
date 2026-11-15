@@ -1351,3 +1351,6 @@ print = standard form adjusted by definition, calendar and tree both)
   is chosen (fill from the requirement was already there). Its run failed on a framework issue - a locked field kept its stored value even
   when the field it is filled from changed in the same save (limit then refused); now it follows. The model's definition from that run was
   applied as is with ctl apply (69 checks, flow included).
+- Process-level (layer 3) postponed by the user. process_material deleted (no records, nothing pointed at it). The intended screen is a
+  drill-down (BOM items → the item's routing steps → materials of a chosen step in a grid): a cascading-selection part is needed first.
+  공정 등록 / 품목별 공정 등록 kept; the line-ref part stays in the framework.
