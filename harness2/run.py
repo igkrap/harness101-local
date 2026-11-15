@@ -139,7 +139,7 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
             result['view'] = f"달력 화면 - {part['entity']} 자료를 {part['date']}" + (f" ~ {part['end']}" if part.get('end') else '') + ' 날짜로 보여 준다'
         if definition.get('stock'):
             part = definition['stock']
-            result['stock'] = ('재고가 늘어난다 (줄마다 LOT, 단가 ' + (part.get('unitCost') or '없음') + ')' if part['direction'] == 'in' else '재고가 줄어든다 (오래된 LOT 부터, 모자라면 거절)') + f" - 품목 {part['item']}, 수량 {part['quantity']}, 창고 {part['warehouse']}" + (f", LOT 번호 {part['lot']} (LOT 관리 품목만)" if part.get('lot') else '')
+            result['stock'] = ('재고가 늘어난다 (줄마다 LOT, 단가 ' + (part.get('unitCost') or '없음') + ')' if part['direction'] == 'in' else f"재고가 {part['warehouse']} 창고에서 {part['toWarehouse']} 창고로 옮겨진다 (LOT 번호·단가 그대로)" if part['direction'] == 'move' else '재고가 줄어든다 (오래된 LOT 부터, 모자라면 거절)') + f" - 품목 {part['item']}, 수량 {part['quantity']}, 창고 {part['warehouse']}" + (f", LOT 번호 {part['lot']} (LOT 관리 품목만)" if part.get('lot') else '')
         if definition.get('take'):
             part = definition['take']
             result['view'] = f"이어받기 화면 - {part['from']} 에서 아직 남은 것을 목록으로 조회해, 고른 줄로 {part['entity']} 을(를) 만든다 (입력 폼 없이 목록에서 처리)" \

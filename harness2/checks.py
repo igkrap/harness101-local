@@ -261,7 +261,7 @@ def stock_of(framework, item, warehouse):
 def stock_ready(body, definition, framework, cost=100):
     """A sample of an issuing screen can only be stored when the stock is there: what it lacks is put in (as opening stock, at a known cost)."""
     part = definition.get('stock')
-    if not part or part['direction'] != 'out':
+    if not part or part['direction'] == 'in':
         return
     need = {}
     for item, warehouse, quantity, _ in _stock_units(body, definition):
@@ -291,7 +291,9 @@ def lot_checks(report, definition, framework, new_body, api):
         made.clear()
     try:
         body = new_body()
-        item, warehouse, quantity, unit = next(one for one in _stock_units(body, definition) if one[0] and one[1] and one[2])
+        every = _stock_units(body, definition)
+        item, warehouse, quantity, unit = next(one for one in every if one[0] and one[1] and one[2])
+        place = next(index for index, one in enumerate(every) if one[3] is unit) + 1        # the line the lot is typed on: only its movements are looked at
         unit[part['lot']] = 'L-NONE-1'
         code, answer = framework.call('POST', api, body)
         if code == 201:
@@ -308,7 +310,7 @@ def lot_checks(report, definition, framework, new_body, api):
             code, row = framework.call('POST', api, body)
             if code == 201:
                 made.append(row['id'])
-            lots = [line.get('lot') for line in (row.get('_stock') or [])] if code == 201 else []
+            lots = [line.get('lot') for line in (row.get('_stock') or []) if line.get('line') == place] if code == 201 else []
             report.add('LOT: LOT 관리 품목은 입고할 때 적은 번호가 LOT 번호가 된다', code == 201 and number in lots, f'{code} {lots or row}')
         else:
             have = stock_of(framework, item, warehouse)        # what the sample put in sits in lots with numbers of their own
@@ -323,7 +325,7 @@ def lot_checks(report, definition, framework, new_body, api):
                 code, row = framework.call('POST', api, body)
                 if code == 201:
                     made.append(row['id'])
-                lots = {line.get('lot') for line in (row.get('_stock') or [])} if code == 201 else set()
+                lots = {line.get('lot') for line in (row.get('_stock') or []) if line.get('line') == place} if code == 201 else set()
                 report.add('LOT: 있는 LOT 번호를 지정하면 그 LOT 에서만 꺼낸다', code == 201 and lots == {there[0]['lot']} or (code == 400 and float(there[0]['remaining']) < quantity), f'{code} {lots or row}')
     finally:
         remove()
@@ -351,7 +353,21 @@ def stock_checks(report, definition, framework, new_body, post, api):
         cost = units[0][3].get(part['unitCost']) if part.get('unitCost') else 0
         report.add('재고: 줄마다 LOT 가 생기고 그 줄의 단가가 LOT 단가가 된다', len(lines) == len(_stock_units(body, definition)) and all(line.get('lot') for line in lines) and float(lines[0]['unitCost']) == float(cost or 0), f'{lines[:2]}')
     else:
-        report.add(f'재고: 등록하면 그 창고의 재고가 수량만큼({moved:g}) 줄어든다', abs(before - after - moved) < 1e-9, f'{before:g} → {after:g}')
+        report.add(f"재고: 등록하면 {'보내는' if part['direction'] == 'move' else '그'} 창고의 재고가 수량만큼({moved:g}) 줄어든다", abs(before - after - moved) < 1e-9, f'{before:g} → {after:g}')
+        if part['direction'] == 'move':
+            there = units[0][3].get(part['toWarehouse']) if part['toWarehouse'] in units[0][3] else body.get(part['toWarehouse'])
+            arrived = [line for line in lines if line['direction'] == 'IN']
+            report.add(f'재고: 받는 창고의 재고가 그만큼({moved:g}) 늘어나고 LOT 번호와 단가가 따라간다', abs(stock_of(framework, item, there) - moved) < 1e-9
+                       and sorted((line['lot'], float(line['unitCost'])) for line in arrived) == sorted((line['lot'], float(line['unitCost'])) for line in lines if line['direction'] == 'OUT'), f'{stock_of(framework, item, there):g} {lines[:4]}')
+            lines = [line for line in lines if line['direction'] == 'OUT']
+            same = new_body()
+            holder = (same.get('lines') or [same])[0] if part['toWarehouse'] in ((same.get('lines') or [{}])[0]) else same
+            source = (same.get('lines') or [same])[0] if part['warehouse'] in ((same.get('lines') or [{}])[0]) else same
+            holder[part['toWarehouse']] = source[part['warehouse']]
+            code, answer = framework.call('POST', api, same)
+            report.add('재고: 보내는 창고와 받는 창고가 같으면 거절된다', code == 400, f'{code} {answer}')
+            if code == 201:
+                framework.call('DELETE', f"{api}/{answer['id']}?force=true")
         report.add('재고: 꺼낸 LOT 와 그 단가로 원가가 잡힌다 (수량 × LOT 단가)', bool(lines) and all(abs(float(line['amount']) - float(line['quantity']) * float(line['unitCost'])) < 1e-6 for line in lines)
                    and abs(sum(float(line['quantity']) for line in lines if line['line'] == 1) - (units[0][2])) < 1e-9, f'{lines[:3]}')
         short = new_body()

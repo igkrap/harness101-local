@@ -103,7 +103,7 @@ def describe(key, definition):
         if definition.get(part):
             text += f' / {label}: ' + '; '.join(rule['message'] for rule in definition[part])
     if definition.get('stock'):
-        text += f" / 재고: {'늘림(입고)' if definition['stock']['direction'] == 'in' else '줄임(출고)'} - 품목 {definition['stock']['item']}, 수량 {definition['stock']['quantity']}, 창고 {definition['stock']['warehouse']}" + (f", LOT 번호 {definition['stock']['lot']}" if definition['stock'].get('lot') else '')
+        text += f" / 재고: {'늘림(입고)' if definition['stock']['direction'] == 'in' else '창고 이동' if definition['stock']['direction'] == 'move' else '줄임(출고)'} - 품목 {definition['stock']['item']}, 수량 {definition['stock']['quantity']}, 창고 {definition['stock']['warehouse']}" + (f", LOT 번호 {definition['stock']['lot']}" if definition['stock'].get('lot') else '')
     if definition.get('effects'):
         text += ' / 자동 처리: ' + '; '.join(('등록할 때' if effect['on'] == 'create' else f"{effect['on']} 동작을 할 때") + ' → ' + (f"{effect['create']['entity']} 한 건을 만든다" if effect.get('create') else f"{effect['fill']['entity']} 의 수량이 다 차면 그 자료에 {effect['fill']['action']} 동작을 한다" if effect.get('fill') else f"{effect['act']['via']} 이(가) 가리키는 자료에 {effect['act']['action']} 동작을 한다") for effect in definition['effects'])
     if definition.get('over'):

@@ -1240,3 +1240,11 @@ print = standard form adjusted by definition, calendar and tree both)
 - control_check failed "이름을 바꾼 뒤에도 요청이..." again once: the screen checker's first page on a just-restarted preview (cold compile)
   ran past 10 s. react_layout_inspector.cjs now waits up to 30 s and goes on if the page is not idle. Two runs after: 27/27.
   (local-only/harness is a link to erp-harness, which the outer repository tracks - the edit is in the outer commit.)
+
+== 2026-11-15: warehouse transfer as a part; what is a part and what is not ==
+- The user: "지금 너 부품을 만들어주고 있는거 맞지? 단순하게 화면을 만드는걸 너한테 시킨건 아님". My job is framework PARTS the local model
+  uses through definitions - not screens. Hand-made screens so far: 재고 현황 (read only - acceptable) and 재고 실사 조정 (a registering screen:
+  against the rule; candidate to become a part, e.g. stock direction "count", so the model makes the count screen and counts are kept as records).
+- stock.direction "move" + toWarehouse: out of `warehouse`, into `toWarehouse`; each lot keeps number, cost and first receiving day; reverse
+  refuses (409) when what arrived was already issued or moved on. The local model made 창고 이동 등록 (warehouse_transfer) from one sentence
+  (55 checks, 363 s). First try failed on my lot check (it looked at other lines' lots) - the definition had been right.
