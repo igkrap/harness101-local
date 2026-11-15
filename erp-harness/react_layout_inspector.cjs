@@ -52,7 +52,8 @@ async function verify(input) {
 
           try {
             const urlObj = new URL(preview_url); const isLocal = ['localhost', '127.0.0.1', '[::1]'].includes(urlObj.hostname); if (!['http:', 'https:'].includes(urlObj.protocol) || !isLocal) throw new Error('invalid preview_url'); const target = input.open_screen && !loginPage ? preview_url.replace(/#.*$/, '') + '#open=' + encodeURIComponent(input.open_screen) : preview_url;
-            await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 10000 }); await page.waitForLoadState('networkidle', { timeout: 10000 });
+            // A preview that has just been started (a new or renamed project) compiles the app on its first request: that takes longer than a warm one.
+            await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 30000 }); await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
             if (input.open_screen && !loginPage) {
               // The deep link opens the task's screen whatever module holds it; apps without it fall back to the menu.
               const opened = await page.getByRole('tabpanel', { name: input.open_screen, exact: true }).first().waitFor({ state: 'visible', timeout: 12000 }).then(() => true, () => false);   // the app reads its screen definitions first; with many screens that takes a few seconds

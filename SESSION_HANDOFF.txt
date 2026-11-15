@@ -1227,3 +1227,16 @@ print = standard form adjusted by definition, calendar and tree both)
   ship 12 unnamed -> A-100 x10 + B-200 x2; unknown lot refused; B-200 left 4.
 - Not built: serial tracking (needs a many-numbers-per-line entry), a lot picker (the lot is typed as text), adjustment/transfer screens,
   accounting vouchers. Earlier `inbound` (stock in, made by the model) has no lot field.
+
+== 2026-11-15: lot picker, stock count screen ==
+- app/LotDialog: lots of an item in stock in a warehouse (same numbers merged). Opened from the lot cell of a screen that issues stock
+  (DocumentScreen, first table of lines) and from 찾기 in a take grid row (TakeController shape.lotPick tells where the row's item and the
+  warehouse come from). Typing the number still works.
+- 재고 실사 조정 (SYS0012, /api/count-stock, V41): grid of the books (LOT items a row per lot, others per warehouse), type the counted quantity,
+  저장 -> only differing rows post; ledger source "_count" (shown as 재고 실사). Found more on a NONE item = a new lot at the newest lot's cost.
+  재고 넣기 (opening stock) with an optional lot number -> source "_adjust". Both under 시스템 관리 in the menu for now.
+- Browser run (10 points): picker says to choose the warehouse first; lists A-1/B-2 with what is left; chosen lot lands in the row; saved
+  result took 3 from B-2 only; count screen shows a row per lot; counted 8 of 10 -> books 8, ledger OUT 2 as 재고 실사. Test data removed.
+- control_check failed "이름을 바꾼 뒤에도 요청이..." again once: the screen checker's first page on a just-restarted preview (cold compile)
+  ran past 10 s. react_layout_inspector.cjs now waits up to 30 s and goes on if the page is not idle. Two runs after: 27/27.
+  NOTE: local-only/harness is not tracked by local-only's git (nor by the outer one) - that edit lives only on this disk.
