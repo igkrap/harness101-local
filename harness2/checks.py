@@ -331,6 +331,30 @@ def lot_checks(report, definition, framework, new_body, api):
         remove()
 
 
+def together_checks(report, definition, framework, made, new_body, api):
+    """Several at once: rows sharing the values typed once become records of their own; one bad row stores none of them."""
+    shared = definition.get('together') or []
+    if not shared:
+        return
+    first, second = new_body(), new_body()
+    second.update({name: first.get(name) for name in shared})
+    before = len(framework.ok('GET', f'{api}?_limit=100000'))
+    code, answer = framework.call('POST', f'{api}/batch', {'rows': [first, second]})
+    rows = (answer or {}).get('rows') or [] if isinstance(answer, dict) else []
+    for row in rows:
+        made.append((definition.get('key') or api.rsplit('/', 1)[-1], row['id']))
+    same = len(rows) == 2 and all(rows[0].get(name) == rows[1].get(name) for name in shared) and rows[0]['id'] != rows[1]['id']
+    report.add(f"여러 건 한 번에: 두 줄을 저장하면 두 건이 따로 생기고 함께 적은 값({', '.join(shared)})은 같다", code == 200 and same, f'{code} {str(answer)[:200]}')
+    required = [field for field in definition['fields'] if field.get('required') and field['name'] not in shared and not _computed(field)]
+    if required:
+        bad = new_body()
+        bad[required[0]['name']] = None
+        code, answer = framework.call('POST', f'{api}/batch', {'rows': [new_body(), bad]})
+        after = len(framework.ok('GET', f'{api}?_limit=100000'))
+        report.add(f"여러 건 한 번에: 한 줄이라도 거절되면 ({required[0]['label']} 비움) 아무것도 저장되지 않고 몇 번째 줄인지 알려 준다",
+                   code == 400 and '2번째 줄' in str((answer or {}).get('detail')) and after == before + 2, f'{code} {answer} / {before} → {after}')
+
+
 def stock_checks(report, definition, framework, new_body, post, api):
     """A screen that moves stock: receiving makes lots at the line's cost and the stock goes up; issuing takes from the oldest lots at their cost,
     the stock goes down, and more than there is is refused; deleting the record takes its movement back."""
@@ -636,6 +660,7 @@ def record_checks(key, definition, framework):
                     refused(f"줄의 필수 항목 {field['label']}: 비우면 거절된다", broken)
         conditions(report, definition, framework, made, new_body, post, api)
         stock_checks(report, definition, framework, new_body, post, api)
+        together_checks(report, definition, framework, made, new_body, api)
         minimal = {field['name']: value for field, value in ((field, sample(field, framework, made)) for field in plain if field['required'])}
         if lines and low > 0:
             minimal['lines'] = [{field['name']: value for field, value in ((field, _line([field], framework, made, 2)[field['name']]) for field in line_fields if field['required'])} for _ in range(low)]
@@ -1425,7 +1450,7 @@ def effect_checks(key, definition, framework):
 
 def rich(definition):
     """The framework draws these with the screen that has a number line, status buttons and a lines table."""
-    return bool(definition.get('lines') or definition.get('status') or any(field.get('type') == 'serial' for field in definition['fields']))
+    return bool(definition.get('lines') or definition.get('status') or definition.get('together') or any(field.get('type') == 'serial' for field in definition['fields']))
 
 
 def document_screen_criteria(definition):
@@ -1437,6 +1462,8 @@ def document_screen_criteria(definition):
              ('입력 영역이 있다', {'op': 'visible', 'selector': editor})]
     if definition.get('lines'):
         items.append(('줄 표가 있다', {'op': 'visible', 'selector': table}))
+    if definition.get('together'):
+        items.append(('새로 등록할 때 여러 건을 줄마다 적는 표가 있다', {'op': 'visible', 'selector': '[data-ui="document-batch"]'}))
     if definition.get('status'):
         items.append(('목록에 상태 열이 있다', {'op': 'text', 'selector': '[data-ui="record-grid"]', 'contains': '상태'}))
     for label in ('조회', '신규', '저장', '삭제'):
@@ -1446,6 +1473,9 @@ def document_screen_criteria(definition):
             items.append((f"입력 영역에 {field['label']} 이(가) 보인다", {'op': 'text', 'selector': editor, 'contains': field['label']}))
         elif field.get('showWhen') and not _holds(field['showWhen'], {}):
             pass                                  # there only under another field's value: an empty form does not show it
+        elif definition.get('together') and field['name'] not in definition['together']:
+            # a new registration types these once per row, in the table of records to make
+            items.append((f"새로 등록하는 표에 {field['label']} 열이 있다", {'op': 'text', 'selector': '[data-ui="document-batch"]', 'contains': field['label']}))
         else:
             items.append((f"입력 영역에 {field['label']} 입력칸이 있다", {'op': 'visible', 'selector': f'{editor} >> {standard_contract.by_label(field["label"])}'}))
         items.append((f"목록에 {field['label']} 열이 있다", {'op': 'text', 'selector': '[data-ui="record-grid"]', 'contains': field['label']}))

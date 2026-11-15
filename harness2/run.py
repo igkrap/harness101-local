@@ -137,6 +137,8 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
         if definition.get('calendar'):
             part = definition['calendar']
             result['view'] = f"달력 화면 - {part['entity']} 자료를 {part['date']}" + (f" ~ {part['end']}" if part.get('end') else '') + ' 날짜로 보여 준다'
+        if definition.get('together'):
+            result['together'] = f"{', '.join(definition['together'])} 은(는) 한 번만 적고 나머지는 줄마다 - 줄 하나가 한 건"
         if definition.get('stock'):
             part = definition['stock']
             result['stock'] = ('재고가 늘어난다 (줄마다 LOT, 단가 ' + (part.get('unitCost') or '없음') + ')' if part['direction'] == 'in' else f"재고가 {part['warehouse']} 창고에서 {part['toWarehouse']} 창고로 옮겨진다 (LOT 번호·단가 그대로)" if part['direction'] == 'move' else '재고가 줄어든다 (오래된 LOT 부터, 모자라면 거절)') + f" - 품목 {part['item']}, 수량 {part['quantity']}, 창고 {part['warehouse']}" + (f", LOT 번호 {part['lot']} (LOT 관리 품목만)" if part.get('lot') else '')
@@ -338,6 +340,8 @@ def say(result):
             lines.append('줄 표 항목: ' + ', '.join(result['lines']) + (f"  [{result['line_limit']}]" if result.get('line_limit') else ''))
         if result.get('stock'):
             lines.append('재고: ' + result['stock'])
+        if result.get('together'):
+            lines.append('여러 건 한 번에 등록: ' + result['together'])
         for more in result.get('more_lines') or []:
             lines.append(f"줄 표 {more['label']} 항목: " + ', '.join(more['fields']))
         if result.get('statuses'):

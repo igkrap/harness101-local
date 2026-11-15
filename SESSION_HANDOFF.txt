@@ -1261,3 +1261,18 @@ print = standard form adjusted by definition, calendar and tree both)
   설비·기타(6). Nothing is 미편성 now. Recorded (e65895b).
 - Still open: a model sentence test of the single-item rule on a new process; whether 재고 실사 조정 becomes a part; the user's cut-off
   message "첫장은"; whether 수주/발주 also become one item per record.
+
+== 2026-11-15: 수주·발주·견적 one item per record; several at once (together) ==
+- User: "한건 한 품목이 맞지 일단" + "최초라면 뭐 한건에 여러 등록을 한번에 하는건 유리하긴 하겠다" / "대신 그것도 결국 개별 등록이어야하는거임".
+- Part "together": [fields] on a screen without lines. A new registration types those once and the rest per row (table data-ui=document-batch);
+  POST /api/data/{key}/batch stores each row as its own record, all or nothing ("2번째 줄: ..."). Editing an existing record is one at a time.
+  harness: together_checks, screen criteria (row fields as columns of the batch table), define.py guidance for the model.
+- Converted: sales_order (together vendor/date/delivery/employee/department/payment terms), purchase_order (vendor/dates), quotation
+  (effect: creates a sales order with the same item). Limits of shipping_instruction/result and inbound now against flat orders; eleven
+  summaries lines=false, total -> amount. The 8 existing orders were split: first line kept on the order, 4 further lines became new orders
+  SO-2611-0010..0013; amounts recomputed. The old line table r_sales_order__lines is left in the database (unused).
+- sales_order's final change dropped the old total (with values): the platform has no "decide anyway" path, so I ran harness2/run.py
+  --force once by hand (user had agreed to the conversion). FOUND: an earlier failed apply of sales_order left the dev site changed but not
+  recorded (status showed 수주 등록 unrecorded) - a failed run does not always put the site back. Not fixed yet.
+- Browser: 수주 등록 신규 -> customer once, two item rows -> two orders SO-..14/15 with the same customer; missing 수주일 caught on the screen.
+- Still with lines: price_list, project, expense_claim (not process stages - not touched).
