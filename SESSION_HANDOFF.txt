@@ -1239,4 +1239,4 @@ print = standard form adjusted by definition, calendar and tree both)
   result took 3 from B-2 only; count screen shows a row per lot; counted 8 of 10 -> books 8, ledger OUT 2 as 재고 실사. Test data removed.
 - control_check failed "이름을 바꾼 뒤에도 요청이..." again once: the screen checker's first page on a just-restarted preview (cold compile)
   ran past 10 s. react_layout_inspector.cjs now waits up to 30 s and goes on if the page is not idle. Two runs after: 27/27.
-  NOTE: local-only/harness is not tracked by local-only's git (nor by the outer one) - that edit lives only on this disk.
+  (local-only/harness is a link to erp-harness, which the outer repository tracks - the edit is in the outer commit.)
