@@ -1276,3 +1276,13 @@ print = standard form adjusted by definition, calendar and tree both)
   recorded (status showed 수주 등록 unrecorded) - a failed run does not always put the site back. Not fixed yet.
 - Browser: 수주 등록 신규 -> customer once, two item rows -> two orders SO-..14/15 with the same customer; missing 수주일 caught on the screen.
 - Still with lines: price_list, project, expense_claim (not process stages - not touched).
+
+== 2026-11-15: the edit panel is one record; non-conforming things removed ==
+- User: "편집패널은 무조건 단건을 기반으로 신규/수정할 수 있는게 맞는듯" then "기존 만든거 여기에 부합되지 않는거면 지우고 시작하자".
+- Taken out: the `together` part (definition part, POST /batch, the batch table in DocumentScreen, harness checks/guidance). sales_order,
+  purchase_order, quotation re-applied without it first (define.differences had to learn the part for one run so the change was seen).
+- Deleted (0 records, nothing pointed at them): price_list, project, expense_claim and their menu entries. No screen has a line table now.
+- Model guidance: no line tables at all; the edit panel registers one record.
+- NOT removed yet (asked the user): the framework's line-table machinery itself - lines, moreLines, take group "same" (needs lines), effects
+  create.lines, summary/limit/check "lines" flags, line import, the line parts of the GUIDE text. Unused by any screen now.
+- 재고 실사 조정 is still a hand-made screen (a grid, no edit panel) - flagged before as not a part.
