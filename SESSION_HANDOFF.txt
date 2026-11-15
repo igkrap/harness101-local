@@ -1294,3 +1294,22 @@ print = standard form adjusted by definition, calendar and tree both)
   a work order points at the BOM / routing master data instead of carrying them.
 - price_list (deleted earlier today) brought back from git through ctl apply (37 checks), placed in 기준 정보 again. Model guidance updated.
 - BOM / routing screens are NOT built (the user asked to stop adding unchecked screens).
+
+== 2026-11-15: clean slate; stock screens as parts; business flows judged end to end ==
+- User picked "업무 화면 전부" to delete: all 41 business screens, their records, the WORK menus and the stock ledger are gone (definitions stay
+  in local-only's git history). The local model rebuilds from layer 1 by sentences. System screens stay.
+- Hand-made stock screens removed (V42 deletes SYS0011/12); replaced by parts: stock.direction "count" (counted quantity sets the books,
+  opening stock is a count) and a stockView screen kind {"stockView": {"show": all|balance|lots|moves}} (app/StockViewScreen). Lot window reads
+  /api/auth/stock/lots; seeding/adjust is /api/system/stock/adjust (administrators).
+- Layer-2 part proven before the wipe: the model wrote a BOM screen with uniqueBy, a unique line field and noCycle from one sentence
+  (41 checks, 679 s - slow).
+- Business flows (user's request: judge business correctness independently; a change like "도착 시 입고 자동" and its reversal cannot be judged
+  per screen): harness2/flows.py. A flow is registered by sentence "업무 흐름 등록: A → B → C" (also 보기, 삭제), kept in release/flows.json
+  (project git). Judging = running it end to end with the screens as they are: each step reachable (automatic follow-up, carried on through
+  status actions, or a take-over screen), quantity arrives whole, nothing left in the take list, stock moves once, fill statuses reached,
+  and NO records of a stage made off the path. Run after every published change (run.py), at the end of a multi-step request, after a
+  request undo (put back if broken) and after a git undo (release.git_undo reverts the revert if broken).
+- platform/tests/flow_check.py: 6/6 (a second automatic way blocked by the limit is fine; an automatic record that does not point back is
+  caught; take-over only, automatic only, and no way at all).
+- Next (agreed): layer-3 part (refer to a detail line of another master + same parent), expansion (a business record expands BOM/routing by
+  its quantity into one-item records), then the local model rebuilds from layer 1 and flows get registered.

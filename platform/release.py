@@ -13,6 +13,7 @@ Every pack is tried before it is handed over: it is installed from nothing in a 
 starts, every screen was accepted, the administrator can sign in) and removed again.
 
 """
+import sys
 import hashlib
 from contextlib import contextmanager
 import http.cookiejar
@@ -378,6 +379,21 @@ def _follow(project, lines):
     return {'success': not failed, 'lines': lines + moved}
 
 
+def _flows_broken(project):
+    """Every registered business flow, run end to end with the development site as it is now: lines for those that do not hold."""
+    try:
+        folder = str(Path(__file__).resolve().parents[1] / 'harness2')
+        if folder not in sys.path:
+            sys.path.append(folder)
+        import flows
+        from framework import Framework
+        framework = Framework()
+        stages = sorted({key for flow in flows.load() for key in flow['stages']})
+        return flows.judge(stages, framework)[2] if stages else []
+    except Exception as problem:
+        return [f'업무 흐름을 돌려 보지 못했습니다: {str(problem)[:200]}']
+
+
 def git_undo(project, sha=None):
     """Take one recorded change back (the newest when none is named): a new commit that undoes it, and the development site follows."""
     with exclusive('기록 취소'):
@@ -386,7 +402,13 @@ def git_undo(project, sha=None):
         subject = vcs._git(project, 'log', '-1', '--format=%s', target)
         done = vcs.revert(project, target)
         lines.append(f'"{subject}" 을(를) 취소했습니다 ({done[:7]}).')
-        return {**_follow(project, lines), 'sha': done}
+        out = {**_follow(project, lines), 'sha': done}
+        broken = _flows_broken(project) if out.get('success') else []
+        if broken:          # taking a change back is a change too: when it breaks a business flow, the taking back is taken back
+            vcs.revert(project, done)
+            again = _follow(project, [])
+            out.update(success=False, lines=lines + broken + ['되돌리면 업무 흐름이 깨져서 취소하지 않았습니다 (취소한 것을 다시 취소했습니다). 흐름을 바꾸려면 업무 흐름도 함께 바꿔야 합니다.'] + again.get('lines', []))
+        return out
 
 
 def git_switch(project, name, create=False):

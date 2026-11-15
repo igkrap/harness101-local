@@ -139,6 +139,16 @@ def settle(body, definition, framework, made):
     tables of lines it cannot exist without. Each condition's field takes the first value asked for, so the fields that depend on
     it are there; a field that is still not there holds nothing (as the framework will store it); locks are kept from holding
     where that is free; what has become required is filled."""
+    for group in definition.get('uniqueBy') or []:          # each sample its own combination: a text or number field of it is made distinct
+        fields_by = {field['name']: field for field in definition.get('fields') or []}
+        for name in group:
+            field = fields_by.get(name, {})
+            if field.get('type', 'text') == 'text':
+                body[name] = f"{field.get('label', name)} 시험{next(_serial)}"
+                break
+            if field.get('type') == 'number':
+                body[name] = _number(field, next(_serial) % 100000 + 1)
+                break
     for name, part in _sets(definition)[1:]:
         if part.get('min', 0) > 0 and not body.get(name):
             body[name] = [_line(part['fields'], framework, made, 2) for _ in range(part['min'])]
@@ -261,7 +271,7 @@ def stock_of(framework, item, warehouse):
 def stock_ready(body, definition, framework, cost=100):
     """A sample of an issuing screen can only be stored when the stock is there: what it lacks is put in (as opening stock, at a known cost)."""
     part = definition.get('stock')
-    if not part or part['direction'] == 'in':
+    if not part or part['direction'] in ('in', 'count'):
         return
     need = {}
     for item, warehouse, quantity, _ in _stock_units(body, definition):
@@ -270,7 +280,7 @@ def stock_ready(body, definition, framework, cost=100):
     for (item, warehouse), quantity in need.items():
         short = quantity - stock_of(framework, item, warehouse)
         if short > 0:
-            framework.ok('POST', '/api/stock/adjust', {'itemEntity': part['itemEntity'], 'itemId': item, 'warehouseEntity': part['warehouseEntity'], 'warehouseId': warehouse, 'quantity': short, 'unitCost': cost})
+            framework.ok('POST', '/api/system/stock/adjust', {'itemEntity': part['itemEntity'], 'itemId': item, 'warehouseEntity': part['warehouseEntity'], 'warehouseId': warehouse, 'quantity': short, 'unitCost': cost})
 
 
 def lot_checks(report, definition, framework, new_body, api):
@@ -331,6 +341,48 @@ def lot_checks(report, definition, framework, new_body, api):
         remove()
 
 
+def layer_checks(report, definition, framework, made, new_body, post, api):
+    """Master data that combines other master data: a combination taken twice, a value twice in one record's lines, a part that is the item
+    itself or leads back to it - each refused with its reason; the same records apart are stored."""
+    for group in definition.get('uniqueBy') or []:
+        first = new_body()
+        code, row = post(first)
+        if code != 201:
+            report.add(f"조합 열쇠 {'·'.join(group)}: 시험할 자료를 저장한다", False, f'{code} {row}')
+            continue
+        again = new_body()
+        again.update({name: first.get(name) for name in group})
+        code, answer = post(again)
+        report.add(f"조합 열쇠: {'·'.join(group)} 이(가) 같은 자료는 두 번 저장되지 않는다", code == 400 and '이미 있습니다' in str((answer or {}).get('detail')), f'{code} {answer}')
+    for field in [item for item in (definition.get('lines') or {}).get('fields', []) if item.get('unique')]:
+        body = new_body()
+        if not body.get('lines'):
+            continue
+        twice = dict(body['lines'][0])
+        body['lines'] = [body['lines'][0], twice] + body['lines'][1:]
+        code, answer = post(body)
+        report.add(f"줄의 {field['label']}: 한 건 안에서 같은 값을 두 줄로 넣으면 거절된다", code == 400 and '겹칩니다' in str((answer or {}).get('detail')), f'{code} {answer}')
+    cycle = definition.get('noCycle')
+    if cycle:
+        body = new_body()
+        if body.get('lines'):
+            body['lines'][0][cycle['child']] = body.get(cycle['parent'])
+            code, answer = post(body)
+            report.add('순환 금지: 하위에 상위 자신을 넣으면 거절된다', code == 400 and '자신' in str((answer or {}).get('detail')), f'{code} {answer}')
+            upper = new_body()
+            code, row = post(upper)               # A holds B ...
+            if code == 201:
+                back = new_body()                 # ... so B may not hold A
+                back[cycle['parent']] = upper['lines'][0][cycle['child']]
+                back['lines'][0][cycle['child']] = upper[cycle['parent']]
+                code, answer = post(back)
+                report.add('순환 금지: 다른 건을 거쳐 다시 상위로 돌아오면 거절된다 (A 의 하위에 B, B 의 하위에 A)', code == 400 and '순환' in str((answer or {}).get('detail')), f'{code} {answer}')
+                deeper = new_body()               # a part of a part is fine as long as it does not come back
+                deeper[cycle['parent']] = upper['lines'][0][cycle['child']]
+                code, answer = post(deeper)
+                report.add('순환 금지: 하위의 하위를 등록하는 것(다단계 구조)은 된다', code == 201, f'{code} {answer}')
+
+
 def stock_checks(report, definition, framework, new_body, post, api):
     """A screen that moves stock: receiving makes lots at the line's cost and the stock goes up; issuing takes from the oldest lots at their cost,
     the stock goes down, and more than there is is refused; deleting the record takes its movement back."""
@@ -348,7 +400,22 @@ def stock_checks(report, definition, framework, new_body, post, api):
     if not report.add('재고: 자료가 저장된다', code == 201, f'{code} {row}'):
         return
     after, lines = stock_of(framework, item, warehouse), row.get('_stock') or []
-    if part['direction'] == 'in':
+    if part['direction'] == 'count':
+        report.add(f'재고 실사: 저장하면 그 창고의 장부가 센 수량({moved:g})이 된다', abs(after - moved) < 1e-9, f'{before:g} → {after:g}')
+        recount = new_body()
+        for unit in _stock_units(recount, definition):
+            if (unit[0], unit[1]) == (item, warehouse):
+                unit[3][part['quantity']] = max(moved - 1, 0)
+        recount = {**recount, **{name: body[name] for name in (part['item'], part['warehouse']) if name in body}}
+        for unit in _stock_units(recount, definition):
+            unit[3].update({part['item']: item, part['warehouse']: warehouse})
+        code, again = post(recount)
+        report.add(f'재고 실사: 다시 세어 줄면({max(moved - 1, 0):g}) 장부도 줄고 차이가 수불에 남는다', code == 201 and abs(stock_of(framework, item, warehouse) - max(moved - 1, 0)) < 1e-9
+                   and any(line['direction'] == 'OUT' for line in again.get('_stock') or []), f'{code} {stock_of(framework, item, warehouse):g} {(again or {}).get("_stock") if isinstance(again, dict) else again}')
+        if code == 201:
+            framework.call('DELETE', f"{api}/{again['id']}")
+        lines = []
+    elif part['direction'] == 'in':
         report.add(f'재고: 등록하면 그 창고의 재고가 수량만큼({moved:g}) 늘어난다', abs(after - before - moved) < 1e-9, f'{before:g} → {after:g}')
         cost = units[0][3].get(part['unitCost']) if part.get('unitCost') else 0
         report.add('재고: 줄마다 LOT 가 생기고 그 줄의 단가가 LOT 단가가 된다', len(lines) == len(_stock_units(body, definition)) and all(line.get('lot') for line in lines) and float(lines[0]['unitCost']) == float(cost or 0), f'{lines[:2]}')
@@ -374,7 +441,7 @@ def stock_checks(report, definition, framework, new_body, post, api):
         for one, house, quantity, _ in [unit for unit in _stock_units(short, definition) if unit[0] and unit[1]]:
             have = stock_of(framework, one, house)
             if have > 0:
-                framework.ok('POST', '/api/stock/adjust', {'itemEntity': part['itemEntity'], 'itemId': one, 'warehouseEntity': part['warehouseEntity'], 'warehouseId': house, 'quantity': -have})
+                framework.ok('POST', '/api/system/stock/adjust', {'itemEntity': part['itemEntity'], 'itemId': one, 'warehouseEntity': part['warehouseEntity'], 'warehouseId': house, 'quantity': -have})
         code, answer = framework.call('POST', api, short)
         report.add('재고: 재고가 모자라면 저장이 거절되고 이유가 나온다', code == 400 and '재고' in str((answer or {}).get('detail')), f'{code} {answer}')
         if code == 201:
@@ -636,6 +703,7 @@ def record_checks(key, definition, framework):
                     refused(f"줄의 필수 항목 {field['label']}: 비우면 거절된다", broken)
         conditions(report, definition, framework, made, new_body, post, api)
         stock_checks(report, definition, framework, new_body, post, api)
+        layer_checks(report, definition, framework, made, new_body, post, api)
         minimal = {field['name']: value for field, value in ((field, sample(field, framework, made)) for field in plain if field['required'])}
         if lines and low > 0:
             minimal['lines'] = [{field['name']: value for field, value in ((field, _line([field], framework, made, 2)[field['name']]) for field in line_fields if field['required'])} for _ in range(low)]
@@ -965,7 +1033,7 @@ def take_checks(key, definition, framework):
                     row = listed.get((chosen['sourceId'], chosen['line']))
                     item = ((row.get('unit') or {}).get(theirs) if row else None) or (row['head'].get(theirs) if row else None)
                     if item and house and stock_of(framework, item, house) < chosen['quantity']:
-                        framework.ok('POST', '/api/stock/adjust', {'itemEntity': out_stock['itemEntity'], 'itemId': item, 'warehouseEntity': out_stock['warehouseEntity'], 'warehouseId': house, 'quantity': chosen['quantity'], 'unitCost': 100})
+                        framework.ok('POST', '/api/system/stock/adjust', {'itemEntity': out_stock['itemEntity'], 'itemId': item, 'warehouseEntity': out_stock['warehouseEntity'], 'warehouseId': house, 'quantity': chosen['quantity'], 'unitCost': 100})
             return payload
         mine = lambda rows: [row for row in rows if row.get('sourceId') == source['id']]
         code, rows = framework.call('GET', api)
@@ -1046,6 +1114,26 @@ def take_checks(key, definition, framework):
     finally:
         report.leftover = sweep(framework, made)
     return report
+
+
+def stock_view_checks(key, definition, framework):
+    """A screen that shows the stock: what it reads is there and answers."""
+    report = Report()
+    show = (definition.get('stockView') or {}).get('show') or 'all'
+    for view in (['balance', 'lots', 'moves'] if show == 'all' else [show]):
+        code, answer = framework.call('GET', f'/api/stock/{view}')
+        report.add(f'재고 보기: {view} 를 읽을 수 있다', code == 200 and isinstance(answer, list), f'{code} {str(answer)[:120]}')
+    report.leftover = []
+    return report
+
+
+def stock_view_criteria(definition):
+    show = (definition.get('stockView') or {}).get('show') or 'all'
+    words = {'balance': '현재고', 'lots': 'LOT', 'moves': '수불 내역'}
+    items = [('재고 화면이 있다', {'op': 'visible', 'selector': '[data-ui="stock"]'}), ('목록이 있다', {'op': 'visible', 'selector': '[data-ui="stock"] [data-ui="record-grid"]'})]
+    for view in (['balance', 'lots', 'moves'] if show == 'all' else [show]):
+        items.append((f'{words[view]} 보기 버튼이 있다', {'op': 'visible', 'selector': f'[data-ui="stock"] >> role=button[name="{words[view]}"]'}))
+    return [{'id': f'C{index + 1}', 'requirement_id': 'R1', 'description': description, 'check': check} for index, (description, check) in enumerate(items)]
 
 
 def take_screen_criteria(definition):
@@ -1463,7 +1551,9 @@ def screen_checks(title, definition, record_to, app):
     """Open the screen in a real browser (read-only) and look for what the definition promises."""
     sys.path.insert(0, str(HARNESS))
     import standard_contract
-    if definition.get('take'):
+    if definition.get('stockView'):
+        criteria = stock_view_criteria(definition)
+    elif definition.get('take'):
         criteria = take_screen_criteria(definition)
     elif definition.get('calendar') or definition.get('tree'):
         criteria = view_screen_criteria(definition)
@@ -1479,7 +1569,7 @@ def screen_checks(title, definition, record_to, app):
         sheet = {'path': '/api/x', 'fields': [{'name': field['name'], 'label': field['label'], 'required': field['required'], 'sample': 'x'} for field in definition['fields']
                                               if not field.get('showWhen') or _holds(field['showWhen'], {})]}
         criteria = standard_contract.screen_criteria(sheet)
-    if not any(definition.get(part) for part in ('summary', 'dashboard', 'over', 'calendar', 'tree', 'take')):
+    if not any(definition.get(part) for part in ('summary', 'dashboard', 'over', 'calendar', 'tree', 'take', 'stockView')):
         criteria.append({'id': f'C{len(criteria) + 1}', 'requirement_id': 'R1', 'description': '한 건을 양식으로 뽑는 출력 버튼이 있다',
                          'check': {'op': 'visible', 'selector': '[role="toolbar"][aria-label="업무 버튼"] >> role=button[name="출력"]'}})
     out = Path(record_to) / 'browser'

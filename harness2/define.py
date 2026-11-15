@@ -37,7 +37,7 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 - 잔량·미출하·미입고·재고처럼 한 자료에서 다른 자료를 뺀 나머지는 compare minus 로, 처리 기간·소요 일수는 values 의 between 으로, 누계는 cumulative 로 한다.
 - 계획 대비·목표 대비·달성률은 compare plan 으로, 전월 대비·전년 대비·증감은 compare previous 로, 비중·점유율은 share 로, 순위·상위 N 은 top 으로 한다. 계획을 담은 자료가 없으면 이 요청으로는 그 등록 화면(예: 수주 계획 등록)부터 만든다.
 - 요청이 항목을 정해 주지 않았으면 그 업무에서 흔히 쓰는 항목으로 정한다(5~8개, 마스터-디테일이면 디테일 항목 3~5개).
-- 번호(serial), 상태(status)는 그 업무에 실제로 필요할 때만 붙인다. 줄 표(lines)는 하나의 마스터에 디테일이 여러 개 딸린 기준 정보에만 붙인다 (단가표의 품목별 단가, 품목의 BOM 하위 자재, 품목의 공정 순서). 이런 기준 정보는 업무보다 먼저 등록해 두는 것이다. 업무 흐름의 자료(작업지시, 생산실적 ...)에는 줄 표를 붙이지 않고, 자재나 공정이 필요하면 그 기준 정보를 가리킨다. 요청이 개수나 범위를 말하면("하나만", "0~100") 그대로 적는다.
+- 번호(serial), 상태(status)는 그 업무에 실제로 필요할 때만 붙인다. 줄 표(lines)는 하나의 마스터에 디테일이 여러 개 딸린 기준 정보에만 붙인다 (단가표의 품목별 단가, 품목의 BOM 하위 자재, 품목의 공정 순서). 이런 기준 정보는 업무보다 먼저 등록해 두는 것이다. 조합 기준 정보에는 uniqueBy(품목당 하나 등), 줄 항목 unique(같은 자재 두 줄 금지), noCycle(상위·하위가 같은 자료를 가리킬 때 순환 금지)을 요청에 맞게 적는다. 업무 흐름의 자료(작업지시, 생산실적 ...)에는 줄 표를 붙이지 않고, 자재나 공정이 필요하면 그 기준 정보를 가리킨다. 요청이 개수나 범위를 말하면("하나만", "0~100") 그대로 적는다.
 - required 는 그 값 없이는 자료가 성립하지 않는 항목에만 true.
 - search 는 조회 조건으로 쓸 항목(1~3개, 줄 항목 제외)에 true.
 - 다른 자료에서 고르는 항목(거래처, 품목, 부서 ...)은 글자로 받지 말고 ref 로 한다. 이미 있는 자료만 가리킬 수 있고, ref.label 과 fill 의 값은 그 자료에 실제로 있는 항목 name 이어야 한다(위 '이미 있는 자료' 참고).
@@ -104,15 +104,19 @@ def describe(key, definition):
     for part, label in (('checks', '비교 규칙'), ('limits', '한도')):
         if definition.get(part):
             text += f' / {label}: ' + '; '.join(rule['message'] for rule in definition[part])
+    if definition.get('uniqueBy'):
+        text += ' / 겹치면 안 되는 조합: ' + ', '.join('·'.join(group) for group in definition['uniqueBy'])
+    if definition.get('noCycle'):
+        text += f" / 순환 금지: {definition['noCycle']['parent']} ↔ 줄의 {definition['noCycle']['child']}"
     if definition.get('stock'):
-        text += f" / 재고: {'늘림(입고)' if definition['stock']['direction'] == 'in' else '창고 이동' if definition['stock']['direction'] == 'move' else '줄임(출고)'} - 품목 {definition['stock']['item']}, 수량 {definition['stock']['quantity']}, 창고 {definition['stock']['warehouse']}" + (f", LOT 번호 {definition['stock']['lot']}" if definition['stock'].get('lot') else '')
+        text += f" / 재고: {'늘림(입고)' if definition['stock']['direction'] == 'in' else '창고 이동' if definition['stock']['direction'] == 'move' else '재고 실사' if definition['stock']['direction'] == 'count' else '줄임(출고)'} - 품목 {definition['stock']['item']}, 수량 {definition['stock']['quantity']}, 창고 {definition['stock']['warehouse']}" + (f", LOT 번호 {definition['stock']['lot']}" if definition['stock'].get('lot') else '')
     if definition.get('effects'):
         text += ' / 자동 처리: ' + '; '.join(('등록할 때' if effect['on'] == 'create' else f"{effect['on']} 동작을 할 때") + ' → ' + (f"{effect['create']['entity']} 한 건을 만든다" if effect.get('create') else f"{effect['fill']['entity']} 의 수량이 다 차면 그 자료에 {effect['fill']['action']} 동작을 한다" if effect.get('fill') else f"{effect['act']['via']} 이(가) 가리키는 자료에 {effect['act']['action']} 동작을 한다") for effect in definition['effects'])
     if definition.get('over'):
         part = definition['over']
         text = f"- key {key} / 화면 이름 {definition['title']} / 업무 화면: {part['entity']} 자료 중 " + (f"상태 {part['statuses']} 인 건" if part.get('statuses') else '모든 건') \
             + f" / 이 화면의 동작: {part.get('actions') or '없음'}" + (' / 내용 수정 가능' if part.get('edit') else '')
-    for kind, word in (('calendar', '달력 화면'), ('tree', '트리 화면'), ('take', '이어받기 화면')):
+    for kind, word in (('calendar', '달력 화면'), ('tree', '트리 화면'), ('take', '이어받기 화면'), ('stockView', '재고 보기 화면')):
         if definition.get(kind):
             text = f"- key {key} / 화면 이름 {definition['title']} / {word}: " + json.dumps({name: value for name, value in definition[kind].items() if value not in (None, [])}, ensure_ascii=False)
     if definition.get('dashboard'):
@@ -281,7 +285,7 @@ def differences(old, new):
                 note(f'패널이 생기거나 바뀜: {panel}')
         if was != now and sorted(was) == sorted(now):
             note('패널 순서가 바뀜')
-    for part, word in (('calendar', '달력 화면'), ('tree', '트리 화면'), ('take', '이어받기 화면'), ('stock', '재고'), ('period', '처음 조회 기간'), ('closing', '마감 기준')):
+    for part, word in (('calendar', '달력 화면'), ('tree', '트리 화면'), ('take', '이어받기 화면'), ('stockView', '재고 보기 화면'), ('stock', '재고'), ('uniqueBy', '겹치면 안 되는 조합'), ('noCycle', '순환 금지'), ('period', '처음 조회 기간'), ('closing', '마감 기준')):
         if (old.get(part) or None) != (new.get(part) or None):
             note(f"{word}: {json.dumps(old.get(part), ensure_ascii=False)} → {json.dumps(new.get(part), ensure_ascii=False)}", bool(old.get(part)) and not new.get(part))
     if (old.get('over') or None) != (new.get('over') or None):

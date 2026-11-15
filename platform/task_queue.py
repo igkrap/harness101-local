@@ -372,7 +372,7 @@ class QueueManager:
         if status == 'other':
             self._update(queue_id, items=[], status='planning', route='code', route_reason=result.get('reason', ''))
             return False
-        ok = status == 'applied'
+        ok = status == 'applied' or (status == 'flow' and bool(result.get('ok')))      # (a business flow registered, shown or removed)
         said = definition_run.say(result).rsplit('\n기록:', 1)[0]
         job_id = self._record_definition_run(queue_id, result, ok, said)
         if result.get('planned'):      # one line per step, so it shows which were done and where it stopped
