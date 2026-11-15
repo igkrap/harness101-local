@@ -173,6 +173,13 @@ def settle(body, definition, framework, made):
     tables of lines it cannot exist without. Each condition's field takes the first value asked for, so the fields that depend on
     it are there; a field that is still not there holds nothing (as the framework will store it); locks are kept from holding
     where that is free; what has become required is filled."""
+    period = definition.get('effective')
+    if period and not body.get('_period_kept'):              # each sample a period of its own, far from the others, so samples never overlap
+        start = 2100 + next(_serial) % 800
+        body[period['from']] = f'{start}-01-01'
+        if period.get('to'):
+            body[period['to']] = f'{start}-12-31'
+    body.pop('_period_kept', None)
     for group in definition.get('uniqueBy') or []:          # each sample its own combination: a text or number field of it is made distinct
         fields_by = {field['name']: field for field in definition.get('fields') or []}
         for name in group:
@@ -403,6 +410,34 @@ def line_ref_checks(report, definition, framework, made, new_body, post, api):
             unit[field['name']] = 999999999
             code, answer = post(body)
             report.add(f"{where}{field['label']}: 없는 줄을 가리키면 거절된다", code == 400, f'{code} {answer}')
+
+
+def effective_checks(report, definition, framework, made, new_body, post, api):
+    """Master data valid for a period: the same kind may not overlap in time; an end before the start is refused; periods side by side are fine."""
+    period = definition.get('effective')
+    if not period:
+        return
+    first = new_body()
+    first[period['from']] = '2031-01-01'
+    if period.get('to'):
+        first[period['to']] = '2031-06-30'
+    code, row = post(first)
+    if not report.add('적용 기간: 기간이 있는 자료를 저장한다', code == 201, f'{code} {row}'):
+        return
+    def same(day_from, day_to=None):
+        body = new_body()
+        body.update({name: first.get(name) for name in period.get('by') or []})
+        body[period['from']] = day_from
+        if period.get('to'):
+            body[period['to']] = day_to
+        return body
+    code, answer = post(same('2031-03-01', '2031-12-31'))
+    report.add('적용 기간: 같은 기준의 기간이 겹치면 거절된다', code == 400 and '겹칩니다' in str((answer or {}).get('detail')), f'{code} {answer}')
+    if period.get('to'):
+        code, answer = post(same('2031-07-01', '2031-12-31'))
+        report.add('적용 기간: 앞 기간이 끝난 다음 날부터는 저장된다', code == 201, f'{code} {answer}')
+        code, answer = post(same('2032-05-01', '2032-04-01'))
+        report.add('적용 기간: 종료일이 시작일보다 앞서면 거절된다', code == 400, f'{code} {answer}')
 
 
 def layer_checks(report, definition, framework, made, new_body, post, api):
@@ -776,6 +811,7 @@ def record_checks(key, definition, framework):
         conditions(report, definition, framework, made, new_body, post, api)
         stock_checks(report, definition, framework, new_body, post, api)
         layer_checks(report, definition, framework, made, new_body, post, api)
+        effective_checks(report, definition, framework, made, new_body, post, api)
         line_ref_checks(report, definition, framework, made, new_body, post, api)
         minimal = {field['name']: value for field, value in ((field, sample(field, framework, made)) for field in plain if field['required'])}
         if lines and low > 0:
@@ -884,6 +920,8 @@ def record_checks(key, definition, framework):
         if not (status and status['initial'] in status.get('locked', [])):
             code, _ = framework.call('DELETE', f"{api}/{row['id']}")
             report.add('삭제: 자료를 지울 수 있다', code == 204, f'{code}')
+            gone_code, gone = framework.call('GET', f"/api/history?entity={key}&action=DELETE")
+            report.add('변경 이력: 지운 자료가 언제·누가·지우기 전 내용과 함께 남는다', gone_code == 200 and any(item.get('recordId') == row['id'] and item.get('changes') for item in gone or []), f'{gone_code} {str(gone)[:200]}')
             code, _ = framework.call('PUT', f"{api}/{row['id']}", changed)
             report.add('지운 자료는 더 수정할 수 없다', code == 404, f'{code}')
     finally:
@@ -1510,6 +1548,54 @@ def effect_checks(key, definition, framework):
                     got = [[line.get(into) for into in make['lines']['set']] for line in new[0].get('lines', [])]
                     want = [[line.get(come) for come in make['lines']['set'].values()] for line in row.get('lines', [])]
                     report.add('자동 처리: 줄 표도 줄마다 옮겨진다', got == want, f'기대 {want}, 실제 {got}')
+            elif effect.get('expand'):
+                part = dict(effect['expand'])
+                if isinstance(part.get('quantity'), dict):          # as written: {"into", "line", "times"}
+                    part.update(quantityInto=part['quantity'].get('into'), quantityLine=part['quantity'].get('line'), quantityTimes=part['quantity'].get('times'))
+                master, target = known[part['from']], known[part['into']]
+                newest = lambda key: max([row['id'] for row in framework.ok('GET', f'/api/data/{key}?_sort=id&_desc=true&_limit=1')] or [0])
+                body = {field['name']: sample(field, framework, made) for field in definition['fields'] if not _computed(field)}
+                body = fit(body, definition, framework, made)
+                if part.get('quantityTimes'):
+                    body[part['quantityTimes']] = 3
+                given = {field['name']: sample(field, framework, made) for field in master['fields'] if not _computed(field)}
+                given['lines'] = [_line(master['lines']['fields'], framework, made, 2 + index) for index in range(2)]
+                for theirs, mine in part['match'].items():
+                    given[theirs] = body.get(mine)
+                given = fit(given, master, framework, made)
+                for theirs, mine in part['match'].items():
+                    given[theirs] = body.get(mine)
+                if master.get('effective'):          # valid on the day this record is for
+                    given[master['effective']['from']] = '2000-01-01'
+                    if master['effective'].get('to'):
+                        given[master['effective']['to']] = None
+                code, kept = framework.call('POST', f"/api/data/{part['from']}", given)
+                if not report.add(f"펼치기: 맞는 {master['title']} 을(를) 준비한다", code == 201, f'{code} {kept}'):
+                    continue
+                made.append((part['from'], kept['id']))
+                mark = newest(part['into'])
+                code, row = framework.call('POST', api, body)
+                if code == 201:
+                    made.append((key, row['id']))
+                    if effect['on'] != 'create':
+                        code, row = trigger(row, effect['on'])
+                new = [item for item in framework.ok('GET', f"/api/data/{part['into']}?_sort=id&_desc=true&_limit=200") if item['id'] > mark]
+                for item in new:
+                    made.append((part['into'], item['id']))
+                times = float(body.get(part['quantityTimes']) or 0) if part.get('quantityTimes') else 1
+                wanted = sorted(float(line.get(part['quantityLine']) or 0) * times for line in kept.get('lines', []))
+                got = sorted(float(item.get(part['quantityInto']) or 0) for item in new)
+                report.add(f"펼치기: {when} {master['title']} 의 줄마다 {target['title']} 이(가) 한 건씩 생기고 수량은 줄 수량 × 이 자료 수량이다", code in (200, 201) and got == wanted, f'{code} 기대 {wanted}, 생긴 것 {got}')
+                for into, come in (part.get('set') or {}).items():
+                    if come == 'id':
+                        report.add(f"펼치기: 생긴 {target['title']} 의 {into} 이(가) 이 자료를 가리킨다", bool(new) and all(item.get(into) == (row or {}).get('id') for item in new), f"{[item.get(into) for item in new]}")
+                lone = {field['name']: sample(field, framework, made) for field in definition['fields'] if not _computed(field)}
+                lone = fit(lone, definition, framework, made)
+                if effect['on'] == 'create' and any(lone.get(mine) != body.get(mine) for mine in part['match'].values()):
+                    code, answer = framework.call('POST', api, lone)
+                    if code == 201:
+                        made.append((key, answer['id']))
+                    report.add(f"펼치기: 맞는 {master['title']} 이(가) 없으면 등록이 거절되고 이유가 나온다", code in (400, 409) and '기준 정보' in str((answer or {}).get('detail')), f'{code} {answer}')
             elif effect.get('fill'):
                 fill, other = effect['fill'], known[effect['fill']['entity']]
                 wanted = next(item for item in other['status']['actions'] if item['name'] == fill['action'])
