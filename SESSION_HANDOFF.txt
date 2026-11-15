@@ -1286,3 +1286,11 @@ print = standard form adjusted by definition, calendar and tree both)
 - NOT removed yet (asked the user): the framework's line-table machinery itself - lines, moreLines, take group "same" (needs lines), effects
   create.lines, summary/limit/check "lines" flags, line import, the line parts of the GUIDE text. Unused by any screen now.
 - 재고 실사 조정 is still a hand-made screen (a grid, no edit panel) - flagged before as not a part.
+
+== 2026-11-15: where a table of lines belongs ==
+- User: "편집패널에 그리드가 들어가는건 하나의 마스터에 디테일이 여러개 들어가야하는 경우에 넣는거임" and "하위 자재 bom, 공정같은건 미리
+  기준정보로 등록해야하는 부분". So the line-table part STAYS (not removed, as I had proposed): it is for master data with details (price
+  list + item prices, item + BOM parts, item + routing steps), registered before the business. Process records stay one item, no lines;
+  a work order points at the BOM / routing master data instead of carrying them.
+- price_list (deleted earlier today) brought back from git through ctl apply (37 checks), placed in 기준 정보 again. Model guidance updated.
+- BOM / routing screens are NOT built (the user asked to stop adding unchecked screens).
