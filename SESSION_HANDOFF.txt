@@ -1367,3 +1367,30 @@ print = standard form adjusted by definition, calendar and tree both)
   for every record they remove, so the system's history holds only what people and the system did. Setup packs carry no user accounts.
 - Next (agreed): table descriptions for framework tables only (COMMENT ON from definitions) and a question route so the local model explains
   tables from the database and the definitions.
+
+== 2026-11-16 (later): Blueprint everywhere; work order by the model; 수불 마감; closing to be generalised ==
+- Every app control is Blueprint (user: "블루프린트 컨트롤 써야할 곳에 ... 다 딲아넣어라"): yes/no and grid selection boxes (the real input
+  lies transparent over the drawn box so clicks - people's and checks' - land on it), board (filters, pager, title, search, comment box),
+  home search and chips (ContentButton, BigSearchInput), kept-conditions menu, plain tables as bp6-html-table. Left native on purpose:
+  hidden file inputs (opened by Blueprint buttons), the accent colour input (Blueprint has no colour picker), sidebar node labels inside
+  Blueprint Tree. ARIA fixed on the way (range box target, table box tab stop, header checkbox row, view switches = role=group +
+  aria-pressed). Lighthouse 6/6 with accessibility 100 everywhere; the check now names audits that still cost points.
+- Work order (model, from the sentence "그 순간의 BOM으로 펼치고, BOM 이 바뀌어도 그대로"): behaviour unchanged (expands once on create at
+  workDate, stored as records). Open with the user: "그 순간" = workDate (now) or the registration day. New harness check: changing the
+  master after an expansion leaves what was made as it was.
+- Closing (user: "마감은 기준정보 말고 수불"; then "수불 마감 프로그램 ... 이 마감 프로그램은 없애도"): the old month closing (SYS0010,
+  sys_closings, the definitions' "closing" part) is gone; V45 adds 수불 마감 (SYS0014, stock_closings + stock_closing_balances). Months in
+  order, only the newest reopens, month-end stock (by lot, quantity and amount) kept. Guarded in StockLedger: moves dated in a closed month,
+  changes/deletes/status actions of records that moved in it, act/fill effects on them, removing a screen whose ledger or items/warehouses
+  are in it, deleting an item/warehouse named by closed stock, the orphan cleanup. Harness closing_checks on every stock screen.
+  변경 이력 taken off the menu (program stays), empty 조직 관리 folder removed.
+- Flow judging left the expanded requirements of its set-up work order behind (3 runs' worth removed); it now sweeps everything its
+  account made after the start (ids come from one sequence). platform/project_git read the first changed path one letter short: fixed.
+- OPEN, user's doubt: closing as built is ERP-bound ("erp전용으로 하네스를 구축하는건 아니"), and more broadly "why the model if the parts
+  are source". Proposed, not yet decided: one general part = named closing groups (수불, 근태, 회계 ...) each with a lock date, a screen joins a
+  group by a date field, groups may follow one another (회계 not past 수불; close earlier group first, reopen later group first - checked
+  with industry practice: SAP/Oracle module periods, Xero/QuickBooks lock dates, Korean ERPs 수불 → 회계); stock only adds "stock screens
+  join 수불 by themselves" and the month-end stock. Line between source and model: mechanics that must be right everywhere = parts; what
+  differs per company and changes = the model; business correctness = the harness. Suggested test: build a non-ERP domain from sentences
+  only to see what the model really decides.
+- Still next from before: table descriptions for framework tables (COMMENT ON from definitions) + a question route for the model.
