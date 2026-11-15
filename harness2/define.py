@@ -102,9 +102,11 @@ def describe(key, definition):
             + ' / 동작: ' + ', '.join(f"{action['name']}({action['label']})" for action in definition['status']['actions'])
     if definition.get('rules'):
         text += ' / 규칙: ' + '; '.join(rule['message'] for rule in definition['rules'])
-    for part, label in (('checks', '비교 규칙'), ('limits', '한도')):
-        if definition.get(part):
-            text += f' / {label}: ' + '; '.join(rule['message'] for rule in definition[part])
+    if definition.get('checks'):
+        text += ' / 비교 규칙: ' + '; '.join(rule['message'] for rule in definition['checks'])
+    if definition.get('limits'):
+        text += ' / 한도: ' + '; '.join(f"{rule['message']} ({rule['field']} 합이 {rule['entity']} 의 {rule['entityField']} 을(를) 넘지 못함, "
+                                         + ', '.join(f'{mine}↔{theirs}' for mine, theirs in zip(rule['by'], rule['entityBy'])) + ' 이(가) 같은 것끼리)' for rule in definition['limits'])
     if definition.get('effective'):
         part = definition['effective']
         text += f" / 적용 기간: {part['from']} ~ {part.get('to') or '(계속)'}" + (f" ({', '.join(part.get('by') or [])} 이(가) 같은 것끼리 기간이 겹치지 않음)" if part.get('by') else '')
@@ -120,7 +122,16 @@ def describe(key, definition):
         part = definition['over']
         text = f"- key {key} / 화면 이름 {definition['title']} / 업무 화면: {part['entity']} 자료 중 " + (f"상태 {part['statuses']} 인 건" if part.get('statuses') else '모든 건') \
             + f" / 이 화면의 동작: {part.get('actions') or '없음'}" + (' / 내용 수정 가능' if part.get('edit') else '')
-    for kind, word in (('calendar', '달력 화면'), ('tree', '트리 화면'), ('take', '이어받기 화면'), ('stockView', '재고 보기 화면')):
+    if definition.get('stockView'):
+        text = f"- key {key} / 화면 이름 {definition['title']} / 재고 보기 화면: " + {'all': '현재고·LOT·수불 내역 셋 다 (탭)', 'balance': '현재고', 'lots': 'LOT', 'moves': '수불 내역'}.get(definition['stockView'].get('show') or 'all', '')
+    if definition.get('take'):
+        part = definition['take']
+        typed = part.get('ask') or (part.get('lines') or {}).get('ask') or []
+        carried = list((part.get('set') or {}).keys()) + list((part.get('lineSet') or (part.get('lines') or {}).get('set') or {}).keys())
+        text = (f"- key {key} / 화면 이름 {definition['title']} / 이어받기 화면: {part['from']} 에서 아직 남은 것을 목록으로 보여 주고, 줄을 여러 개 골라 "
+                f"이번 수량(줄마다 직접 적음)" + (f"과 {', '.join(typed)}(줄마다 직접 적음)" if typed else '') + f" 을(를) 적어 한꺼번에 저장하면 고른 줄마다 {part['entity']} 이(가) 한 건씩 만들어진다"
+                + (f" / 앞 단계에서 함께 넘기는 값: {', '.join(carried)}" if carried else '') + (f" / 상태 {', '.join(part['statuses'])} 인 건만" if part.get('statuses') else ''))
+    for kind, word in (('calendar', '달력 화면'), ('tree', '트리 화면')):
         if definition.get(kind):
             text = f"- key {key} / 화면 이름 {definition['title']} / {word}: " + json.dumps({name: value for name, value in definition[kind].items() if value not in (None, [])}, ensure_ascii=False)
     if definition.get('dashboard'):

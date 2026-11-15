@@ -100,18 +100,22 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
                 time.sleep(1.1)                                   # run folders are named by the second
                 outcome = run(step, dry=dry, force=force, part_of=request)
                 done.append(dict(outcome, step=index, request=step))
-                if outcome.get('status') not in ('applied', 'checked'):
+                if outcome.get('status') not in ('applied', 'checked', 'unchanged'):      # (a step whose screen already was so is done, not stuck)
                     break
-            finished = len(done) == len(proposal['steps']) and done[-1].get('status') in ('applied', 'checked')
+            finished = len(done) == len(proposal['steps']) and done[-1].get('status') in ('applied', 'checked', 'unchanged') and any(item.get('status') in ('applied', 'checked') for item in done)
             if finished and not dry:          # a change in several steps is judged by the business flows as a whole, at its end
                 passed, flowed, said = flows.judge([item['key'] for item in done if item.get('key')], framework)
                 if not passed:
-                    undo({'planned': proposal['steps'], 'steps': done})
+                    undo({'planned': proposal['steps'], 'steps': done, '_inner': True})
                     result.update(planned=proposal['steps'], steps=done, status='failed', flows=said, failed=[item for item in flowed if not item['passed']])
                     return result
                 result['status'] = 'applied'
                 commit(result, request)
-            result.update(status=('checked' if dry else 'applied') if finished else 'partial', steps=done, planned=proposal['steps'],
+            if not finished and not dry and any(item.get('status') == 'applied' for item in done):
+                # A request either succeeds whole or leaves nothing behind (the user's rule): the steps already applied are taken back.
+                done_back, said_back = undo({'planned': proposal['steps'], 'steps': done, '_inner': True})
+                result['rolled_back'] = said_back if done_back else ['앞 단계를 되돌리지 못했습니다: '] + said_back
+            result.update(status=('checked' if dry else 'applied') if finished else 'failed' if not dry else 'partial', steps=done, planned=proposal['steps'],
                           checks=sum(item.get('checks') or 0 for item in done), title=' → '.join(item.get('title') or '?' for item in done if item.get('title')))
             return result
         key, definition, action = proposal['key'], proposal['definition'], proposal['action']
@@ -157,7 +161,7 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
             part = definition['stock']
             result['stock'] = ('재고가 늘어난다 (줄마다 LOT, 단가 ' + (part.get('unitCost') or '없음') + ')' if part['direction'] == 'in' else '센 수량으로 그 창고의 장부를 맞춘다 (재고 실사·기초재고)' if part['direction'] == 'count' else f"재고가 {part['warehouse']} 창고에서 {part['toWarehouse']} 창고로 옮겨진다 (LOT 번호·단가 그대로)" if part['direction'] == 'move' else '재고가 줄어든다 (오래된 LOT 부터, 모자라면 거절)') + f" - 품목 {part['item']}, 수량 {part['quantity']}, 창고 {part['warehouse']}" + (f", LOT 번호 {part['lot']} (LOT 관리 품목만)" if part.get('lot') else '')
         if definition.get('stockView'):
-            result['view'] = '재고 보기 화면 - ' + {'all': '현재고·LOT·수불 내역', 'balance': '현재고', 'lots': 'LOT', 'moves': '수불 내역'}[definition['stockView'].get('show') or 'all']
+            result['view'] = '재고 보기 화면 - ' + {'all': '현재고·LOT·수불 내역 셋 다 (탭)', 'balance': '현재고', 'lots': 'LOT', 'moves': '수불 내역'}[definition['stockView'].get('show') or 'all']
         if definition.get('take'):
             part = definition['take']
             result['view'] = f"이어받기 화면 - {part['from']} 에서 아직 남은 것을 목록으로 조회해, 고른 줄로 {part['entity']} 을(를) 만든다 (입력 폼 없이 목록에서 처리)" \
@@ -326,7 +330,7 @@ def undo(result):
                     again = json.loads(published.read_text(encoding='utf-8'))
                     framework.save_definition(item['key'], define.clean(again['definition']), again.get('status', 'PUBLISHED'))
             return False, lines + said + ['되돌리면 업무 흐름이 깨져서, 되돌린 것을 다시 원래대로 해 두었습니다. 흐름을 바꾸려면 업무 흐름도 함께 바꿔야 합니다.']
-    if done:
+    if done and not result.get('_inner'):
         noted = commit({}, '되돌림: ' + str(result.get('request') or result.get('title') or '')[:60], model=False)
         if noted.get('commit'):
             lines.append(f"깃에 기록했습니다 ({noted['commit'][:7]}).")
@@ -345,12 +349,12 @@ def say(result):
         lines = [f"{len(planned)}단계로 나눠 처리했습니다." if result['status'] in ('applied', 'checked') else f"{len(planned)}단계 중 {len(applied)}단계까지 됐고, {len(applied) + 1}단계에서 멈췄습니다."]
         for index, text in enumerate(planned, 1):
             item = next((one for one in steps if one['step'] == index), None)
-            mark = '하지 않음' if item is None else {'applied': '적용', 'checked': '검사 통과'}.get(item.get('status'), '멈춤')
+            mark = '하지 않음' if item is None else {'applied': '적용', 'checked': '검사 통과', 'unchanged': '이미 그렇게 되어 있음'}.get(item.get('status'), '멈춤')
             lines.append(f'\n[{index}단계: {mark}] {text}')
             if item is not None:
                 lines += ['  ' + line for line in say(item).split('\n') if line and not line.startswith('기록:')]
-        if result['status'] == 'partial' and applied:
-            lines.append('\n앞 단계에서 적용된 것은 그대로 남아 있습니다.')
+        if result.get('rolled_back'):
+            lines.append('\n요청 전체가 끝나지 않아 앞 단계에서 적용한 것도 되돌렸습니다 (실패한 요청은 아무것도 남기지 않습니다).')
         lines.append(f"\n기록: {result['folder']}")
         return '\n'.join(lines)
     lines = []

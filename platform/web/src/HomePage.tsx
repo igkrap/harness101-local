@@ -149,8 +149,9 @@ export default function HomePage(props: {
   const lastJob = [...(queue?.items || [])].reverse().find(i => i.job_id)?.job_id;
   const [undoing, setUndoing] = useState("");
   // Only the newest change can be taken back (the user's rule): the latest request that changed something and is not undone yet.
-  const changed = (q: TaskQueue) => q.route === "definition" && !q.undone && !!q.definition_result && (q.definition_result.status === "applied" || q.definition_result.status === "partial");
-  const newest = [...(queue ? [queue] : []), ...recent].filter(q => q.route === "definition" && !!q.definition_result && ["applied", "partial"].includes(String(q.definition_result.status)))
+  // Only a request that succeeded is undone (a failed one changed nothing), and only the newest of them.
+  const changed = (q: TaskQueue) => q.route === "definition" && !q.undone && !!q.definition_result && q.definition_result.status === "applied";
+  const newest = [...(queue ? [queue] : []), ...recent].filter(q => q.route === "definition" && !!q.definition_result && q.definition_result.status === "applied")
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
   const canUndo = (q: TaskQueue) => changed(q) && newest?.id === q.id;
   const undo = (q: TaskQueue) => { if (undoing || !window.confirm(`"${q.goal.slice(0, 60)}" 요청으로 바뀐 것을 되돌릴까요?`)) return;

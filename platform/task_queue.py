@@ -170,6 +170,8 @@ class QueueManager:
                 raise RuntimeError('되돌릴 수 있는 요청이 아닙니다.')
             if queue.get('undone'):
                 raise RuntimeError('이미 되돌린 요청입니다.')
+            if (queue['definition_result'] or {}).get('status') != 'applied':     # (the user's rule: only a request that succeeded is undone)
+                raise RuntimeError('성공한 요청만 되돌릴 수 있습니다. 실패한 요청은 바꾼 것이 없습니다.')
             import sites
             import project_git
             made = (queue['definition_result'] or {}).get('commit')

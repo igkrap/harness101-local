@@ -61,7 +61,9 @@ def sample(field, framework, made):
         body = {item['name']: sample(item, framework, made) for item in definition['fields'] if item.get('required') and not _computed(item)}
         if definition.get('lines') and definition['lines'].get('min', 1) > 0:      # it cannot exist without a line
             body['lines'] = [_line(definition['lines']['fields'], framework, made, 1)]
-        row = framework.ok('POST', f'/api/data/{target}', fit(body, definition, framework, made))
+        body = fit(body, definition, framework, made)
+        ready_masters(definition, body, framework, made)       # a target that draws on master data when it is registered needs that master first
+        row = framework.ok('POST', f'/api/data/{target}', body)
         made.append((target, row['id']))
         return row['id']
     return f"{field['label']} 시험" + (str(next(_serial)) if field.get('unique') else '')
@@ -137,6 +139,29 @@ def _groups(body, definition):
 
 
 _line_use = {}
+
+
+def ready_masters(definition, body, framework, made):
+    """For a record whose registration expands master data (a work order and its BOM): a matching master valid on the day, made for the occasion."""
+    for effect in definition.get('effects') or []:
+        part = effect.get('expand')
+        if not part or effect.get('on') != 'create':
+            continue
+        master = next(item['definition'] for item in framework.definitions() if item['key'] == part['from'])
+        given = {field['name']: sample(field, framework, made) for field in master['fields'] if not _computed(field)}
+        given['lines'] = [_line(master['lines']['fields'], framework, made, 2)]
+        for theirs, mine in part['match'].items():
+            given[theirs] = body.get(mine)
+        given = fit(given, master, framework, made)
+        for theirs, mine in part['match'].items():
+            given[theirs] = body.get(mine)
+        if master.get('effective'):
+            given[master['effective']['from']] = '2000-01-01'
+            if master['effective'].get('to'):
+                given[master['effective']['to']] = None
+        code, row = framework.call('POST', f"/api/data/{part['from']}", given)
+        if code == 201:
+            made.append((part['from'], row['id']))
 
 
 def sample_line(ref, owner, framework, made, index=None):
@@ -338,6 +363,7 @@ def lot_checks(report, definition, framework, new_body, api):
     part = definition['stock']
     if not part.get('lot'):
         return
+    counting = part['direction'] == 'count'          # a count names the lot it counts: only the "not for a quantity-only item" rule applies
     known = {item['key']: item['definition'] for item in framework.definitions()}
     mode = next((field for field in known[part['itemEntity']]['fields'] if field.get('codeGroup') == 'STOCK_TRACKING'), None)
     meta = ('id', 'status', 'statusLabel', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt', '_names', '_files', '_stock')
@@ -359,7 +385,7 @@ def lot_checks(report, definition, framework, new_body, api):
             made.append(answer['id'])
         report.add('LOT: 수량만 관리하는 품목에 LOT 번호를 적으면 거절되고 이유가 나온다', code == 400 and 'LOT' in str((answer or {}).get('detail')), f'{code} {answer}')
         remove()
-        if not mode:
+        if not mode or counting:
             return
         record = framework.ok('GET', f"/api/data/{part['itemEntity']}/{item}")
         framework.ok('PUT', f"/api/data/{part['itemEntity']}/{item}", dict({name: value for name, value in record.items() if name not in meta}, **{mode['name']: 'LOT'}))
@@ -509,13 +535,15 @@ def stock_checks(report, definition, framework, new_body, post, api):
     after, lines = stock_of(framework, item, warehouse), row.get('_stock') or []
     if part['direction'] == 'count':
         report.add(f'재고 실사: 저장하면 그 창고의 장부가 센 수량({moved:g})이 된다', abs(after - moved) < 1e-9, f'{before:g} → {after:g}')
-        recount = new_body()
-        for unit in _stock_units(recount, definition):
-            if (unit[0], unit[1]) == (item, warehouse):
-                unit[3][part['quantity']] = max(moved - 1, 0)
-        recount = {**recount, **{name: body[name] for name in (part['item'], part['warehouse']) if name in body}}
-        for unit in _stock_units(recount, definition):
-            unit[3].update({part['item']: item, part['warehouse']: warehouse})
+        recount = {name: value for name, value in body.items() if name not in ('lines',)}          # the same item and warehouse, counted again
+        for field in definition['fields']:
+            if field.get('type') == 'serial' or _computed(field):
+                recount.pop(field['name'], None)
+        unit = recount if part['quantity'] in recount else None
+        if unit is None:
+            recount['lines'] = [dict(units[0][3])]
+            unit = recount['lines'][0]
+        unit[part['quantity']] = max(moved - 1, 0)
         code, again = post(recount)
         report.add(f'재고 실사: 다시 세어 줄면({max(moved - 1, 0):g}) 장부도 줄고 차이가 수불에 남는다', code == 201 and abs(stock_of(framework, item, warehouse) - max(moved - 1, 0)) < 1e-9
                    and any(line['direction'] == 'OUT' for line in again.get('_stock') or []), f'{code} {stock_of(framework, item, warehouse):g} {(again or {}).get("_stock") if isinstance(again, dict) else again}')

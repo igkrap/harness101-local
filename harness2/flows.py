@@ -117,7 +117,6 @@ def simulate(flow, framework):
         return report
     title = lambda key: known[key].get('title', key)
     newest = lambda key: max([row['id'] for row in framework.ok('GET', f'/api/data/{key}?_sort=id&_desc=true&_limit=1')] or [0])
-    before = {key: newest(key) for key in stages}        # what each stage held before the run: anything newer that is not on the path came from elsewhere
     takes = {(one['take']['from'], one['take']['entity']): key for key, one in known.items() if one.get('take')}
     try:
         first_limit, _ = _link(known, stages[0], stages[1])
@@ -134,6 +133,9 @@ def simulate(flow, framework):
         if not report.add(f"시작: {title(stages[0])} 한 건({QUANTITY})을 등록한다", code == 201, f'{code} {record}'):
             return report
         made.append((stages[0], record['id']))
+        # what each stage holds once the starting record stands (what was made to set it up - the work order behind a requirement - is not
+        # the flow's doing): anything newer that is not on the path came from a second way
+        before = {key: newest(key) for key in stages}
         current, previous = [record], stages[0]
         moved = {}
         for later in stages[1:]:

@@ -1329,3 +1329,21 @@ print = standard form adjusted by definition, calendar and tree both)
   Dev preview (unbuilt) scores ~48 on performance by nature - only built screens count.
 - Undo only the newest (user): release.git_undo refuses a sha that is not HEAD; task_queue.undo refuses a request whose commit is not HEAD;
   the platform pages offer the buttons only on the newest. control_check 28/28 (new case: an older record is refused).
+
+== 2026-11-15 (evening): business layer by the model; periods; one history screen; undo rules ==
+- effects.expand (business draws on master data): master records matching this record (BOM of its item), one `into` record per master line,
+  quantity = line × this record, set takes line.<field> and line.<lineRef>.<field>; "at": <date field> picks the master valid that day.
+- effective {from, to, by} on master data: no overlap per `by`, to >= from (a screen's own check speaks first). Model put periods on the BOM
+  and made the work order expand at workDate (tried: 3/10 → old BOM, 9/1 → new BOM, no valid BOM → refused).
+- History: ONE system screen 변경 이력 (SYS0013, V43, /api/history, /api/history/screens) over every screen incl. deleted records and removed
+  screens (the user: "화면 마다 넣을 이유는 없고 과거 이력까지 보는 화면을 하나"). The per-screen 삭제 이력 button was removed again.
+- Model-built now (local-only): item, process, bom (periods), item_process, process_material (layer 3), warehouse, work_order (expands BOM),
+  work_order_material, material_inbound (stock in, lot), material_outbound (stock out, lot, limit vs requirement), the take screen
+  requirement → outbound (lot typed per row), stock_view (all), stock_count (count). Flow registered: 작업지시 자재 소요 → 자재 출고 등록.
+  material_outbound got an unrequested lockWhen (itemId locked while no requirement is chosen) - left, flagged to the user.
+- Harness fixes on the way (all were harness, not model): samples prepare the master a target expands (ready_masters); recount on the same
+  item/warehouse; no lot-issue checks on a count; describe() in words for stockView, take screens (quantity always typed), limits (pairs),
+  dated expansion; multi-step requests go on past an 'unchanged' step; flows count strays only after the starting record stands.
+- Undo rules (user): only a SUCCEEDED request is undone (task_queue refuses others; buttons only on them), only the newest; a multi-step
+  request that does not finish takes back its applied steps (status failed, nothing left) - no more 'partial'.
+- Lighthouse 6/6 kinds (home, form, master-detail, numbered work record, stock view, take-over): 99-100 / 95-100 / 100. control_check 28/28.
