@@ -1248,3 +1248,16 @@ print = standard form adjusted by definition, calendar and tree both)
 - stock.direction "move" + toWarehouse: out of `warehouse`, into `toWarehouse`; each lot keeps number, cost and first receiving day; reverse
   refuses (409) when what arrived was already issued or moved on. The local model made 창고 이동 등록 (warehouse_transfer) from one sentence
   (55 checks, 363 s). First try failed on my lot check (it looked at other lines' lots) - the definition had been right.
+
+== 2026-11-15: one item per process record; cleanup; menus ==
+- User: "어느 프로세스던 단일 품목 등록으로 잡자" (memory single-item-process-records). Process stages hold one item per record, no lines.
+  Framework: take.set may take values from the earlier line; take "ask" works for a header-level target (typed per row, one record per row);
+  lot picker on a header lot field (DocumentScreen); define.py rule for the model. Converted by hand-applied definitions (all checks passed):
+  shipping_instruction/result + takes, warehouse_transfer, inbound + inbound_from_purchase_order (lot field, fill -> completeInbound replaces
+  the old act effect), three balance summaries (compare.lines false). sales_order / purchase_order still have lines - NOT decided by the user.
+- User: "지금 너무 미확인 화면 너무 많음" -> stop adding screens. Deleted with the user's yes: the eight imp_* trial screens, work_order,
+  inspection_report, work_log (all empty). 43 screens left.
+- Menus: module WORK "업무" with folders 기준 정보(10) 영업(9) 구매(4) 재고(3, incl. 재고 현황 / 재고 실사 조정 moved from 시스템 관리) 현황(13)
+  설비·기타(6). Nothing is 미편성 now. Recorded (e65895b).
+- Still open: a model sentence test of the single-item rule on a new process; whether 재고 실사 조정 becomes a part; the user's cut-off
+  message "첫장은"; whether 수주/발주 also become one item per record.
