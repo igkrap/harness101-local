@@ -1354,3 +1354,16 @@ print = standard form adjusted by definition, calendar and tree both)
 - Process-level (layer 3) postponed by the user. process_material deleted (no records, nothing pointed at it). The intended screen is a
   drill-down (BOM items → the item's routing steps → materials of a chosen step in a grid): a cascading-selection part is needed first.
   공정 등록 / 품목별 공정 등록 kept; the line-ref part stays in the framework.
+
+== 2026-11-16: BOM as pairs; platform and framework kept apart in the project database ==
+- BOM is one parent-part pair per record (user: "쌍 방식으로 가는게 맞지"). Framework: noCycle with child as a field of the record itself;
+  expand from a master without lines (every matching record is one "line"). The model made bom (parentItemId, childItemId, quantity,
+  unit, effectiveFrom/To; effective by [parent, child]; noCycle) and re-pointed the work order's expansion (match parentItemId, at workDate).
+  Layer-3 screen process_material deleted (postponed; wanted shape = drill-down: BOM items → steps → materials of a step).
+- User: "플랫폼 테이블이랑 프레임워크 테이블은 엄격히 구분". V44 drops development_spec_* (the platform's old specification way),
+  spec_demo_contacts, inventory, work_sites (first examples) and app_records; their code is gone (framework/spec, Inventory*, WorkSite*,
+  DefinedScreen and the /api/screens catalog in App.tsx). The id sequence stays as app_record_ids (r_ tables default to it).
+- The platform's checking account left 3,352 history rows: removed; harness sweep / clear_since now call DELETE /api/system/history?entity&id
+  for every record they remove, so the system's history holds only what people and the system did. Setup packs carry no user accounts.
+- Next (agreed): table descriptions for framework tables only (COMMENT ON from definitions) and a question route so the local model explains
+  tables from the database and the definitions.

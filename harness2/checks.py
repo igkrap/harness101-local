@@ -150,7 +150,8 @@ def ready_masters(definition, body, framework, made):
             continue
         master = next(item['definition'] for item in framework.definitions() if item['key'] == part['from'])
         given = {field['name']: sample(field, framework, made) for field in master['fields'] if not _computed(field)}
-        given['lines'] = [_line(master['lines']['fields'], framework, made, 2)]
+        if master.get('lines'):
+            given['lines'] = [_line(master['lines']['fields'], framework, made, 2)]
         for theirs, mine in part['match'].items():
             given[theirs] = body.get(mine)
         given = fit(given, master, framework, made)
@@ -500,24 +501,25 @@ def layer_checks(report, definition, framework, made, new_body, post, api):
             report.add('기준 정보의 줄은 고쳐 저장해도 같은 줄로 남는다 (다른 기준 정보가 그 줄을 가리킬 수 있도록)', code2 == 200 and [line.get('_line') for line in after.get('lines', [])] == ids, f'{code2} {ids} → {[line.get("_line") for line in (after or {}).get("lines", [])] if isinstance(after, dict) else after}')
     cycle = definition.get('noCycle')
     if cycle:
+        flat = any(field['name'] == cycle['child'] for field in definition['fields'])      # one pair per record (a BOM of parent-part pairs)
+        holder = (lambda body: body) if flat else (lambda body: (body.get('lines') or [None])[0])
         body = new_body()
-        if body.get('lines'):
-            body['lines'][0][cycle['child']] = body.get(cycle['parent'])
+        if holder(body) is not None:
+            holder(body)[cycle['child']] = body.get(cycle['parent'])
             code, answer = post(body)
             report.add('순환 금지: 하위에 상위 자신을 넣으면 거절된다', code == 400 and '자신' in str((answer or {}).get('detail')), f'{code} {answer}')
             upper = new_body()
             code, row = post(upper)               # A holds B ...
             if code == 201:
                 back = new_body()                 # ... so B may not hold A
-                back[cycle['parent']] = upper['lines'][0][cycle['child']]
-                back['lines'][0][cycle['child']] = upper[cycle['parent']]
+                back[cycle['parent']] = holder(upper)[cycle['child']]
+                holder(back)[cycle['child']] = upper[cycle['parent']]
                 code, answer = post(back)
                 report.add('순환 금지: 다른 건을 거쳐 다시 상위로 돌아오면 거절된다 (A 의 하위에 B, B 의 하위에 A)', code == 400 and '순환' in str((answer or {}).get('detail')), f'{code} {answer}')
                 deeper = new_body()               # a part of a part is fine as long as it does not come back
-                deeper[cycle['parent']] = upper['lines'][0][cycle['child']]
+                deeper[cycle['parent']] = holder(upper)[cycle['child']]
                 code, answer = post(deeper)
                 report.add('순환 금지: 하위의 하위를 등록하는 것(다단계 구조)은 된다', code == 201, f'{code} {answer}')
-
 
 def stock_checks(report, definition, framework, new_body, post, api):
     """A screen that moves stock: receiving makes lots at the line's cost and the stock goes up; issuing takes from the oldest lots at their cost,
@@ -609,6 +611,8 @@ def sweep(framework, made):
             code, _ = framework.call('DELETE', f'/api/data/{entity}/{record}?force=true')
         if code not in (204, 404):
             left.append((entity, record))
+        else:                # the platform's records leave no trace in the system's own history (platform and system kept apart)
+            framework.call('DELETE', f'/api/system/history?entity={entity}&id={record}')
     left.reverse()
     framework.call('DELETE', '/api/system/stock/orphans')      # stock put in for sample items that are gone again
     LEFTOVER.extend(left)      # the run sweeps these once more after the trial definition is gone
@@ -641,6 +645,8 @@ def clear_since(framework, mark, by):
         left = []
         for record, entity in sorted(found, reverse=True):
             code, _ = framework.call('DELETE', f'/api/data/{entity}/{record}?force=true')
+            if code in (204, 404):
+                framework.call('DELETE', f'/api/system/history?entity={entity}&id={record}')
             if code not in (204, 404):
                 left.append((entity, record))
     return left
@@ -1597,7 +1603,8 @@ def effect_checks(key, definition, framework):
                 if part.get('quantityTimes'):
                     body[part['quantityTimes']] = 3
                 given = {field['name']: sample(field, framework, made) for field in master['fields'] if not _computed(field)}
-                given['lines'] = [_line(master['lines']['fields'], framework, made, 2 + index) for index in range(2)]
+                if master.get('lines'):
+                    given['lines'] = [_line(master['lines']['fields'], framework, made, 2 + index) for index in range(2)]
                 for theirs, mine in part['match'].items():
                     given[theirs] = body.get(mine)
                 given = fit(given, master, framework, made)
@@ -1621,7 +1628,7 @@ def effect_checks(key, definition, framework):
                 for item in new:
                     made.append((part['into'], item['id']))
                 times = float(body.get(part['quantityTimes']) or 0) if part.get('quantityTimes') else 1
-                wanted = sorted(float(line.get(part['quantityLine']) or 0) * times for line in kept.get('lines', []))
+                wanted = sorted(float(line.get(part['quantityLine']) or 0) * times for line in (kept.get('lines') if master.get('lines') else [kept]))
                 got = sorted(float(item.get(part['quantityInto']) or 0) for item in new)
                 report.add(f"펼치기: {when} {master['title']} 의 줄마다 {target['title']} 이(가) 한 건씩 생기고 수량은 줄 수량 × 이 자료 수량이다", code in (200, 201) and got == wanted, f'{code} 기대 {wanted}, 생긴 것 {got}')
                 for into, come in (part.get('set') or {}).items():
