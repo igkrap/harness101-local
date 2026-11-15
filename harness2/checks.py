@@ -999,7 +999,9 @@ def take_checks(key, definition, framework):
             report.add('만들어진 자료가 앞 단계 자료를 가리킨다', where.get(pointer) == source['id'], f'{where.get(pointer)}')
         for into, come in (part.get('set') or {}).items():
             if come not in ('id', 'today'):
-                report.add(f'함께 넘긴 값: {into} 에 앞 단계의 {come} 이(가) 들어 있다', new.get(into) == source.get(come), f'{new.get(into)} / {source.get(come)}')
+                taken_line = (source.get('lines') or [{}])[first['line']] if limit.get('entityLines') and len(source.get('lines') or []) > first['line'] else {}
+                expected = taken_line.get(come) if come in taken_line else source.get(come)       # from the earlier line when it is taken line by line
+                report.add(f'함께 넘긴 값: {into} 에 앞 단계의 {come} 이(가) 들어 있다', new.get(into) == expected, f'{new.get(into)} / {expected}')
         if shape.get('combinable'):          # two earlier records alike above their lines: one record for both, or one each
             def twin():
                 # an earlier record of its own (its lines fitted to whatever stage it hangs on in turn), alike the first above its lines
@@ -1058,7 +1060,7 @@ def take_screen_criteria(definition):
     if (definition['take'].get('ask') or (definition['take'].get('lines') or {}).get('ask')):
         import framework as _fw
         target = next((item['definition'] for item in _fw.Framework().definitions() if item['key'] == definition['take']['entity']), None)
-        known = {field['name']: field['label'] for field in ((target or {}).get('lines') or {}).get('fields', [])}
+        known = {field['name']: field['label'] for field in (((target or {}).get('lines') or {}).get('fields', []) or (target or {}).get('fields', []))}
     for name in definition['take'].get('ask') or (definition['take'].get('lines') or {}).get('ask') or []:
         items.append((f"목록에 줄마다 적는 {known.get(name, name)} 열이 있다", {'op': 'text', 'selector': '[data-ui="record-grid"]', 'contains': known.get(name, name)}))
     for label in ('조회', '저장'):
