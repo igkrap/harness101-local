@@ -85,7 +85,7 @@ def _fields(fields, in_lines=False):
         extra = field['type'] + (f"→{field['ref']['entity']}" if field.get('ref') else '') + (', 필수' if field['required'] else '') \
             + (', 계산' if field.get('formula') or field.get('sum') else '') + (', 중복 불가 (한 건 안에서 같은 값 두 번 금지)' if field.get('unique') and in_lines else ', 중복 불가' if field.get('unique') else '') \
             + (f", {field['ref']['entity']} 의 줄 하나를 고름" + (f" ({field['ref']['within']} 이(가) 같은 것만)" if field['ref'].get('within') else '') if (field.get('ref') or {}).get('line') else '') \
-            + ''.join(f", {field[part]['field']}={'|'.join(field[part]['is'])} 일 때{word}" for part, word in (('showWhen', '만 보임'), ('requiredWhen', ' 필수'), ('lockWhen', ' 잠김')) if field.get(part))
+            + ''.join(f", {field[part]['field']}{'≠' if field[part].get('not') else '='}{'|'.join(field[part]['is']) or '비어 있음'} 일 때{word}" for part, word in (('showWhen', '만 보임'), ('requiredWhen', ' 필수'), ('lockWhen', ' 잠김')) if field.get(part))
         return f"{field['name']}({field['label']}, {extra})"
     return ', '.join(one(field) for field in fields)
 

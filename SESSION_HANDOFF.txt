@@ -1347,3 +1347,7 @@ print = standard form adjusted by definition, calendar and tree both)
 - Undo rules (user): only a SUCCEEDED request is undone (task_queue refuses others; buttons only on them), only the newest; a multi-step
   request that does not finish takes back its applied steps (status failed, nothing left) - no more 'partial'.
 - Lighthouse 6/6 kinds (home, form, master-detail, numbered work record, stock view, take-over): 99-100 / 95-100 / 100. control_check 28/28.
+- Conditions may say "is not" (isNot as written; stored {field, is, not: true}). The model used it for 자재 출고: material locked once a requirement
+  is chosen (fill from the requirement was already there). Its run failed on a framework issue - a locked field kept its stored value even
+  when the field it is filled from changed in the same save (limit then refused); now it follows. The model's definition from that run was
+  applied as is with ctl apply (69 checks, flow included).

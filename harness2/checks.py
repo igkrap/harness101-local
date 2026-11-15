@@ -97,7 +97,8 @@ def _holds(when, unit, above=None):
         return False
     value = unit.get(when['field']) if when['field'] in unit else (above or {}).get(when['field'])
     text = '' if value is None else 'true' if value is True else 'false' if value is False else f'{value:g}' if isinstance(value, float) else str(value).strip()
-    return text in when['is'] or (text == '' and 'false' in when['is'])
+    matches = text in when['is'] or (text == '' and 'false' in when['is'])
+    return not matches if when.get('not') else matches
 
 
 def _wanted(field, text):
@@ -224,6 +225,8 @@ def settle(body, definition, framework, made):
         for field in fields:
             for part in ('showWhen', 'requiredWhen'):
                 when = field.get(part)
+                if when and when.get('not'):          # "is not": a sample value already holds it (anything but the listed values)
+                    continue
                 if when and when['field'] not in chosen and (when['field'] in own or above is None or not above.get('_settled', {}).get(when['field'])):
                     holder, target = (unit, own[when['field']]) if when['field'] in own else (above, header.get(when['field']))
                     if target is not None and not _holds(when, unit, above):
@@ -231,7 +234,7 @@ def settle(body, definition, framework, made):
                     chosen.add(when['field'])
         for field in fields:
             when = field.get('lockWhen')
-            if when and when['field'] not in chosen and when['field'] in own and _holds(when, unit, above):
+            if when and not when.get('not') and when['field'] not in chosen and when['field'] in own and _holds(when, unit, above):
                 free = _unwanted(own[when['field']], when, framework)
                 if free is not NONE:
                     unit[when['field']] = free
@@ -711,7 +714,14 @@ def conditions(report, definition, framework, made, new_body, post, api):
                             elif unit2.get(other['name']) is None and other.get('type') != 'yesno' and (other.get('required') or _holds(other.get('requiredWhen'), unit2, above2)):
                                 unit2[other['name']] = sample(other, framework, made)
                     return body, unit
-                on, off = _wanted(target, when['is'][0]), _unwanted(target, when, framework)
+                if when.get('not'):                   # holds for anything but the listed values
+                    other = _unwanted(target, when, framework)
+                    on = sample(target, framework, made) if other is NONE else other
+                    off = _wanted(target, when['is'][0])
+                    if off is None and target.get('required'):
+                        off = NONE               # the other way would leave a required field empty: not tried
+                else:
+                    on, off = _wanted(target, when['is'][0]), _unwanted(target, when, framework)
                 words = f"{target['label']} 이(가) {'·'.join(when['is']) or '비어 있음'}"
                 value = sample(field, framework, made) if field.get('type') != 'ref' else None
                 if part == 'showWhen' and off is not NONE and value is not None and not (target.get('required') and off is None):
