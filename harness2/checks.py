@@ -1708,7 +1708,22 @@ def effect_checks(key, definition, framework):
                     stage = fresh(between['entity'], middle, (via['by'][via['entityBy'].index('id')], first['id']))
                     place(between['by'][between['entityBy'].index('id')])[between['by'][between['entityBy'].index('id')]] = stage['id']
                 place(pointer)[pointer] = first['id']
-                code, row = framework.call('POST', api, fit(body, definition, framework, made))
+                whole = first.get(limit['entityField'])
+                if not limit.get('lines') and not limit.get('entityLines') and isinstance(whole, (int, float)) and whole >= 2 and first.get('status') in wanted['from']:
+                    # part of it first: the earlier record stays where it is; the rest then fills it
+                    part = fit(dict(body), definition, framework, made)          # (the sample is readied first: it would fill the quantity up to the limit)
+                    part[limit['field']] = whole // 2
+                    code, half = framework.call('POST', api, part)
+                    if code == 201:
+                        made.append((key, half['id']))
+                    between_status = framework.ok('GET', f"/api/data/{fill['entity']}/{first['id']}").get('status')
+                    report.add(f"자동 처리: 일부만({whole // 2:g}/{whole:g}) 채우면 {other['title']} 은(는) 아직 {names.get(between_status, between_status)} 그대로다",
+                               code == 201 and between_status in wanted['from'], f"{code} {half if code != 201 else ''} / 상태 {between_status}")
+                    body = fit(body, definition, framework, made)
+                    body[limit['field']] = whole - whole // 2
+                else:
+                    body = fit(body, definition, framework, made)
+                code, row = framework.call('POST', api, body)
                 if code == 201:
                     made.append((key, row['id']))
                 after = framework.ok('GET', f"/api/data/{fill['entity']}/{first['id']}")
