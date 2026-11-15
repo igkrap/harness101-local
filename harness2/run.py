@@ -139,11 +139,11 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
             result['view'] = f"달력 화면 - {part['entity']} 자료를 {part['date']}" + (f" ~ {part['end']}" if part.get('end') else '') + ' 날짜로 보여 준다'
         if definition.get('stock'):
             part = definition['stock']
-            result['stock'] = ('재고가 늘어난다 (줄마다 LOT, 단가 ' + (part.get('unitCost') or '없음') + ')' if part['direction'] == 'in' else '재고가 줄어든다 (오래된 LOT 부터, 모자라면 거절)') + f" - 품목 {part['item']}, 수량 {part['quantity']}, 창고 {part['warehouse']}"
+            result['stock'] = ('재고가 늘어난다 (줄마다 LOT, 단가 ' + (part.get('unitCost') or '없음') + ')' if part['direction'] == 'in' else '재고가 줄어든다 (오래된 LOT 부터, 모자라면 거절)') + f" - 품목 {part['item']}, 수량 {part['quantity']}, 창고 {part['warehouse']}" + (f", LOT 번호 {part['lot']} (LOT 관리 품목만)" if part.get('lot') else '')
         if definition.get('take'):
             part = definition['take']
             result['view'] = f"이어받기 화면 - {part['from']} 에서 아직 남은 것을 목록으로 조회해, 고른 줄로 {part['entity']} 을(를) 만든다 (입력 폼 없이 목록에서 처리)" \
-                + (f" / 상태 {', '.join(part['statuses'])} 인 건만" if part.get('statuses') else '') + (f" / 함께 넘기는 값: {', '.join(list(part.get('set') or {}) + list(part.get('lineSet') or (part.get('lines') or {}).get('set') or {}))}" if part.get('set') or part.get('lineSet') or part.get('lines') else '')
+                + (f" / 상태 {', '.join(part['statuses'])} 인 건만" if part.get('statuses') else '') + (f" / 줄에서 직접 적는 값: {', '.join(part.get('ask') or (part.get('lines') or {}).get('ask') or [])}" if part.get('ask') or (part.get('lines') or {}).get('ask') else '') + (f" / 함께 넘기는 값: {', '.join(list(part.get('set') or {}) + list(part.get('lineSet') or (part.get('lines') or {}).get('set') or {}))}" if part.get('set') or part.get('lineSet') or part.get('lines') else '')
         if definition.get('tree'):
             part = definition['tree']
             result['view'] = f"트리 화면 - {part['entity']} 자료를 " + (f"{part['parent']} → {part['child']} 쌍으로 잇는다" if part.get('child') else f"{part['parent']} (상위) 아래로 묶는다")

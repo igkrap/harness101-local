@@ -235,6 +235,9 @@ def fit(body, definition, framework, made, break_check=None):
         unit[limit['field']] = value_of(limit['entityField']) or 0
     if definition.get('limits'):
         obey()          # a limit may have changed a number a check compares: the checks are made true again
+    if (definition.get('stock') or {}).get('lot'):       # a lot number is only for items kept by lot: a plain sample leaves it empty
+        for _, _, _, unit in _stock_units(body, definition):
+            unit[definition['stock']['lot']] = None
     stock_ready(body, definition, framework)
     return body
 
@@ -268,6 +271,62 @@ def stock_ready(body, definition, framework, cost=100):
         short = quantity - stock_of(framework, item, warehouse)
         if short > 0:
             framework.ok('POST', '/api/stock/adjust', {'itemEntity': part['itemEntity'], 'itemId': item, 'warehouseEntity': part['warehouseEntity'], 'warehouseId': warehouse, 'quantity': short, 'unitCost': cost})
+
+
+def lot_checks(report, definition, framework, new_body, api):
+    """Items kept by lot: a lot number typed when receiving names the lot; typed when issuing, only that lot is taken from; for an item
+    kept by quantity only a lot number is refused. Tried on the sample's own item, switched to 'by lot' for the occasion."""
+    part = definition['stock']
+    if not part.get('lot'):
+        return
+    known = {item['key']: item['definition'] for item in framework.definitions()}
+    mode = next((field for field in known[part['itemEntity']]['fields'] if field.get('codeGroup') == 'STOCK_TRACKING'), None)
+    meta = ('id', 'status', 'statusLabel', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt', '_names', '_files', '_stock')
+    made = []
+
+    def remove():
+        for record in reversed(made):
+            if framework.call('DELETE', f'{api}/{record}')[0] == 409:
+                framework.call('DELETE', f'{api}/{record}?force=true')
+        made.clear()
+    try:
+        body = new_body()
+        item, warehouse, quantity, unit = next(one for one in _stock_units(body, definition) if one[0] and one[1] and one[2])
+        unit[part['lot']] = 'L-NONE-1'
+        code, answer = framework.call('POST', api, body)
+        if code == 201:
+            made.append(answer['id'])
+        report.add('LOT: 수량만 관리하는 품목에 LOT 번호를 적으면 거절되고 이유가 나온다', code == 400 and 'LOT' in str((answer or {}).get('detail')), f'{code} {answer}')
+        remove()
+        if not mode:
+            return
+        record = framework.ok('GET', f"/api/data/{part['itemEntity']}/{item}")
+        framework.ok('PUT', f"/api/data/{part['itemEntity']}/{item}", dict({name: value for name, value in record.items() if name not in meta}, **{mode['name']: 'LOT'}))
+        number = f'L-{next(_serial)}'
+        if part['direction'] == 'in':
+            unit[part['lot']] = number
+            code, row = framework.call('POST', api, body)
+            if code == 201:
+                made.append(row['id'])
+            lots = [line.get('lot') for line in (row.get('_stock') or [])] if code == 201 else []
+            report.add('LOT: LOT 관리 품목은 입고할 때 적은 번호가 LOT 번호가 된다', code == 201 and number in lots, f'{code} {lots or row}')
+        else:
+            have = stock_of(framework, item, warehouse)        # what the sample put in sits in lots with numbers of their own
+            unit[part['lot']] = number
+            code, answer = framework.call('POST', api, body)
+            if code == 201:
+                made.append(answer['id'])
+            report.add('LOT: 없는 LOT 번호를 지정해 꺼내면 (다른 LOT 에 재고가 있어도) 거절된다', code == 400 and have >= quantity and 'LOT' in str((answer or {}).get('detail')), f'{code} 현재고 {have:g} {answer}')
+            there = framework.ok('GET', f'/api/stock/lots?item={item}&warehouse={warehouse}')
+            if there:
+                unit[part['lot']] = there[0]['lot']
+                code, row = framework.call('POST', api, body)
+                if code == 201:
+                    made.append(row['id'])
+                lots = {line.get('lot') for line in (row.get('_stock') or [])} if code == 201 else set()
+                report.add('LOT: 있는 LOT 번호를 지정하면 그 LOT 에서만 꺼낸다', code == 201 and lots == {there[0]['lot']} or (code == 400 and float(there[0]['remaining']) < quantity), f'{code} {lots or row}')
+    finally:
+        remove()
 
 
 def stock_checks(report, definition, framework, new_body, post, api):
@@ -304,6 +363,7 @@ def stock_checks(report, definition, framework, new_body, post, api):
         report.add('재고: 재고가 모자라면 저장이 거절되고 이유가 나온다', code == 400 and '재고' in str((answer or {}).get('detail')), f'{code} {answer}')
         if code == 201:
             framework.call('DELETE', f"{api}/{answer['id']}?force=true")
+    lot_checks(report, definition, framework, new_body, api)
     code, _ = framework.call('DELETE', f"{api}/{row['id']}")
     if code == 409:
         code, _ = framework.call('DELETE', f"{api}/{row['id']}?force=true")
@@ -876,6 +936,21 @@ def take_checks(key, definition, framework):
         if wanted and source.get('status') not in wanted:
             report.add(f"앞 단계 자료를 이 화면이 다루는 상태({', '.join(wanted)})로 만들 수 있다", False, f"상태 {source.get('status')} 에서 더 갈 수 없었다")
             return report
+        out_stock = target.get('stock') if (target.get('stock') or {}).get('direction') == 'out' else None
+
+        def stocked(payload):
+            """When the new entity issues stock, what the chosen rows need is put in first (the check is about taking over, not about stock)."""
+            if out_stock:
+                limit_ = next(item for item in target.get('limits') or [] if item['entity'] == part['from'])
+                theirs = dict(zip(limit_['by'], limit_['entityBy'])).get(out_stock['item'])
+                house = (payload.get('values') or {}).get(out_stock['warehouse'])
+                listed = {(row['sourceId'], row['line']): row for row in framework.ok('GET', api)}
+                for chosen in payload.get('rows') or []:
+                    row = listed.get((chosen['sourceId'], chosen['line']))
+                    item = ((row.get('unit') or {}).get(theirs) if row else None) or (row['head'].get(theirs) if row else None)
+                    if item and house and stock_of(framework, item, house) < chosen['quantity']:
+                        framework.ok('POST', '/api/stock/adjust', {'itemEntity': out_stock['itemEntity'], 'itemId': item, 'warehouseEntity': out_stock['warehouseEntity'], 'warehouseId': house, 'quantity': chosen['quantity'], 'unitCost': 100})
+            return payload
         mine = lambda rows: [row for row in rows if row.get('sourceId') == source['id']]
         code, rows = framework.call('GET', api)
         if not report.add('남은 것 목록이 조회된다', code == 200 and isinstance(rows, list), f'{code} {str(rows)[:200]}'):
@@ -887,11 +962,12 @@ def take_checks(key, definition, framework):
         values = {field['name']: sample(field, framework, made) for field in target['fields'] if field['name'] in shape.get('ask', []) and not _computed(field)}
         first = open_rows[0]
         part_quantity = max(1, int(first['remaining'] // 2)) if first['remaining'] >= 2 else first['remaining']
-        code, answer = framework.call('POST', api, {'values': values, 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': first['remaining'] + 1}]})
+        code, answer = framework.call('POST', api, stocked({'values': values, 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': first['remaining'] + 1}]}))
         report.add(f"남은 수량({first['remaining']:g})보다 많이 넘기면 거절된다", code == 400, f'{code} {answer}')
-        code, answer = framework.call('POST', api, {'values': values, 'rows': []})
+        code, answer = framework.call('POST', api, stocked({'values': values, 'rows': []}))
         report.add('고른 줄이 없으면 거절된다', code == 400, f'{code} {answer}')
-        code, answer = framework.call('POST', api, {'values': values, 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': part_quantity}]})
+        typed = {field['name']: sample(field, framework, made) for field in shape.get('askLines') or [] if field.get('required')}     # what the row asks for and cannot do without
+        code, answer = framework.call('POST', api, stocked({'values': values, 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': part_quantity, 'values': typed}]}))
         ok = code in (200, 201) and isinstance(answer, dict) and answer.get('count') == 1
         for item in (answer.get('created') or []) if isinstance(answer, dict) else []:
             made.append((part['entity'], item['id']))
@@ -929,12 +1005,12 @@ def take_checks(key, definition, framework):
             for way, expected, words in (('same', 1, '위쪽 값이 같은 두 건의 줄을 함께 넘기면 한 건으로 묶인다'), ('source', 2, '앞 단계 한 건마다 따로 넘기면 두 건이 만들어진다')):
                 pair = [twin(), twin()]
                 chosen = [row for row in framework.ok('GET', api) if row.get('sourceId') in (pair[0]['id'], pair[1]['id']) and row['line'] == 0]
-                code, both = framework.call('POST', api, {'values': values, 'per': way, 'rows': [{'sourceId': row['sourceId'], 'line': row['line'], 'quantity': 1} for row in chosen]})
+                code, both = framework.call('POST', api, stocked({'values': values, 'per': way, 'rows': [{'sourceId': row['sourceId'], 'line': row['line'], 'quantity': 1} for row in chosen]}))
                 for item in (both.get('created') or []) if isinstance(both, dict) else []:
                     made.append((part['entity'], item['id']))
                 report.add(f'묶는 기준: {words}', code in (200, 201) and len(chosen) == 2 and both.get('count') == expected, f'{code} {both}')
         else:
-            code, answer2 = framework.call('POST', api, {'values': values, 'per': 'same', 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': 1}]})
+            code, answer2 = framework.call('POST', api, stocked({'values': values, 'per': 'same', 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': 1}]}))
             report.add('묶는 기준: 앞 단계를 위쪽에서 가리키는 자료는 여러 건을 한 건으로 묶을 수 없다고 거절한다', code == 400, f'{code} {answer2}')
         now = framework.ok('GET', f"/api/data/{part['from']}/{source['id']}")
         if wanted and now.get('status') not in wanted:
@@ -944,7 +1020,7 @@ def take_checks(key, definition, framework):
         left = first['remaining'] - part_quantity
         report.add(f'넘긴 만큼 남은 수량이 줄어든다 ({first["remaining"]:g} → {left:g})', (not after and left == 0) or (bool(after) and after[0]['remaining'] == left and after[0]['done'] == part_quantity), f'{after}')
         if left > 0 and after:
-            code, answer = framework.call('POST', api, {'values': values, 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': left}]})
+            code, answer = framework.call('POST', api, stocked({'values': values, 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': left}]}))
             for item in (answer.get('created') or []) if isinstance(answer, dict) else []:
                 made.append((part['entity'], item['id']))
             gone = not [row for row in mine(framework.ok('GET', api)) if row['line'] == first['line']] if code in (200, 201) else False
@@ -962,6 +1038,13 @@ def take_screen_criteria(definition):
              ('목록에 남은 수량 열이 있다', {'op': 'text', 'selector': '[data-ui="record-grid"]', 'contains': '남은 수량'}),
              ('목록에 이번에 넘길 수량 열이 있다', {'op': 'text', 'selector': '[data-ui="record-grid"]', 'contains': '이번'}),
              ('줄을 고르는 체크 칸이 있다', {'op': 'visible', 'selector': '[data-ui="record-grid"][data-selection="checkbox-multiple"]'})]
+    known = {}
+    if (definition['take'].get('ask') or (definition['take'].get('lines') or {}).get('ask')):
+        import framework as _fw
+        target = next((item['definition'] for item in _fw.Framework().definitions() if item['key'] == definition['take']['entity']), None)
+        known = {field['name']: field['label'] for field in ((target or {}).get('lines') or {}).get('fields', [])}
+    for name in definition['take'].get('ask') or (definition['take'].get('lines') or {}).get('ask') or []:
+        items.append((f"목록에 줄마다 적는 {known.get(name, name)} 열이 있다", {'op': 'text', 'selector': '[data-ui="record-grid"]', 'contains': known.get(name, name)}))
     for label in ('조회', '저장'):
         items.append((f'공통 버튼 {label} 이(가) 있다', {'op': 'visible', 'selector': f'{toolbar} >> role=button[name="{label}"]'}))
     return [{'id': f'C{index + 1}', 'requirement_id': 'R1', 'description': description, 'check': check} for index, (description, check) in enumerate(items)]

@@ -1213,3 +1213,17 @@ print = standard form adjusted by definition, calendar and tree both)
 - Asked next by the user: per-item tracking LOT / serial / none ("너무 난이도가 있는거같긴하다만.."). Not built. Answered with a staged plan.
 - control_check: 27/27 plain. With --pack two runs gave 26/29: the browser screen check of the test project timed out
   (page.waitForLoadState 10 s) while packs were being built - load, not a rule; the same item failed once earlier today.
+
+== 2026-11-15: stock tracking per item (NONE / LOT), typed columns in take grids - applied by the local model from sentences ==
+- Framework: common code group STOCK_TRACKING (NONE 수량만, LOT) - an item screen's code field of that group is the item's mode (StockLedger.tracking;
+  nothing = NONE). stock.lot (a text line field): for LOT items the typed number names the lot on receipt and restricts the issue to that lot;
+  typed for a NONE item -> 400. lot_no is no longer unique (V40). take.lines.ask [fields] = further line fields typed in the grid row
+  (text/number/date); TakeScreen shows them as editable columns, POST rows carry {values}.
+- The user asked for sentence tests ("그런다음 문장으로 테스트"). Five sentences to the local model, all applied (314 / 408 / 280 / 450 / 277 s):
+  item gets stockTracking (it picked code group STOCK_TRACKING itself); imp_receipt line lotNumber + stock.lot; its take screen asks lotNumber;
+  shipping_result line lotNumber + stock.lot; its take screen asks lotNumber. The fifth failed once - my take_checks did not seed stock for a
+  target that issues stock (fixed: stocked()); the model's definition had been right.
+- Walked: LOT item received as A-100 (10@1000) and B-200 (10@1500); NONE item with a lot typed refused; ship 4 naming B-200 -> from B-200;
+  ship 12 unnamed -> A-100 x10 + B-200 x2; unknown lot refused; B-200 left 4.
+- Not built: serial tracking (needs a many-numbers-per-line entry), a lot picker (the lot is typed as text), adjustment/transfer screens,
+  accounting vouchers. Earlier `inbound` (stock in, made by the model) has no lot field.
