@@ -1634,6 +1634,17 @@ def effect_checks(key, definition, framework):
                 for into, come in (part.get('set') or {}).items():
                     if come == 'id':
                         report.add(f"펼치기: 생긴 {target['title']} 의 {into} 이(가) 이 자료를 가리킨다", bool(new) and all(item.get(into) == (row or {}).get('id') for item in new), f"{[item.get(into) for item in new]}")
+                if new and part.get('quantityLine'):
+                    # what was drawn is kept as it was at that moment: changing the master afterwards changes nothing already made
+                    meta = ('id', 'status', 'statusLabel', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt', '_names', '_files', '_stock')
+                    record = framework.ok('GET', f"/api/data/{part['from']}/{kept['id']}")
+                    changed = {name: value for name, value in record.items() if name not in meta}
+                    holder = changed['lines'][0] if master.get('lines') and changed.get('lines') else changed
+                    holder[part['quantityLine']] = float(holder.get(part['quantityLine']) or 0) + 5
+                    code, answer = framework.call('PUT', f"/api/data/{part['from']}/{kept['id']}", changed)
+                    after = sorted(float(framework.ok('GET', f"/api/data/{part['into']}/{item['id']}").get(part['quantityInto']) or 0) for item in new)
+                    report.add(f"펼치기: 나중에 {master['title']} 을(를) 바꿔도 이미 생긴 {target['title']} 은(는) 그대로다", code == 200 and after == got,
+                               f'{code} {answer if code != 200 else ""} 바꾸기 전 {got}, 바꾼 뒤 {after}')
                 lone = {field['name']: sample(field, framework, made) for field in definition['fields'] if not _computed(field)}
                 lone = fit(lone, definition, framework, made)
                 if effect['on'] == 'create' and any(lone.get(mine) != body.get(mine) for mine in part['match'].values()):
