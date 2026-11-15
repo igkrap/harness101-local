@@ -21,6 +21,9 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 이미 있는 자료(정의):
 %(existing)s
 
+업무 흐름과 기준 정보 (지금 시스템의 화면 정의에서 프레임워크가 읽어 낸 것 - 사람이 보는 업무 안내서와 같은 내용):
+%(process)s
+
 규칙:
 - 요청이 이미 있는 자료를 고치는 것이면 {"action": "change", "key": "<그 자료의 key>"} 까지만 답한다(그러면 그 자료의 정의 전체를 받아서 고치게 된다).
 - 새 자료면 action 은 "create" 이고 key 는 이미 있는 key 와 겹치지 않게 한다.
@@ -46,6 +49,7 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 - effects 의 on 은 요청의 말 그대로 정한다: "등록하면·저장하면·입력하면"은 create, "확정하면·승인하면·완료하면"처럼 상태 버튼을 말하면 그 action 이름이다.
 - 한 건 안에서 두 값을 견주는 조건(날짜 순서 등)은 checks 로, 다른 자료의 수량을 넘지 못하게 하는 것(초과 출하·재고 부족 방지)은 limits 로, "~하면 자동으로 ~된다/만들어진다"는 effects 로 적는다. 그 규칙은 저장이 거절되어야 하는 자료, 일이 시작되는 자료의 정의에 붙인다(출하 수량 제한은 출하에, 수주 확정 시 출하 생성은 수주에).
 - id, 상태, 등록·수정자/일시는 프레임워크가 관리하므로 항목으로 넣지 않는다(상태는 definition.status 로).
+- 요청이 업무 흐름 속 화면을 만들거나 고치는 것이면 그 흐름 전체를 보고 정한다: 앞뒤 단계를 잇는 길(이어받기 화면, 자동 처리, 한도)이 끊기지 않게, 같은 수량이 두 길로 두 번 처리되지 않게 한다. '판정하는 흐름'은 적용 전에 하네스가 끝까지 돌려 본다.
 - 정의로 할 수 없는 요청이면 {"action": "other", "reason": "<이유 한 줄>"} 로만 답한다. 해당하는 경우: 아래 '코드로 만든 화면'을 고치는 요청, 로그인·메뉴·권한·디자인 같은 시스템 요청, 프레임워크 안내에 없는 동작.
 
 코드로 만든 화면(정의가 아니라서 여기서 고칠 수 없음): %(code_screens)s
@@ -145,6 +149,21 @@ def describe(key, definition):
             + (f" / 계획 대비({part['compare']['entity']})" if (part.get('compare') or {}).get('type') == 'plan' else f" / {part['compare'].get('balance')}(− {part['compare']['entity']})" if (part.get('compare') or {}).get('type') == 'minus' else f" / 전기 대비({part['compare']['by']})" if part.get('compare') else '') \
             + (' / 구성비' if part.get('share') else '') + (f" / 상위 {part['top']}" if part.get('top') else '')
     return text
+
+
+def process(framework):
+    """The flows, the master data by layer and the rules every screen has, as the framework reads them off the definitions
+    (GET /api/meta/process - the same text people read as the 업무 안내서), and which flows are judged end to end."""
+    try:
+        text = framework.ok('GET', '/api/meta/process')['text']
+    except Exception:            # an older framework without the guide: the screens alone
+        return '(없음)'
+    if '[화면별]' in text:        # each screen is already told above, with its keys and field names
+        head, _, rest = text.partition('[화면별]')
+        text = head + rest[rest.find('[모든 화면에 걸리는 규칙]'):] if '[모든 화면에 걸리는 규칙]' in rest else head
+    import flows                 # (late: flows reads the checks, which read this module)
+    judged = [flow['name'] for flow in flows.load()]
+    return text.strip() + ('\n[판정하는 흐름 - 적용 전에 끝까지 돌려 본다]\n' + '\n'.join(f'- {name}' for name in judged) if judged else '')
 
 
 def _existing(framework):
@@ -390,7 +409,7 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
     capabilities = framework.capabilities()
     shown = {key: capabilities[key] for key in ('parts', 'fieldTypes', 'builtInRules', 'ruleTypes', 'codeGroups') if key in capabilities}
     base = [{'role': 'system', 'content': 'JSON only'},
-            {'role': 'user', 'content': PROMPT % {'guide': capabilities.get('guide', ''), 'capabilities': json.dumps(shown, ensure_ascii=False, indent=1), 'existing': _existing(framework), 'request': request,
+            {'role': 'user', 'content': PROMPT % {'guide': capabilities.get('guide', ''), 'capabilities': json.dumps(shown, ensure_ascii=False, indent=1), 'existing': _existing(framework), 'process': process(framework), 'request': request,
                                                   'code_screens': ', '.join(code_screens()) or '(없음)'}}]
     stored = {item['key']: item['definition'] for item in real(framework, trial_prefix)}
     messages, error, answer, target, asked_back, compared, doubt = list(base), '', '', None, False, False, ''
