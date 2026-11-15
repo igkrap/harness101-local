@@ -1198,3 +1198,18 @@ print = standard form adjusted by definition, calendar and tree both)
 - harness2 fit(): settles the nearer of two stacked limits first and follows its pointer to the farther one; re-applies checks after limits.
 - Known gaps: in a take screen only the quantity is typed in the row - the inspection's pass quantity is carried as the full quantity and
   corrected afterwards on the inspection's own screen (one record at a time); fill across more than two stages is not checked by the harness.
+
+== 2026-11-15: stock by lot ==
+- User: stock must be managed, linked to accounting later, "LOT별 단가 관리가 가능한 형태". Built: definition part "stock" {direction in|out, item,
+  quantity, warehouse (required ref), unitCost (in), date}; tables stock_lots / stock_moves (V39); StockLedger (in: a lot per line at the line's
+  cost; out: oldest lots first, each part at its lot's cost; short -> 400; update/delete reverse, 409 when a lot was already issued from);
+  StockController (/api/stock/balance|lots|moves, POST /api/stock/adjust for opening stock / count differences, DELETE /api/system/stock/orphans);
+  screen 재고 현황 SYS0011 (현재고 / LOT / 수불 내역; under 시스템 관리 for now). A record carries _stock (lot, quantity, unitCost, amount).
+- Applied: imp_receipt = in (unit price carried through the four stages by the take screens), shipping_result = out (warehouse now required and
+  asked on the take screen). Walked: two receipts 10@1000 and 10@1200 -> stock 20 / 22,000; shipping 15 -> cost 10@1000 + 5@1200 = 16,000,
+  stock 5 / 6,000, the order became 출하 완료.
+- Defaults I chose without asking (tell the user, change if they say): refuse negative stock; stock moves at registration (not at a status);
+  FIFO chosen by the system, the person does not pick a lot; no adjustment/transfer screens (adjust is API only, no form yet).
+- Asked next by the user: per-item tracking LOT / serial / none ("너무 난이도가 있는거같긴하다만.."). Not built. Answered with a staged plan.
+- control_check: 27/27 plain. With --pack two runs gave 26/29: the browser screen check of the test project timed out
+  (page.waitForLoadState 10 s) while packs were being built - load, not a rule; the same item failed once earlier today.

@@ -235,7 +235,80 @@ def fit(body, definition, framework, made, break_check=None):
         unit[limit['field']] = value_of(limit['entityField']) or 0
     if definition.get('limits'):
         obey()          # a limit may have changed a number a check compares: the checks are made true again
+    stock_ready(body, definition, framework)
     return body
+
+
+def _stock_units(body, definition):
+    """What a record moves, as (item, warehouse, quantity, the unit the quantity sits in) per line (or once, when the quantity is above the lines)."""
+    part = definition.get('stock')
+    if not part:
+        return []
+    line_names = {field['name'] for field in (definition.get('lines') or {}).get('fields', [])}
+    units = (body.get('lines') or []) if part['quantity'] in line_names else [body]
+    at = lambda unit, name: unit.get(name) if name in unit else body.get(name)
+    return [(at(unit, part['item']), at(unit, part['warehouse']), at(unit, part['quantity']) or 0, unit) for unit in units]
+
+
+def stock_of(framework, item, warehouse):
+    rows = framework.ok('GET', f'/api/stock/balance?item={item}&warehouse={warehouse}')
+    return float(rows[0]['quantity']) if rows else 0.0
+
+
+def stock_ready(body, definition, framework, cost=100):
+    """A sample of an issuing screen can only be stored when the stock is there: what it lacks is put in (as opening stock, at a known cost)."""
+    part = definition.get('stock')
+    if not part or part['direction'] != 'out':
+        return
+    need = {}
+    for item, warehouse, quantity, _ in _stock_units(body, definition):
+        if item and warehouse and isinstance(quantity, (int, float)):
+            need[(item, warehouse)] = need.get((item, warehouse), 0) + quantity
+    for (item, warehouse), quantity in need.items():
+        short = quantity - stock_of(framework, item, warehouse)
+        if short > 0:
+            framework.ok('POST', '/api/stock/adjust', {'itemEntity': part['itemEntity'], 'itemId': item, 'warehouseEntity': part['warehouseEntity'], 'warehouseId': warehouse, 'quantity': short, 'unitCost': cost})
+
+
+def stock_checks(report, definition, framework, new_body, post, api):
+    """A screen that moves stock: receiving makes lots at the line's cost and the stock goes up; issuing takes from the oldest lots at their cost,
+    the stock goes down, and more than there is is refused; deleting the record takes its movement back."""
+    part = definition.get('stock')
+    if not part:
+        return
+    body = new_body()
+    units = [unit for unit in _stock_units(body, definition) if unit[0] and unit[1] and unit[2]]
+    if not units:
+        return
+    item, warehouse = units[0][0], units[0][1]
+    moved = sum(quantity for one, house, quantity, _ in units if (one, house) == (item, warehouse))
+    before = stock_of(framework, item, warehouse)
+    code, row = post(body)
+    if not report.add('재고: 자료가 저장된다', code == 201, f'{code} {row}'):
+        return
+    after, lines = stock_of(framework, item, warehouse), row.get('_stock') or []
+    if part['direction'] == 'in':
+        report.add(f'재고: 등록하면 그 창고의 재고가 수량만큼({moved:g}) 늘어난다', abs(after - before - moved) < 1e-9, f'{before:g} → {after:g}')
+        cost = units[0][3].get(part['unitCost']) if part.get('unitCost') else 0
+        report.add('재고: 줄마다 LOT 가 생기고 그 줄의 단가가 LOT 단가가 된다', len(lines) == len(_stock_units(body, definition)) and all(line.get('lot') for line in lines) and float(lines[0]['unitCost']) == float(cost or 0), f'{lines[:2]}')
+    else:
+        report.add(f'재고: 등록하면 그 창고의 재고가 수량만큼({moved:g}) 줄어든다', abs(before - after - moved) < 1e-9, f'{before:g} → {after:g}')
+        report.add('재고: 꺼낸 LOT 와 그 단가로 원가가 잡힌다 (수량 × LOT 단가)', bool(lines) and all(abs(float(line['amount']) - float(line['quantity']) * float(line['unitCost'])) < 1e-6 for line in lines)
+                   and abs(sum(float(line['quantity']) for line in lines if line['line'] == 1) - (units[0][2])) < 1e-9, f'{lines[:3]}')
+        short = new_body()
+        for one, house, quantity, _ in [unit for unit in _stock_units(short, definition) if unit[0] and unit[1]]:
+            have = stock_of(framework, one, house)
+            if have > 0:
+                framework.ok('POST', '/api/stock/adjust', {'itemEntity': part['itemEntity'], 'itemId': one, 'warehouseEntity': part['warehouseEntity'], 'warehouseId': house, 'quantity': -have})
+        code, answer = framework.call('POST', api, short)
+        report.add('재고: 재고가 모자라면 저장이 거절되고 이유가 나온다', code == 400 and '재고' in str((answer or {}).get('detail')), f'{code} {answer}')
+        if code == 201:
+            framework.call('DELETE', f"{api}/{answer['id']}?force=true")
+    code, _ = framework.call('DELETE', f"{api}/{row['id']}")
+    if code == 409:
+        code, _ = framework.call('DELETE', f"{api}/{row['id']}?force=true")
+    back = stock_of(framework, item, warehouse)
+    report.add('재고: 자료를 지우면 움직인 재고가 되돌아간다', code == 204 and abs(back - before) < 1e-9, f'{code} / {before:g} → {after:g} → {back:g}')
 
 
 def _computed(field):
@@ -256,6 +329,7 @@ def sweep(framework, made):
         if code not in (204, 404):
             left.append((entity, record))
     left.reverse()
+    framework.call('DELETE', '/api/system/stock/orphans')      # stock put in for sample items that are gone again
     LEFTOVER.extend(left)      # the run sweeps these once more after the trial definition is gone
     return left
 
@@ -485,6 +559,7 @@ def record_checks(key, definition, framework):
                     broken['lines'][0][field['name']] = None
                     refused(f"줄의 필수 항목 {field['label']}: 비우면 거절된다", broken)
         conditions(report, definition, framework, made, new_body, post, api)
+        stock_checks(report, definition, framework, new_body, post, api)
         minimal = {field['name']: value for field, value in ((field, sample(field, framework, made)) for field in plain if field['required'])}
         if lines and low > 0:
             minimal['lines'] = [{field['name']: value for field, value in ((field, _line([field], framework, made, 2)[field['name']]) for field in line_fields if field['required'])} for _ in range(low)]

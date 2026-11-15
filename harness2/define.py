@@ -102,6 +102,8 @@ def describe(key, definition):
     for part, label in (('checks', '비교 규칙'), ('limits', '한도')):
         if definition.get(part):
             text += f' / {label}: ' + '; '.join(rule['message'] for rule in definition[part])
+    if definition.get('stock'):
+        text += f" / 재고: {'늘림(입고)' if definition['stock']['direction'] == 'in' else '줄임(출고)'} - 품목 {definition['stock']['item']}, 수량 {definition['stock']['quantity']}, 창고 {definition['stock']['warehouse']}"
     if definition.get('effects'):
         text += ' / 자동 처리: ' + '; '.join(('등록할 때' if effect['on'] == 'create' else f"{effect['on']} 동작을 할 때") + ' → ' + (f"{effect['create']['entity']} 한 건을 만든다" if effect.get('create') else f"{effect['fill']['entity']} 의 수량이 다 차면 그 자료에 {effect['fill']['action']} 동작을 한다" if effect.get('fill') else f"{effect['act']['via']} 이(가) 가리키는 자료에 {effect['act']['action']} 동작을 한다") for effect in definition['effects'])
     if definition.get('over'):
@@ -277,7 +279,7 @@ def differences(old, new):
                 note(f'패널이 생기거나 바뀜: {panel}')
         if was != now and sorted(was) == sorted(now):
             note('패널 순서가 바뀜')
-    for part, word in (('calendar', '달력 화면'), ('tree', '트리 화면'), ('take', '이어받기 화면'), ('period', '처음 조회 기간'), ('closing', '마감 기준')):
+    for part, word in (('calendar', '달력 화면'), ('tree', '트리 화면'), ('take', '이어받기 화면'), ('stock', '재고'), ('period', '처음 조회 기간'), ('closing', '마감 기준')):
         if (old.get(part) or None) != (new.get(part) or None):
             note(f"{word}: {json.dumps(old.get(part), ensure_ascii=False)} → {json.dumps(new.get(part), ensure_ascii=False)}", bool(old.get(part)) and not new.get(part))
     if (old.get('over') or None) != (new.get('over') or None):
