@@ -1313,3 +1313,19 @@ print = standard form adjusted by definition, calendar and tree both)
   caught; take-over only, automatic only, and no way at all).
 - Next (agreed): layer-3 part (refer to a detail line of another master + same parent), expansion (a business record expands BOM/routing by
   its quantity into one-item records), then the local model rebuilds from layer 1 and flows get registered.
+
+== 2026-11-15: layer 3 by the model; Lighthouse 90+ in the framework; newest-only undo ==
+- Layer 3 part: a ref with "line": true points at a LINE of another master, "within": {field, target} keeps it to the same parent (stored
+  form: within + withinTarget - parse takes both). Lines keep ids through edits (_line), used lines cannot be removed, /api/lookup/{key}/lines,
+  LineField picker. The local model rebuilt 품목, 공정, BOM, 품목별 공정, 공정별 자재소요량 from five sentences (249/221/525/525/281 s); the
+  layer-3 sentence failed three times on MY side first (stored form of within; sample lines colliding with uniqueBy; the preview at 5292 was
+  down because my Lighthouse server, started from local-only/frontend, was taken for the preview by find_running).
+- Self-reading false alarms fixed: describe() spells out uniqueBy, unique line fields, noCycle, line refs.
+- task_queue._preview_ready now also brings up the FIRST project's preview (it skipped it before).
+- Lighthouse (user: "프레임워크가 해내야할 부분"): installed in ~/.local/share/local-workshop/tools/lighthouse; platform/tests/lighthouse_check.py
+  builds the screens like a pack, serves them gzip'd beside the API (tests/lighthouse_serve.mjs, cwd outside the project), measures the
+  home page and one screen per kind. Framework fixes: TabList is our own tab list (aria-owns, buttons beside it), panels carry tabPanelId,
+  <main>, each grid cell inside a role=row (and an empty-row note), --fw-accent-text for accent text, server.compression on. Now 99/95-100/100.
+  Dev preview (unbuilt) scores ~48 on performance by nature - only built screens count.
+- Undo only the newest (user): release.git_undo refuses a sha that is not HEAD; task_queue.undo refuses a request whose commit is not HEAD;
+  the platform pages offer the buttons only on the newest. control_check 28/28 (new case: an older record is refused).

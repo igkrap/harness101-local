@@ -80,10 +80,11 @@ def real(framework, trial_prefix='trial_'):
     return [item for item in framework.definitions() if not item['key'].startswith(trial_prefix)]
 
 
-def _fields(fields):
+def _fields(fields, in_lines=False):
     def one(field):
         extra = field['type'] + (f"→{field['ref']['entity']}" if field.get('ref') else '') + (', 필수' if field['required'] else '') \
-            + (', 계산' if field.get('formula') or field.get('sum') else '') \
+            + (', 계산' if field.get('formula') or field.get('sum') else '') + (', 중복 불가 (한 건 안에서 같은 값 두 번 금지)' if field.get('unique') and in_lines else ', 중복 불가' if field.get('unique') else '') \
+            + (f", {field['ref']['entity']} 의 줄 하나를 고름" + (f" ({field['ref']['within']} 이(가) 같은 것만)" if field['ref'].get('within') else '') if (field.get('ref') or {}).get('line') else '') \
             + ''.join(f", {field[part]['field']}={'|'.join(field[part]['is'])} 일 때{word}" for part, word in (('showWhen', '만 보임'), ('requiredWhen', ' 필수'), ('lockWhen', ' 잠김')) if field.get(part))
         return f"{field['name']}({field['label']}, {extra})"
     return ', '.join(one(field) for field in fields)
@@ -93,7 +94,7 @@ def describe(key, definition):
     """One screen in words: what it holds and how it behaves (the line the model reads for an existing screen)."""
     text = f"- key {key} / 화면 이름 {definition['title']} / 항목: {_fields(definition['fields'])}"
     if definition.get('lines'):
-        text += f" / 줄 표({definition['lines']['label']}): {_fields(definition['lines']['fields'])}"
+        text += f" / 줄 표({definition['lines']['label']}): {_fields(definition['lines']['fields'], True)}"
     for more in definition.get('moreLines') or []:
         text += f" / 줄 표 {more['name']}({more['label']}): {_fields(more['fields'])}"
     if definition.get('status'):
@@ -105,9 +106,9 @@ def describe(key, definition):
         if definition.get(part):
             text += f' / {label}: ' + '; '.join(rule['message'] for rule in definition[part])
     if definition.get('uniqueBy'):
-        text += ' / 겹치면 안 되는 조합: ' + ', '.join('·'.join(group) for group in definition['uniqueBy'])
+        text += ' / ' + ', '.join('·'.join(group) + ' 이(가) 같은 자료는 하나만 (중복 등록 금지)' for group in definition['uniqueBy'])
     if definition.get('noCycle'):
-        text += f" / 순환 금지: {definition['noCycle']['parent']} ↔ 줄의 {definition['noCycle']['child']}"
+        text += f" / 순환 금지: 줄의 {definition['noCycle']['child']} 이(가) {definition['noCycle']['parent']} 자신이거나 돌고 돌아 다시 그것을 품을 수 없음"
     if definition.get('stock'):
         text += f" / 재고: {'늘림(입고)' if definition['stock']['direction'] == 'in' else '창고 이동' if definition['stock']['direction'] == 'move' else '재고 실사' if definition['stock']['direction'] == 'count' else '줄임(출고)'} - 품목 {definition['stock']['item']}, 수량 {definition['stock']['quantity']}, 창고 {definition['stock']['warehouse']}" + (f", LOT 번호 {definition['stock']['lot']}" if definition['stock'].get('lot') else '')
     if definition.get('effects'):

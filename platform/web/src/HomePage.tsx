@@ -148,7 +148,11 @@ export default function HomePage(props: {
   const failedJob = queue?.items.find(i => i.status === "failed")?.job_id;
   const lastJob = [...(queue?.items || [])].reverse().find(i => i.job_id)?.job_id;
   const [undoing, setUndoing] = useState("");
-  const canUndo = (q: TaskQueue) => q.route === "definition" && !q.undone && !!q.definition_result && (q.definition_result.status === "applied" || q.definition_result.status === "partial");
+  // Only the newest change can be taken back (the user's rule): the latest request that changed something and is not undone yet.
+  const changed = (q: TaskQueue) => q.route === "definition" && !q.undone && !!q.definition_result && (q.definition_result.status === "applied" || q.definition_result.status === "partial");
+  const newest = [...(queue ? [queue] : []), ...recent].filter(q => q.route === "definition" && !!q.definition_result && ["applied", "partial"].includes(String(q.definition_result.status)))
+    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0];
+  const canUndo = (q: TaskQueue) => changed(q) && newest?.id === q.id;
   const undo = (q: TaskQueue) => { if (undoing || !window.confirm(`"${q.goal.slice(0, 60)}" 요청으로 바뀐 것을 되돌릴까요?`)) return;
     setUndoing(q.id); void props.onUndo(q.id).catch(e => window.alert(String(e instanceof Error ? e.message : e))).finally(() => { setUndoing("");
       apiFetch("/api/queues").then(r => r.json()).then(d => setRecent(d.queues || [])).catch(() => {}); }); };

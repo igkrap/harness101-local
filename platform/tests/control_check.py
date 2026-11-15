@@ -79,6 +79,9 @@ def main():
         changed = ctl('apply', '점검 품목 등록에 비고 추가해줘', '--file', str(second))
         check('화면 수정 적용과 커밋', changed.get('ok') and fields() == ['품목 코드', '품목명', '단가', '비고'] and git('log', '-1', '--format=%s') == '점검 품목 등록에 비고 추가해줘', changed.get('said') or changed)
 
+        older = git('rev-parse', 'HEAD~1')
+        refused = ctl('undo', '--sha', older)
+        check('가장 최근이 아닌 기록은 취소되지 않는다 (가장 최근 것만)', not refused.get('ok') and '가장 최근' in str(refused), refused)
         undone = ctl('undo')
         check('기록 취소: 깃에 취소 커밋이 생기고 화면이 따라 되돌아간다', undone.get('ok') and fields() == ['품목 코드', '품목명', '단가'] and git('log', '-1', '--format=%s').startswith('취소:'), undone.get('said') or undone)
 

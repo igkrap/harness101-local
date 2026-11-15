@@ -399,6 +399,8 @@ def git_undo(project, sha=None):
     with exclusive('기록 취소'):
         lines = _settled(project)
         target = sha or vcs.head(project)
+        if vcs._git(project, 'rev-parse', target) != vcs.head(project):       # (the user's rule: only the newest change is taken back)
+            raise ValueError('가장 최근 기록만 취소할 수 있습니다. 더 앞의 기록은 그 뒤의 기록부터 차례로 취소해야 합니다.')
         subject = vcs._git(project, 'log', '-1', '--format=%s', target)
         done = vcs.revert(project, target)
         lines.append(f'"{subject}" 을(를) 취소했습니다 ({done[:7]}).')

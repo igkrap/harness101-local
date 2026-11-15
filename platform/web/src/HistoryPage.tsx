@@ -97,7 +97,8 @@ export default function HistoryPage({ token, busy, onOpenJob }: { token: string;
             <VStack gap={3}>
               <HStack gap={2} style={{ flexWrap: "wrap" }}>
                 {c.job_id && <Button label="AI 작업 기록 보기" size="sm" variant="secondary" onClick={() => onOpenJob(c.job_id!)} />}
-                <Button label="이 변경 취소하기" size="sm" variant="secondary" isDisabled={locked} onClick={() => setUndoing(c)} />
+                {c.sha === commits[0]?.sha ? <Button label="이 변경 취소하기" size="sm" variant="secondary" isDisabled={locked} onClick={() => setUndoing(c)} />
+                  : <Text color="secondary">가장 최근 기록만 취소할 수 있습니다.</Text>}
                 {loose.length > 0 && <Text color="secondary">기록되지 않은 변경은 취소하기 전에 먼저 자동으로 기록됩니다.</Text>}
               </HStack>
               {c.body && <Collapsible trigger="요청 원문" defaultIsOpen={false}><pre className="history-body">{c.body}</pre></Collapsible>}

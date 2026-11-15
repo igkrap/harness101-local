@@ -53,6 +53,8 @@ def sample(field, framework, made):
     if kind == 'code':
         codes = framework.codes(field['codeGroup'])
         return codes[0]['code'] if codes else None
+    if kind == 'ref' and field['ref'].get('line'):
+        return None                       # a line of another master: chosen once the record it must belong to is known (settle)
     if kind == 'ref':
         target = field['ref']['entity']
         definition = next(item['definition'] for item in framework.definitions() if item['key'] == target)
@@ -134,6 +136,38 @@ def _groups(body, definition):
     return out
 
 
+_line_use = {}
+
+
+def sample_line(ref, owner, framework, made, index=None):
+    """A line of another master that goes with `owner` (a step of this item's routing): the record of that master for the owner is
+    used when there is one (a master like a routing exists once per item), else made for the occasion with a few lines. Each call
+    takes the next line, so two lines of one sample point at different lines there."""
+    target = next(item['definition'] for item in framework.definitions() if item['key'] == ref['entity'])
+    found = []
+    if ref.get('withinTarget') and owner is not None:
+        found = [row for row in framework.ok('GET', f"/api/data/{ref['entity']}?{ref['withinTarget']}={owner}&_limit=5") if row.get(ref['withinTarget']) == owner]
+    if found:
+        row = framework.ok('GET', f"/api/data/{ref['entity']}/{found[0]['id']}")
+    else:
+        body = {field['name']: sample(field, framework, made) for field in target['fields'] if not _computed(field)}
+        if ref.get('withinTarget') and owner is not None:
+            body[ref['withinTarget']] = owner
+        body['lines'] = [_line(target['lines']['fields'], framework, made, 2 + number) for number in range(min(3, target['lines'].get('max') or 3))]
+        body = fit(body, target, framework, made)
+        if ref.get('withinTarget') and owner is not None:
+            body[ref['withinTarget']] = owner
+        row = framework.ok('POST', f"/api/data/{ref['entity']}", body)
+        made.append((ref['entity'], row['id']))
+    lines = row.get('lines') or []
+    if not lines:
+        return None
+    place = (ref['entity'], row['id'])
+    at = _line_use.get(place, 0) if index is None else index
+    _line_use[place] = at + 1
+    return lines[at % len(lines)]['_line']
+
+
 def settle(body, definition, framework, made):
     """Make a sample body agree with the definition's conditions (showWhen, requiredWhen, lockWhen), and give it the further
     tables of lines it cannot exist without. Each condition's field takes the first value asked for, so the fields that depend on
@@ -172,6 +206,14 @@ def settle(body, definition, framework, made):
         if above is None:
             unit['_settled'] = {name: True for name in chosen}
     body.pop('_settled', None)
+    for fields, unit, above in _groups(body, definition):      # lines of other masters, of the record this one goes with
+        for field in fields:
+            ref = field.get('ref') or {}
+            if ref.get('line') and unit.get(field['name']) is None and (field.get('required') or True):
+                owner = None
+                if ref.get('within'):
+                    owner = unit.get(ref['within']) if ref['within'] in unit else (above or {}).get(ref['within'])
+                unit[field['name']] = sample_line(ref, owner, framework, made)
     for fields, unit, above in _groups(body, definition):
         for field in fields:
             if _computed(field):
@@ -341,6 +383,28 @@ def lot_checks(report, definition, framework, new_body, api):
         remove()
 
 
+def line_ref_checks(report, definition, framework, made, new_body, post, api):
+    """Layer 3: a field that points at a line of another master. A line of a record that does not go with this one is refused; so is a line that is not there."""
+    for where, fields in (('', definition['fields']), ('줄의 ', (definition.get('lines') or {}).get('fields', []))):
+        for field in [item for item in fields if (item.get('ref') or {}).get('line')]:
+            ref = field['ref']
+            body = new_body()
+            unit = (body.get('lines') or [None])[0] if where else body
+            if unit is None:
+                continue
+            if ref.get('within'):
+                other = sample({'type': 'ref', 'ref': {'entity': next((one['ref']['entity'] for one in definition['fields'] + (definition.get('lines') or {}).get('fields', []) if one['name'] == ref['within'] and one.get('ref')), ''), 'label': ''}}, framework, made) \
+                    if any(one['name'] == ref['within'] and one.get('ref') for one in definition['fields'] + (definition.get('lines') or {}).get('fields', [])) else f'다른값{next(_serial)}'
+                unit[field['name']] = sample_line(ref, other, framework, made)
+                code, answer = post(body)
+                report.add(f"{where}{field['label']}: 이 자료와 같은 {ref['within']} 이(가) 아닌 건의 줄을 고르면 거절된다", code == 400 and '것이 아닙니다' in str((answer or {}).get('detail')), f'{code} {answer}')
+            body = new_body()
+            unit = (body.get('lines') or [None])[0] if where else body
+            unit[field['name']] = 999999999
+            code, answer = post(body)
+            report.add(f"{where}{field['label']}: 없는 줄을 가리키면 거절된다", code == 400, f'{code} {answer}')
+
+
 def layer_checks(report, definition, framework, made, new_body, post, api):
     """Master data that combines other master data: a combination taken twice, a value twice in one record's lines, a part that is the item
     itself or leads back to it - each refused with its reason; the same records apart are stored."""
@@ -362,6 +426,14 @@ def layer_checks(report, definition, framework, made, new_body, post, api):
         body['lines'] = [body['lines'][0], twice] + body['lines'][1:]
         code, answer = post(body)
         report.add(f"줄의 {field['label']}: 한 건 안에서 같은 값을 두 줄로 넣으면 거절된다", code == 400 and '겹칩니다' in str((answer or {}).get('detail')), f'{code} {answer}')
+    if definition.get('lines') and (definition.get('uniqueBy') or definition.get('noCycle') or any(item.get('unique') for item in definition['lines']['fields'])):
+        body = new_body()
+        code, row = post(body)
+        if code == 201 and row.get('lines'):
+            again = {name: value for name, value in row.items() if name not in ('id', 'status', 'statusLabel', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt', '_names', '_files', '_stock')}
+            ids = [line['_line'] for line in row['lines']]
+            code2, after = framework.call('PUT', f"{api}/{row['id']}", again)
+            report.add('기준 정보의 줄은 고쳐 저장해도 같은 줄로 남는다 (다른 기준 정보가 그 줄을 가리킬 수 있도록)', code2 == 200 and [line.get('_line') for line in after.get('lines', [])] == ids, f'{code2} {ids} → {[line.get("_line") for line in (after or {}).get("lines", [])] if isinstance(after, dict) else after}')
     cycle = definition.get('noCycle')
     if cycle:
         body = new_body()
@@ -704,6 +776,7 @@ def record_checks(key, definition, framework):
         conditions(report, definition, framework, made, new_body, post, api)
         stock_checks(report, definition, framework, new_body, post, api)
         layer_checks(report, definition, framework, made, new_body, post, api)
+        line_ref_checks(report, definition, framework, made, new_body, post, api)
         minimal = {field['name']: value for field, value in ((field, sample(field, framework, made)) for field in plain if field['required'])}
         if lines and low > 0:
             minimal['lines'] = [{field['name']: value for field, value in ((field, _line([field], framework, made, 2)[field['name']]) for field in line_fields if field['required'])} for _ in range(low)]

@@ -170,6 +170,12 @@ class QueueManager:
                 raise RuntimeError('되돌릴 수 있는 요청이 아닙니다.')
             if queue.get('undone'):
                 raise RuntimeError('이미 되돌린 요청입니다.')
+            import sites
+            import project_git
+            made = (queue['definition_result'] or {}).get('commit')
+            newest = project_git.head(sites.site().root)
+            if made and newest and not newest.startswith(made):           # (the user's rule: only the newest change is taken back)
+                raise RuntimeError('가장 최근 변경만 되돌릴 수 있습니다. 이 요청 뒤에 다른 변경이 기록되어 있습니다.')
         import sys
         folder = str(Path(__file__).resolve().parents[1] / 'harness2')
         if folder not in sys.path:
@@ -332,7 +338,7 @@ class QueueManager:
         """The project's screens must be up for the checks that look at them: start the preview if the platform owns it, and wait for it."""
         import sites, time, urllib.request
         hub, record = self.app.coordinator, getattr(self.app, 'metadata', None)
-        if sites.site().first or hub is None or not record:
+        if hub is None or not record:          # (the first project too: its preview can stop like any other)
             return
         for _ in range(60):
             try:
