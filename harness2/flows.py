@@ -118,6 +118,8 @@ def simulate(flow, framework):
     title = lambda key: known[key].get('title', key)
     newest = lambda key: max([row['id'] for row in framework.ok('GET', f'/api/data/{key}?_sort=id&_desc=true&_limit=1')] or [0])
     takes = {(one['take']['from'], one['take']['entity']): key for key, one in known.items() if one.get('take')}
+    stored = [key for key, one in known.items() if one.get('fields')]
+    start = max([newest(key) for key in stored] or [0])        # ids come from one sequence: anything after this was made during the run
     try:
         first_limit, _ = _link(known, stages[0], stages[1])
         if not report.add(f"{title(stages[1])} 이(가) {title(stages[0])} 의 수량을 한도로 이어진다", first_limit is not None, '두 화면을 잇는 한도(limits)가 없습니다'):
@@ -217,6 +219,14 @@ def simulate(flow, framework):
     except Exception as problem:
         report.add('흐름을 끝까지 돌린다', False, str(problem)[:300])
     finally:
+        # what the run's records made by themselves on the way (the requirements a set-up work order expanded into) goes too:
+        # every record this account made after the start, in any screen, oldest first so the newest are removed first
+        who = next((one.get('createdBy') for key, record in made[:1] for one in [framework.ok('GET', f'/api/data/{key}/{record}')]), None)
+        if who:
+            known_rows = set(made)
+            extra = sorted((row['id'], key) for key in stored for row in framework.ok('GET', f'/api/data/{key}?_sort=id&_desc=true&_limit=200')
+                           if row['id'] > start and row.get('createdBy') == who and (key, row['id']) not in known_rows)
+            made = sorted(made + [(key, record) for record, key in extra], key=lambda pair: pair[1])
         report.leftover = sweep(framework, made)
     return report
 
