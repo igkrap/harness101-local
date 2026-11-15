@@ -78,12 +78,12 @@ def main():
             scores = {key: round((value['score'] or 0) * 100) for key, value in report['categories'].items()}
             low = []
             for category, value in scores.items():
-                if value < LEAST:
+                if value < 100:     # below the line it is why it failed; above it, what still costs points
                     for audit in (ref['id'] for ref in report['categories'][category]['auditRefs'] if ref['weight'] > 0):
                         if report['audits'][audit]['score'] is not None and report['audits'][audit]['score'] < 0.9:
                             low.append(f"{category}: {report['audits'][audit]['title']}")
             ok = all(value >= LEAST for value in scores.values())
-            print(f"  {'통과' if ok else '실패'}  {name}  " + '  '.join(f'{key} {value}' for key, value in scores.items()) + ('' if ok else '\n          ' + '\n          '.join(low[:8])))
+            print(f"  {'통과' if ok else '실패'}  {name}  " + '  '.join(f'{key} {value}' for key, value in scores.items()) + ('\n          ' + ('' if ok else '') + '\n          '.join(low[:8]) if low else ''))
             results.append(ok)
             if not ok:
                 failed.append(name)
