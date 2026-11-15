@@ -169,8 +169,8 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
         if definition.get('tree'):
             part = definition['tree']
             result['view'] = f"트리 화면 - {part['entity']} 자료를 " + (f"{part['parent']} → {part['child']} 쌍으로 잇는다" if part.get('child') else f"{part['parent']} (상위) 아래로 묶는다")
-        if definition.get('period') or definition.get('closing'):
-            result['query'] = ' / '.join(filter(None, [f"처음 조회 기간: {definition['period']}" if definition.get('period') else '', ('마감과 무관' if definition['closing'] == 'none' else f"마감 기준: {definition['closing']}") if definition.get('closing') else '']))
+        if definition.get('period'):
+            result['query'] = f"처음 조회 기간: {definition['period']}"
         if definition.get('over'):
             part = definition['over']
             result['over'] = f"{part['entity']} 자료를 여는 업무 화면 - " + ('상태 ' + ', '.join(part['statuses']) + ' 인 건만' if part.get('statuses') else '모든 건') \

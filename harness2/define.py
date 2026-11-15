@@ -300,7 +300,7 @@ def differences(old, new):
                 note(f'패널이 생기거나 바뀜: {panel}')
         if was != now and sorted(was) == sorted(now):
             note('패널 순서가 바뀜')
-    for part, word in (('calendar', '달력 화면'), ('tree', '트리 화면'), ('take', '이어받기 화면'), ('stockView', '재고 보기 화면'), ('stock', '재고'), ('uniqueBy', '겹치면 안 되는 조합'), ('effective', '적용 기간'), ('noCycle', '순환 금지'), ('period', '처음 조회 기간'), ('closing', '마감 기준')):
+    for part, word in (('calendar', '달력 화면'), ('tree', '트리 화면'), ('take', '이어받기 화면'), ('stockView', '재고 보기 화면'), ('stock', '재고'), ('uniqueBy', '겹치면 안 되는 조합'), ('effective', '적용 기간'), ('noCycle', '순환 금지'), ('period', '처음 조회 기간')):
         if (old.get(part) or None) != (new.get(part) or None):
             note(f"{word}: {json.dumps(old.get(part), ensure_ascii=False)} → {json.dumps(new.get(part), ensure_ascii=False)}", bool(old.get(part)) and not new.get(part))
     if (old.get('over') or None) != (new.get('over') or None):

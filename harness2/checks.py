@@ -594,6 +594,49 @@ def stock_checks(report, definition, framework, new_body, post, api):
     report.add('재고: 자료를 지우면 움직인 재고가 되돌아간다', code == 204 and abs(back - before) < 1e-9, f'{code} / {before:g} → {after:g} → {back:g}')
 
 
+def closing_checks(report, definition, framework, new_body, post, api):
+    """수불 마감: no stock moves on a day of a closed month, a record whose stock moved in it stays as it is, and opening it again lets it go.
+    Months someone really closed are only read; otherwise a month long past (2000-01, nothing real in it) is closed for the check and opened again."""
+    part = definition.get('stock')
+    if not part or not part.get('date'):
+        return
+
+    def dated(body, day):
+        if part['date'] in body or not body.get('lines'):
+            body[part['date']] = day
+        else:
+            for line in body['lines']:
+                line[part['date']] = day
+        return body
+
+    def said(answer):
+        return '마감' in str((answer or {}).get('detail'))
+    through = framework.ok('GET', '/api/system/stock/closings').get('through')
+    if through:
+        code, answer = post(dated(new_body(), through + '-01'))
+        report.add(f'수불 마감: 마감된 달({through}) 날짜로는 재고가 움직이지 않는다 (거절되고 이유가 나온다)', code == 409 and said(answer), f'{code} {answer}')
+        return
+    day, month, kept = '2000-01-15', '2000-01', None
+    if part['direction'] == 'in':
+        code, kept = post(dated(new_body(), day))
+        if not report.add('수불 마감: 지난 달 날짜로 입고가 저장된다 (마감 전)', code == 201, f'{code} {kept}'):
+            return
+    framework.ok('POST', '/api/system/stock/closings', {'period': month, 'note': '검사 중 잠깐 마감'})
+    try:
+        code, answer = post(dated(new_body(), day))
+        report.add(f'수불 마감: 마감된 달({month}) 날짜로는 재고가 움직이지 않는다 (거절되고 이유가 나온다)', code == 409 and said(answer), f'{code} {answer}')
+        if kept:
+            meta = ('id', 'status', 'statusLabel', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt', '_names', '_files', '_stock')
+            record = framework.ok('GET', f"{api}/{kept['id']}")
+            changed, removed = framework.call('PUT', f"{api}/{kept['id']}", {name: value for name, value in record.items() if name not in meta}), framework.call('DELETE', f"{api}/{kept['id']}")
+            report.add('수불 마감: 마감된 달에 재고가 움직인 자료는 고칠 수도 지울 수도 없다', changed[0] == 409 and said(changed[1]) and removed[0] == 409 and said(removed[1]), f'{changed} {removed}')
+    finally:
+        framework.call('DELETE', f'/api/system/stock/closings/{month}')
+    if kept:
+        code, answer = framework.call('DELETE', f"{api}/{kept['id']}")
+        report.add('수불 마감: 다시 열면 그 자료를 지울 수 있다', code == 204, f'{code} {answer}')
+
+
 def _computed(field):
     return bool(field.get('formula') or field.get('sum') or field.get('type') == 'serial')
 
@@ -854,6 +897,7 @@ def record_checks(key, definition, framework):
                     refused(f"줄의 필수 항목 {field['label']}: 비우면 거절된다", broken)
         conditions(report, definition, framework, made, new_body, post, api)
         stock_checks(report, definition, framework, new_body, post, api)
+        closing_checks(report, definition, framework, new_body, post, api)
         layer_checks(report, definition, framework, made, new_body, post, api)
         effective_checks(report, definition, framework, made, new_body, post, api)
         line_ref_checks(report, definition, framework, made, new_body, post, api)
@@ -884,20 +928,6 @@ def record_checks(key, definition, framework):
                     continue
                 (broken['lines'][0] if where else broken)[field['name']] = value
                 refused(f"{where}{field['label']}: 소수 {field['decimals']}자리를 넘는 값({value:g})은 거절된다", broken)
-        by = closing_field(definition)
-        if by:
-            body = fit(new_body(), definition, framework, made)
-            month = str(body.get(by) or '')[:7]
-            already = any(item.get('period') == month for item in framework.ok('GET', '/api/auth/closings'))
-            if len(month) == 7 and not already:        # a month someone really closed is left alone
-                framework.ok('POST', '/api/system/closings', {'period': month, 'note': '검사 중 잠깐 마감'})
-                try:
-                    code, answer = post(body)
-                    report.add(f"마감: 마감된 달({month})에는 등록이 거절되고 이유가 나온다", code == 409 and '마감' in str((answer or {}).get('detail')), f'{code} {answer}')
-                finally:
-                    framework.call('DELETE', f'/api/system/closings/{month}')
-                code, answer = post(body)
-                report.add('마감: 다시 열면 등록된다', code == 201, f'{code} {answer}')
         for check in definition.get('checks') or []:
             broken = fit(new_body(), definition, framework, made, break_check=check)
             code, answer = post(broken)
@@ -1378,19 +1408,6 @@ def over_screen_criteria(definition):
     items.append(('저장 버튼이 있다' if definition['over'].get('edit') else '저장 버튼이 없다',
                   {'op': 'visible' if definition['over'].get('edit') else 'absent', 'selector': f'{toolbar} >> role=button[name="저장"]'}))
     return [{'id': f'C{index + 1}', 'requirement_id': 'R1', 'description': description, 'check': check} for index, (description, check) in enumerate(items)]
-
-
-def closing_field(definition):
-    """The date a month's closing goes by, by the framework's own rule (see AppDefinitions.Definition.closingField)."""
-    fields, named = definition.get('fields') or [], definition.get('closing')
-    if named == 'none' or not fields:
-        return None
-    if named:
-        return named
-    if not (definition.get('lines') or definition.get('status') or any(field.get('type') == 'serial' for field in fields)):
-        return None
-    dates = [field for field in fields if field.get('type') == 'date']
-    return next((field['name'] for field in dates if field.get('required')), dates[0]['name'] if dates else None)
 
 
 def view_checks(key, definition, framework):
