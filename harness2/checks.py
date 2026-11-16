@@ -1669,6 +1669,42 @@ def effect_checks(key, definition, framework):
                     if code == 201:
                         made.append((key, answer['id']))
                     report.add(f"펼치기: 맞는 {master['title']} 이(가) 없으면 등록이 거절되고 이유가 나온다", code in (400, 409) and '기준 정보' in str((answer or {}).get('detail')), f'{code} {answer}')
+                if effect['on'] == 'create' and master.get('effective'):
+                    # which day the master must be valid on: the record's own date (at) or the day it is registered - a master valid only
+                    # from tomorrow, and a record dated after that
+                    import datetime
+                    tomorrow = (datetime.date.today() + datetime.timedelta(days=1)).isoformat()
+                    later_day = (datetime.date.today() + datetime.timedelta(days=11)).isoformat()
+                    dated = fit({field['name']: sample(field, framework, made) for field in definition['fields'] if not _computed(field)}, definition, framework, made)
+                    if any(dated.get(mine) != body.get(mine) for mine in part['match'].values()):
+                        given = {field['name']: sample(field, framework, made) for field in master['fields'] if not _computed(field)}
+                        if master.get('lines'):
+                            given['lines'] = [_line(master['lines']['fields'], framework, made, 2 + index) for index in range(2)]
+                        for theirs, mine in part['match'].items():
+                            given[theirs] = dated.get(mine)
+                        given = fit(given, master, framework, made)
+                        for theirs, mine in part['match'].items():
+                            given[theirs] = dated.get(mine)
+                        given[master['effective']['from']] = tomorrow
+                        if master['effective'].get('to'):
+                            given[master['effective']['to']] = None
+                        code, future = framework.call('POST', f"/api/data/{part['from']}", given)
+                        if code == 201:
+                            made.append((part['from'], future['id']))
+                            for field in definition['fields']:
+                                if field.get('type') == 'date':
+                                    dated[field['name']] = later_day
+                            if part.get('quantityTimes'):
+                                dated[part['quantityTimes']] = 3
+                            code, answer = framework.call('POST', api, dated)
+                            if code == 201:
+                                made.append((key, answer['id']))
+                            if part.get('at'):
+                                label = next((field['label'] for field in definition['fields'] if field['name'] == part['at']), part['at'])
+                                report.add(f"펼치기: {label} 에 유효한 {master['title']} 을(를) 쓴다 (내일부터 유효한 것도 {label} 이(가) 그 뒤면 쓰인다)", code == 201, f'{code} {answer}')
+                            else:
+                                report.add(f"펼치기: 등록하는 날(오늘) 유효한 {master['title']} 만 쓴다 (내일부터 유효한 것은 날짜 항목이 그 뒤여도 쓰이지 않는다)",
+                                           code in (400, 409) and '기준 정보' in str((answer or {}).get('detail')), f'{code} {answer}')
             elif effect.get('fill'):
                 fill, other = effect['fill'], known[effect['fill']['entity']]
                 wanted = next(item for item in other['status']['actions'] if item['name'] == fill['action'])
