@@ -146,6 +146,8 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
             extra += [f"{when['field']}{'≠' if when.get('not') else '='}{'|'.join(when['is']) or '비어 있음'} 일 때{word}" for when, word in ((field.get('showWhen'), '만 보임'), (field.get('requiredWhen'), ' 필수'), (field.get('lockWhen'), ' 잠김')) if when]
             return f"{field['label']}({', '.join(str(item) for item in extra)})"
         result.update(action=action, key=key, title=definition['title'], fields=[label(field) for field in definition['fields']])
+        if definition.get('dataOnly') or definition.get('screen') is False:
+            result['data_only'] = True
         if definition.get('lines'):
             result['lines'] = [label(field) for field in definition['lines']['fields']]
             limit = definition['lines']
@@ -420,6 +422,8 @@ def say(result):
             lines.append('조합 기준 정보: ' + result['layer'])
         for more in result.get('more_lines') or []:
             lines.append(f"줄 표 {more['label']} 항목: " + ', '.join(more['fields']))
+        if result.get('data_only'):
+            lines.append('화면: 없음 (다른 업무에서 저절로 만들어지는 데이터)')
         if result.get('statuses'):
             lines.append('상태: ' + ' → '.join(result['statuses']) + ' / 동작: ' + ', '.join(result.get('actions', [])) + (' / 끝난 상태: ' + ', '.join(result['closed']) if result.get('closed') else ''))
         if result.get('print'):

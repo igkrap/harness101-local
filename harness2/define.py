@@ -296,6 +296,8 @@ def differences(old, new):
                     note(f"{label} {item['label']} 이(가) 추가됨")
         if sorted(before.get('locked', [])) != sorted(after.get('locked', [])):
             note(f"수정·삭제를 막는 상태: {before.get('locked', [])} → {after.get('locked', [])}", bool(set(before.get('locked', [])) - set(after.get('locked', []))))
+        if sorted(before.get('closed') or []) != sorted(after.get('closed') or []):
+            note(f"끝난 상태(더 이어지지 않음): {before.get('closed') or []} → {after.get('closed') or []}", bool(set(before.get('closed') or []) - set(after.get('closed') or [])))
         if before.get('initial') != after.get('initial') and before:
             note(f"처음 상태: {before.get('initial')} → {after.get('initial')}")
     before, after = old.get('summary') or {}, new.get('summary') or {}
@@ -333,6 +335,11 @@ def differences(old, new):
     for part, word in (('calendar', '달력 화면'), ('tree', '트리 화면'), ('take', '이어받기 화면'), ('stockView', '재고 보기 화면'), ('stock', '재고'), ('uniqueBy', '겹치면 안 되는 조합'), ('effective', '적용 기간'), ('noCycle', '순환 금지'), ('period', '처음 조회 기간')):
         if (old.get(part) or None) != (new.get(part) or None):
             note(f"{word}: {json.dumps(old.get(part), ensure_ascii=False)} → {json.dumps(new.get(part), ensure_ascii=False)}", bool(old.get(part)) and not new.get(part))
+    only = lambda definition: bool(definition.get('dataOnly') or definition.get('screen') is False)
+    if only(old) != only(new):
+        note('화면: ' + ('있음 → 없음 (데이터로만)' if only(new) else '없음 → 있음'), only(old) and not only(new))
+    if (old.get('follows') or None) != (new.get('follows') or None):
+        note(f"후행 자료(앞 단계를 이어받아서만 생김): {old.get('follows')} → {new.get('follows')}", bool(old.get('follows')) and not new.get('follows'))
     if (old.get('over') or None) != (new.get('over') or None):
         note(f"업무 화면: {json.dumps(old.get('over'), ensure_ascii=False)} → {json.dumps(new.get('over'), ensure_ascii=False)}")
     if (old.get('print') or None) != (new.get('print') or None):
