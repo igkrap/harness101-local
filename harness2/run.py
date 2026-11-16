@@ -148,6 +148,8 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
         result.update(action=action, key=key, title=definition['title'], fields=[label(field) for field in definition['fields']])
         if definition.get('dataOnly') or definition.get('screen') is False:
             result['data_only'] = True
+        if definition.get('lock'):
+            result['lock'] = f"{definition['lock']['group']} 마감 ({definition['lock']['date']} 기준)"
         if definition.get('lookups'):
             result['lookups'] = [f"{', '.join(item['set'])} ← {item['from']}" + (f" ({item['at']} 기준)" if item.get('at') else '') for item in definition['lookups']]
         if definition.get('lines'):
@@ -424,6 +426,8 @@ def say(result):
             lines.append('조합 기준 정보: ' + result['layer'])
         for more in result.get('more_lines') or []:
             lines.append(f"줄 표 {more['label']} 항목: " + ', '.join(more['fields']))
+        if result.get('lock'):
+            lines.append('마감: ' + result['lock'])
         if result.get('lookups'):
             lines.append('찾아 채우기: ' + '; '.join(result['lookups']))
         if result.get('data_only'):

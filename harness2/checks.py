@@ -633,47 +633,41 @@ def lookup_checks(report, definition, framework, made, new_body, post, api):
 
 
 def closing_checks(report, definition, framework, new_body, post, api):
-    """수불 마감: no stock moves on a day of a closed month, a record whose stock moved in it stays as it is, and opening it again lets it go.
-    Months someone really closed are only read; otherwise a month long past (2000-01, nothing real in it) is closed for the check and opened again."""
-    part = definition.get('stock')
-    if not part or not part.get('date'):
+    """Period lock ("lock": {group, date}): a record dated in a locked month cannot be registered, changed or deleted; opening the month
+    again lets it go. Months someone really locked are only read; otherwise a month long past (2000-01, nothing real in it) is locked for
+    the check and opened again."""
+    part = definition.get('lock')
+    if not part:
         return
-
-    def dated(body, day):
-        if part['date'] in body or not body.get('lines'):
-            body[part['date']] = day
-        else:
-            for line in body['lines']:
-                line[part['date']] = day
-        return body
-
-    def said(answer):
-        return '마감' in str((answer or {}).get('detail'))
-    through = framework.ok('GET', '/api/stock-closings').get('through')
+    group, date = part['group'], part['date']
+    meta = ('id', 'status', 'statusLabel', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt', '_names', '_files', '_stock')
+    said = lambda answer: '마감' in str((answer or {}).get('detail'))
+    through = next((item.get('through') for item in framework.ok('GET', '/api/locks') if item['group'] == group), None)
     if through:
-        code, answer = post(dated(new_body(), through + '-01'))
-        report.add(f'수불 마감: 마감된 달({through}) 날짜로는 재고가 움직이지 않는다 (거절되고 이유가 나온다)', code == 409 and said(answer), f'{code} {answer}')
+        code, answer = post(dict(new_body(), **{date: through + '-01'}))
+        report.add(f'{group} 마감: 마감된 달({through}) 날짜로는 등록할 수 없다 (이유가 나온다)', code == 409 and said(answer), f'{code} {answer}')
         return
     day, month, kept = '2000-01-15', '2000-01', None
-    if part['direction'] == 'in':
-        code, kept = post(dated(new_body(), day))
-        if not report.add('수불 마감: 지난 달 날짜로 입고가 저장된다 (마감 전)', code == 201, f'{code} {kept}'):
+    if not definition.get('stock') or definition['stock']['direction'] == 'in':
+        code, kept = post(dict(new_body(), **{date: day}))
+        if not report.add(f'{group} 마감: 지난 달 날짜로 자료가 저장된다 (마감 전)', code == 201, f'{code} {kept}'):
             return
-    framework.ok('POST', '/api/stock-closings', {'period': month, 'note': '검사 중 잠깐 마감'})
+    code, answer = framework.call('POST', f'/api/locks/{group}', {'period': month, 'note': '검사 중 잠깐 마감'})
+    if not report.add(f'{group} 마감: 그 달을 마감할 수 있다', code == 200, f'{code} {answer}'):
+        return
     try:
-        code, answer = post(dated(new_body(), day))
-        report.add(f'수불 마감: 마감된 달({month}) 날짜로는 재고가 움직이지 않는다 (거절되고 이유가 나온다)', code == 409 and said(answer), f'{code} {answer}')
+        code, answer = post(dict(new_body(), **{date: '2000-01-10'}))
+        report.add(f'{group} 마감: 마감된 달({month}) 날짜로는 등록할 수 없다 (이유가 나온다)', code == 409 and said(answer), f'{code} {answer}')
         if kept:
-            meta = ('id', 'status', 'statusLabel', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt', '_names', '_files', '_stock')
             record = framework.ok('GET', f"{api}/{kept['id']}")
-            changed, removed = framework.call('PUT', f"{api}/{kept['id']}", {name: value for name, value in record.items() if name not in meta}), framework.call('DELETE', f"{api}/{kept['id']}")
-            report.add('수불 마감: 마감된 달에 재고가 움직인 자료는 고칠 수도 지울 수도 없다', changed[0] == 409 and said(changed[1]) and removed[0] == 409 and said(removed[1]), f'{changed} {removed}')
+            changed = framework.call('PUT', f"{api}/{kept['id']}", {name: value for name, value in record.items() if name not in meta})
+            removed = framework.call('DELETE', f"{api}/{kept['id']}")
+            report.add(f'{group} 마감: 마감된 달의 자료는 고칠 수도 지울 수도 없다', changed[0] == 409 and said(changed[1]) and removed[0] == 409 and said(removed[1]), f'{changed} {removed}')
     finally:
-        framework.call('DELETE', f'/api/stock-closings/{month}')
+        framework.call('DELETE', f'/api/locks/{group}/{month}')
     if kept:
         code, answer = framework.call('DELETE', f"{api}/{kept['id']}")
-        report.add('수불 마감: 다시 열면 그 자료를 지울 수 있다', code == 204, f'{code} {answer}')
-
+        report.add(f'{group} 마감: 다시 열면 그 자료를 지울 수 있다', code == 204, f'{code} {answer}')
 
 def _computed(field):
     return bool(field.get('formula') or field.get('sum') or field.get('type') == 'serial')

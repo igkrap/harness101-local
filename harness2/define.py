@@ -129,6 +129,8 @@ def describe(key, definition):
         text += f" / 재고: {'늘림(입고)' if definition['stock']['direction'] == 'in' else '창고 이동' if definition['stock']['direction'] == 'move' else '재고 실사' if definition['stock']['direction'] == 'count' else '줄임(출고)'} - 품목 {definition['stock']['item']}, 수량 {definition['stock']['quantity']}, 창고 {definition['stock']['warehouse']}" + (f", LOT 번호 {definition['stock']['lot']}" if definition['stock'].get('lot') else '')
     if definition.get('screen') is False or definition.get('dataOnly'):
         text += ' / 화면 없음: 다른 업무에서 저절로 만들어지고 바뀌는 데이터 ("screen": false)'
+    if definition.get('lock'):
+        text += f" / 마감: {definition['lock']['group']} 묶음 ({definition['lock']['date']} 기준)"
     if definition.get('lookups'):
         text += ' / 찾아 채우기: ' + '; '.join(f"{', '.join(item['set'])} ← {item['from']} ({', '.join(f'{theirs}={mine}' for theirs, mine in item['match'].items())}" + (f", {item['at']} 날짜 기준" if item.get('at') else '') + ')' for item in definition['lookups'])
     if definition.get('follows'):
@@ -342,6 +344,8 @@ def differences(old, new):
     only = lambda definition: bool(definition.get('dataOnly') or definition.get('screen') is False)
     if only(old) != only(new):
         note('화면: ' + ('있음 → 없음 (데이터로만)' if only(new) else '없음 → 있음'), only(old) and not only(new))
+    if (old.get('lock') or None) != (new.get('lock') or None):
+        note(f"마감: {json.dumps(old.get('lock'), ensure_ascii=False)} → {json.dumps(new.get('lock'), ensure_ascii=False)}", bool(old.get('lock')) and not new.get('lock'))
     if (old.get('lookups') or []) != (new.get('lookups') or []):
         note(f"찾아 채우기: {json.dumps(old.get('lookups') or [], ensure_ascii=False)} → {json.dumps(new.get('lookups') or [], ensure_ascii=False)}", len(new.get('lookups') or []) < len(old.get('lookups') or []))
     if (old.get('follows') or None) != (new.get('follows') or None):
