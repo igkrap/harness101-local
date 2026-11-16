@@ -1352,7 +1352,9 @@ def over_checks(key, definition, framework):
         body = {field['name']: sample(field, framework, made) for field in base['fields'] if not _computed(field)}
         if base.get('lines') and base['lines'].get('min', 1) > 0:
             body['lines'] = [_line(base['lines']['fields'], framework, made, 2)]
-        row = framework.ok('POST', own, fit(body, base, framework, made))
+        body = fit(body, base, framework, made)
+        ready_masters(base, body, framework, made)          # registering it may draw on master data (a work order expands its BOM)
+        row = framework.ok('POST', own, body)
         made.append((part['entity'], row['id']))
         return row
     try:
@@ -1365,8 +1367,25 @@ def over_checks(key, definition, framework):
             report.add(f'정한 상태({shown})의 건만 보인다', all(item.get('status') in part['statuses'] for item in rows), f"{sorted({item.get('status') for item in rows})}")
             inside = row.get('status') in part['statuses']
             report.add(f"방금 등록한 건({names.get(row.get('status'), row.get('status'))} 상태)이 목록에 {'있다' if inside else '없다'}", any(item['id'] == row['id'] for item in rows) == inside, '')
-        code, answer = framework.call('POST', api, {})
-        report.add('이 화면에서는 새로 등록할 수 없다', code in (403, 404, 405), f'{code} {answer}')
+        if part.get('create'):
+            body = fit({field['name']: sample(field, framework, made) for field in base['fields'] if not _computed(field)}, base, framework, made)
+            follows = base.get('follows')
+            if follows:                                    # a 기타 screen: it registers without the stage before
+                body[follows] = None
+            ready_masters(base, body, framework, made)
+            code, answer = framework.call('POST', api, body)
+            if code in (200, 201):
+                made.append((part['entity'], answer['id']))
+            report.add('이 화면에서 새로 등록할 수 있다' + (' (앞 단계 없이)' if follows else ''), code in (200, 201), f'{code} {answer}')
+            if follows:
+                pointed = dict(body, **{follows: sample(next(field for field in base['fields'] if field['name'] == follows), framework, made)})
+                code, answer = framework.call('POST', api, pointed)
+                if code in (200, 201):
+                    made.append((part['entity'], answer['id']))
+                report.add('이 화면에서는 앞 단계를 고르면 거절된다', code == 400, f'{code} {answer}')
+        else:
+            code, answer = framework.call('POST', api, {})
+            report.add('이 화면에서는 새로 등록할 수 없다', code in (403, 404, 405), f'{code} {answer}')
         code, answer = framework.call('DELETE', f"{api}/{row['id']}")
         report.add('이 화면에서는 지울 수 없다', code in (403, 404, 405), f'{code} {answer}')
         visible = not part.get('statuses') or row.get('status') in part['statuses']
@@ -1403,10 +1422,10 @@ def over_screen_criteria(definition):
              ('목록이 있다', {'op': 'visible', 'selector': '[data-ui="record-grid"]'}),
              ('내용을 보는 영역이 있다', {'op': 'visible', 'selector': '[data-ui="document-editor"]'}),
              ('공통 버튼 조회 이(가) 있다', {'op': 'visible', 'selector': f'{toolbar} >> role=button[name="조회"]'}),
-             ('신규 버튼이 없다', {'op': 'absent', 'selector': f'{toolbar} >> role=button[name="신규"]'}),
+             ('신규 버튼이 있다' if definition['over'].get('create') else '신규 버튼이 없다', {'op': 'visible' if definition['over'].get('create') else 'absent', 'selector': f'{toolbar} >> role=button[name="신규"]'}),
              ('삭제 버튼이 없다', {'op': 'absent', 'selector': f'{toolbar} >> role=button[name="삭제"]'})]
-    items.append(('저장 버튼이 있다' if definition['over'].get('edit') else '저장 버튼이 없다',
-                  {'op': 'visible' if definition['over'].get('edit') else 'absent', 'selector': f'{toolbar} >> role=button[name="저장"]'}))
+    saves = definition['over'].get('edit') or definition['over'].get('create')
+    items.append(('저장 버튼이 있다' if saves else '저장 버튼이 없다', {'op': 'visible' if saves else 'absent', 'selector': f'{toolbar} >> role=button[name="저장"]'}))
     return [{'id': f'C{index + 1}', 'requirement_id': 'R1', 'description': description, 'check': check} for index, (description, check) in enumerate(items)]
 
 
