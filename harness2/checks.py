@@ -369,7 +369,9 @@ def lot_checks(report, definition, framework, new_body, api):
         return
     counting = part['direction'] == 'count'          # a count names the lot it counts: only the "not for a quantity-only item" rule applies
     known = {item['key']: item['definition'] for item in framework.definitions()}
-    mode = next((field for field in known[part['itemEntity']]['fields'] if field.get('codeGroup') == 'STOCK_TRACKING'), None)
+    rule = part.get('lotWhen')              # which things are kept by lots: the item's field and the values that mean it (none said: any may be)
+    mode = next((field for field in known[part['itemEntity']]['fields'] if rule and field['name'] == rule['field']), None)
+    lot_label = next((field['label'] for field in definition['fields'] + ((definition.get('lines') or {}).get('fields') or []) if field['name'] == part['lot']), part['lot'])
     meta = ('id', 'status', 'statusLabel', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt', '_names', '_files', '_stock')
     made = []
 
@@ -383,16 +385,24 @@ def lot_checks(report, definition, framework, new_body, api):
         every = _stock_units(body, definition)
         item, warehouse, quantity, unit = next(one for one in every if one[0] and one[1] and one[2])
         place = next(index for index, one in enumerate(every) if one[3] is unit) + 1        # the line the lot is typed on: only its movements are looked at
+        if not mode:
+            return
+        record = framework.ok('GET', f"/api/data/{part['itemEntity']}/{item}")
+        plain = {name: value for name, value in record.items() if name not in meta}
+        other = None                          # a value that does not mean 'by lot'
+        if mode.get('codeGroup'):
+            codes = framework.ok('GET', f"/api/auth/codes?groups={mode['codeGroup']}").get(mode['codeGroup'], [])
+            other = next((code['code'] for code in codes if code['code'] not in rule['is']), None)
+        framework.ok('PUT', f"/api/data/{part['itemEntity']}/{item}", dict(plain, **{mode['name']: other}))
         unit[part['lot']] = 'L-NONE-1'
         code, answer = framework.call('POST', api, body)
         if code == 201:
             made.append(answer['id'])
-        report.add('LOT: 수량만 관리하는 품목에 LOT 번호를 적으면 거절되고 이유가 나온다', code == 400 and 'LOT' in str((answer or {}).get('detail')), f'{code} {answer}')
+        report.add(f'{lot_label}: 묶음 번호로 관리하지 않는 것에 {lot_label}을(를) 적으면 거절되고 이유가 나온다', code == 400 and lot_label in str((answer or {}).get('detail')), f'{code} {answer}')
         remove()
-        if not mode or counting:
+        if counting:
             return
-        record = framework.ok('GET', f"/api/data/{part['itemEntity']}/{item}")
-        framework.ok('PUT', f"/api/data/{part['itemEntity']}/{item}", dict({name: value for name, value in record.items() if name not in meta}, **{mode['name']: 'LOT'}))
+        framework.ok('PUT', f"/api/data/{part['itemEntity']}/{item}", dict(plain, **{mode['name']: rule['is'][0]}))
         number = f'L-{next(_serial)}'
         if part['direction'] == 'in':
             unit[part['lot']] = number
@@ -407,7 +417,7 @@ def lot_checks(report, definition, framework, new_body, api):
             code, answer = framework.call('POST', api, body)
             if code == 201:
                 made.append(answer['id'])
-            report.add('LOT: 없는 LOT 번호를 지정해 꺼내면 (다른 LOT 에 재고가 있어도) 거절된다', code == 400 and have >= quantity and 'LOT' in str((answer or {}).get('detail')), f'{code} 현재고 {have:g} {answer}')
+            report.add('LOT: 없는 LOT 번호를 지정해 꺼내면 (다른 LOT 에 재고가 있어도) 거절된다', code == 400 and have >= quantity and lot_label in str((answer or {}).get('detail')), f'{code} 현재고 {have:g} {answer}')
             there = framework.ok('GET', f'/api/stock/lots?item={item}&warehouse={warehouse}')
             if there:
                 unit[part['lot']] = there[0]['lot']
@@ -583,7 +593,7 @@ def stock_checks(report, definition, framework, new_body, post, api):
             if have > 0:
                 framework.ok('POST', '/api/system/stock/adjust', {'itemEntity': part['itemEntity'], 'itemId': one, 'warehouseEntity': part['warehouseEntity'], 'warehouseId': house, 'quantity': -have})
         code, answer = framework.call('POST', api, short)
-        report.add('재고: 재고가 모자라면 저장이 거절되고 이유가 나온다', code == 400 and '재고' in str((answer or {}).get('detail')), f'{code} {answer}')
+        report.add('재고: 남은 수량이 모자라면 저장이 거절되고 이유가 나온다', code == 400 and '남은 수량' in str((answer or {}).get('detail')), f'{code} {answer}')
         if code == 201:
             framework.call('DELETE', f"{api}/{answer['id']}?force=true")
     lot_checks(report, definition, framework, new_body, api)
@@ -1347,10 +1357,10 @@ def stock_view_checks(key, definition, framework):
 
 def stock_view_criteria(definition):
     show = (definition.get('stockView') or {}).get('show') or 'all'
-    words = {'balance': '현재고', 'lots': 'LOT', 'moves': '수불 내역'}
-    items = [('재고 화면이 있다', {'op': 'visible', 'selector': '[data-ui="stock"]'}), ('목록이 있다', {'op': 'visible', 'selector': '[data-ui="stock"] [data-ui="record-grid"]'})]
+    words = {'balance': '현재 수량', 'lots': '묶음(LOT)', 'moves': '들고 난 내역'}
+    items = [('수량 보기 화면이 있다', {'op': 'visible', 'selector': '[data-ui="stock"]'}), ('목록이 있다', {'op': 'visible', 'selector': '[data-ui="stock"] [data-ui="record-grid"]'})]
     for view in (['balance', 'lots', 'moves'] if show == 'all' else [show]):
-        items.append((f'{words[view]} 보기 버튼이 있다', {'op': 'visible', 'selector': f'[data-ui="stock"] >> role=button[name="{words[view]}"]'}))
+        items.append((f'{words[view]} 보기 버튼이 있다', {'op': 'visible', 'selector': f'[data-ui="stock"] [data-view="{view}"]'}))
     return [{'id': f'C{index + 1}', 'requirement_id': 'R1', 'description': description, 'check': check} for index, (description, check) in enumerate(items)]
 
 
