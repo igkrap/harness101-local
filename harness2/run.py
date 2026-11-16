@@ -86,6 +86,7 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
     result = {'request': request, 'folder': str(folder)}
     started = time.time()
     mark = checks.high_water(framework) if part_of is None else None      # a step is cleaned up by the request it is part of
+    groups_before = {group['code'] for group in framework.capabilities().get('codeGroups', [])} if part_of is None else None
     published = None
     try:
         if request and not definition_file and re.match(r'\s*업무\s*흐름', request):
@@ -148,6 +149,8 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
         result.update(action=action, key=key, title=definition['title'], fields=[label(field) for field in definition['fields']])
         if definition.get('dataOnly') or definition.get('screen') is False:
             result['data_only'] = True
+        if definition.get('codeGroups'):
+            result['code_groups'] = [f"{group['name']}({group['code']}): " + ', '.join(value['name'] for value in group['values']) for group in definition['codeGroups']]
         if definition.get('lock'):
             result['lock'] = f"{definition['lock']['group']} 마감 ({definition['lock']['date']} 기준)"
         if definition.get('lookups'):
@@ -316,6 +319,10 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
         checks.LEFTOVER[:] = []
         if mark is not None:
             still = checks.clear_since(framework, mark, framework.username)
+        if groups_before is not None and result.get('status') not in ('applied', 'checked', 'unchanged'):
+            # a request that did not go through leaves no code group behind either (those it declared and that were not there before)
+            for group in {item['code'] for item in framework.capabilities().get('codeGroups', [])} - groups_before:
+                framework.call('DELETE', f'/api/system/code-groups/{group}')
         if still:
             result['leftover_rows'] = still
         if result.get('status') == 'applied' and part_of is None:      # a step of a larger request is committed with the whole request
@@ -426,6 +433,8 @@ def say(result):
             lines.append('조합 기준 정보: ' + result['layer'])
         for more in result.get('more_lines') or []:
             lines.append(f"줄 표 {more['label']} 항목: " + ', '.join(more['fields']))
+        if result.get('code_groups'):
+            lines.append('코드 그룹: ' + ' / '.join(result['code_groups']))
         if result.get('lock'):
             lines.append('마감: ' + result['lock'])
         if result.get('lookups'):

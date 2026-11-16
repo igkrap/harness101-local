@@ -49,7 +49,7 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 - required 는 그 값 없이는 자료가 성립하지 않는 항목에만 true.
 - search 는 조회 조건으로 쓸 항목(1~3개, 줄 항목 제외)에 true.
 - 다른 자료에서 고르는 항목(거래처, 품목, 부서 ...)은 글자로 받지 말고 ref 로 한다. 이미 있는 자료만 가리킬 수 있고, ref.label 과 fill 의 값은 그 자료에 실제로 있는 항목 name 이어야 한다(위 '이미 있는 자료' 참고).
-- 정해진 값 중에서 고르는 항목은 code 로 하되 있는 공통 코드 그룹만 쓴다. 맞는 그룹이 없으면 글자(text)로 둔다.
+- 정해진 값 중에서 고르는 항목은 code 로 한다. 맞는 공통 코드 그룹이 있으면 그것을 쓰고, 없으면 그 정의의 codeGroups 에 그룹과 값을 선언한다 (단위, 거래처 구분, 점검 결과 ...). 값이 정해져 있지 않은 것만 글자(text)로 둔다.
 - 단가처럼 거래처·품목·날짜에 따라 정해지는 값은 그 값을 담은 기준 정보(예: 품목 단가 - 거래처·품목별, 적용 기간, effective by [거래처, 품목])를 두고, 쓰는 자료에 lookups 로 찾아 채운다 (거래처 단가 → 없으면 품목 기본 단가처럼 여러 개를 순서대로).
 - "~하면 ~못 하게" 같은 요청은 rules 로 적는다. 규칙이 가리키는 자료와 항목은 이미 있어야 한다.
 - 다른 자료가 가리키고 있는 자료는 프레임워크가 언제나 지우지 못하게 막는다: 그것을 막는 규칙(blockWhenReferenced 의 delete)을 따로 만들지 않는다. 요청에 없는 규칙은 덧붙이지 않는다.
@@ -129,6 +129,8 @@ def describe(key, definition):
         text += f" / 재고: {'늘림(입고)' if definition['stock']['direction'] == 'in' else '창고 이동' if definition['stock']['direction'] == 'move' else '재고 실사' if definition['stock']['direction'] == 'count' else '줄임(출고)'} - 품목 {definition['stock']['item']}, 수량 {definition['stock']['quantity']}, 창고 {definition['stock']['warehouse']}" + (f", LOT 번호 {definition['stock']['lot']}" if definition['stock'].get('lot') else '')
     if definition.get('screen') is False or definition.get('dataOnly'):
         text += ' / 화면 없음: 다른 업무에서 저절로 만들어지고 바뀌는 데이터 ("screen": false)'
+    if definition.get('codeGroups'):
+        text += ' / 선언한 코드 그룹: ' + ', '.join(f"{group['code']}({group['name']}: {', '.join(value['code'] for value in group['values'])})" for group in definition['codeGroups'])
     if definition.get('lock'):
         text += f" / 마감: {definition['lock']['group']} 묶음 ({definition['lock']['date']} 기준)"
     if definition.get('lookups'):
@@ -344,6 +346,8 @@ def differences(old, new):
     only = lambda definition: bool(definition.get('dataOnly') or definition.get('screen') is False)
     if only(old) != only(new):
         note('화면: ' + ('있음 → 없음 (데이터로만)' if only(new) else '없음 → 있음'), only(old) and not only(new))
+    if (old.get('codeGroups') or []) != (new.get('codeGroups') or []):
+        note(f"코드 그룹 선언: {', '.join(group['code'] for group in old.get('codeGroups') or []) or '없음'} → {', '.join(group['code'] for group in new.get('codeGroups') or []) or '없음'}")
     if (old.get('lock') or None) != (new.get('lock') or None):
         note(f"마감: {json.dumps(old.get('lock'), ensure_ascii=False)} → {json.dumps(new.get('lock'), ensure_ascii=False)}", bool(old.get('lock')) and not new.get('lock'))
     if (old.get('lookups') or []) != (new.get('lookups') or []):
