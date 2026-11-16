@@ -611,7 +611,7 @@ def closing_checks(report, definition, framework, new_body, post, api):
 
     def said(answer):
         return '마감' in str((answer or {}).get('detail'))
-    through = framework.ok('GET', '/api/system/stock/closings').get('through')
+    through = framework.ok('GET', '/api/stock-closings').get('through')
     if through:
         code, answer = post(dated(new_body(), through + '-01'))
         report.add(f'수불 마감: 마감된 달({through}) 날짜로는 재고가 움직이지 않는다 (거절되고 이유가 나온다)', code == 409 and said(answer), f'{code} {answer}')
@@ -621,7 +621,7 @@ def closing_checks(report, definition, framework, new_body, post, api):
         code, kept = post(dated(new_body(), day))
         if not report.add('수불 마감: 지난 달 날짜로 입고가 저장된다 (마감 전)', code == 201, f'{code} {kept}'):
             return
-    framework.ok('POST', '/api/system/stock/closings', {'period': month, 'note': '검사 중 잠깐 마감'})
+    framework.ok('POST', '/api/stock-closings', {'period': month, 'note': '검사 중 잠깐 마감'})
     try:
         code, answer = post(dated(new_body(), day))
         report.add(f'수불 마감: 마감된 달({month}) 날짜로는 재고가 움직이지 않는다 (거절되고 이유가 나온다)', code == 409 and said(answer), f'{code} {answer}')
@@ -631,7 +631,7 @@ def closing_checks(report, definition, framework, new_body, post, api):
             changed, removed = framework.call('PUT', f"{api}/{kept['id']}", {name: value for name, value in record.items() if name not in meta}), framework.call('DELETE', f"{api}/{kept['id']}")
             report.add('수불 마감: 마감된 달에 재고가 움직인 자료는 고칠 수도 지울 수도 없다', changed[0] == 409 and said(changed[1]) and removed[0] == 409 and said(removed[1]), f'{changed} {removed}')
     finally:
-        framework.call('DELETE', f'/api/system/stock/closings/{month}')
+        framework.call('DELETE', f'/api/stock-closings/{month}')
     if kept:
         code, answer = framework.call('DELETE', f"{api}/{kept['id']}")
         report.add('수불 마감: 다시 열면 그 자료를 지울 수 있다', code == 204, f'{code} {answer}')
