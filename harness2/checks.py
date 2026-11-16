@@ -1580,6 +1580,7 @@ def effect_checks(key, definition, framework):
         if definition.get('lines'):
             body['lines'] = [_line(definition['lines']['fields'], framework, made, 2)]
         body = fit(dict(body, **(extra or {})), definition, framework, made)
+        ready_masters(definition, body, framework, made)        # registering it may draw on master data (a work order expands its BOM)
         row = framework.ok('POST', api, body)
         made.append((key, row['id']))
         return row
@@ -1843,7 +1844,9 @@ def closed_checks(key, definition, framework):
         body = {field['name']: sample(field, framework, made) for field in definition['fields'] if not _computed(field)}
         if definition.get('lines'):
             body['lines'] = [_line(definition['lines']['fields'], framework, made, 2)]
-        row = framework.ok('POST', api, fit(body, definition, framework, made))
+        body = fit(body, definition, framework, made)
+        ready_masters(definition, body, framework, made)
+        row = framework.ok('POST', api, body)
         made.append((key, row['id']))
         code, answer = framework.call('POST', f"{api}/{row['id']}/actions/{ending['name']}")
         if not report.add(f"끝난 상태: {ending['label']} 하면 {names.get(ending['to'])} 상태가 된다", code == 200, f'{code} {answer}'):

@@ -86,6 +86,7 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
     result = {'request': request, 'folder': str(folder)}
     started = time.time()
     mark = checks.high_water(framework) if part_of is None else None      # a step is cleaned up by the request it is part of
+    published = None
     try:
         if request and not definition_file and re.match(r'\s*업무\s*흐름', request):
             # A business flow, not a screen: registered (after running it end to end), shown or removed.
@@ -251,6 +252,7 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
             result['status'] = 'checked'
             return result
         saved = framework.save_definition(key, definition, 'PUBLISHED')
+        published = (key, current)          # until it is applied, a failure of any kind puts back what was there before
         if definition.get('rules') or definition.get('effects') or (definition.get('status') or {}).get('closed'):
             ruled = checks.rule_checks(key, definition, framework) if definition.get('rules') else checks.Report()
             if definition.get('effects') and ruled.passed:
@@ -286,9 +288,19 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
         # What was there before, kept with the run: this is what "undo" puts back.
         (folder / '3-apply' / 'before.json').write_text(json.dumps(current, ensure_ascii=False, indent=1), encoding='utf-8')
         result.update(status='applied', program=saved['programCode'], revision=saved['revision'], created=current is None)
+        published = None
         return result
     except Exception as problem:
         result.update(status='error', error=str(problem)[:600])
+        if published:                       # published, then a check broke off: the screen goes back to what it was (or away)
+            back_key, before = published
+            try:
+                if before:
+                    framework.save_definition(back_key, before['definition'], before['status'])
+                else:
+                    framework.delete_definition(back_key, force=True)
+            except Exception as again:
+                result['error'] += f' / 되돌리지 못했습니다: {str(again)[:200]}'
         return result
     finally:
         if result.get('key'):
