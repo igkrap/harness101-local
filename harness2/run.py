@@ -71,12 +71,26 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
     """One request. When what the model made fails the business flows (everything was taken back), the model is told why and tries once more."""
     result = _run(request, definition_file, dry, force, part_of)
     said = [line for line in result.get('flows') or [] if line]
-    if result.get('status') == 'failed' and said and request and not definition_file and not dry and part_of is None:
+    stuck = _stuck_step(result)
+    if result.get('status') == 'failed' and (said or stuck) and request and not definition_file and not dry and part_of is None:
         time.sleep(1.1)                                   # run folders are named by the second
-        again = _run(request, None, dry, force, part_of, feedback=' / '.join(said)[:1500])
-        again['first_try'] = {'folder': result.get('folder'), 'flows': said}
+        feedback = ('업무 흐름 판정에서 떨어져 모두 되돌렸다: ' + ' / '.join(said)) if said else stuck
+        again = _run(request, None, dry, force, part_of, feedback=feedback[:1500])
+        again['first_try'] = {'folder': result.get('folder'), 'flows': said or [stuck]}
         return again
     return result
+
+
+def _stuck_step(result):
+    """A request split into steps that stopped at one of them (the model said it cannot, or the definition was refused): why, in a line."""
+    steps = result.get('steps') or []
+    last = steps[-1] if steps else None
+    if not last or last.get('status') in ('applied', 'checked', 'unchanged'):
+        return ''
+    why = last.get('reason') if last.get('status') == 'other' else last.get('error') or '; '.join(f"{item['description']}: {str(item['detail'])[:150]}" for item in (last.get('failed') or [])[:3])
+    return (f"{last.get('step')}단계 \"{last.get('request', '')}\" 에서 멈춰 모두 되돌렸다: {why}"
+            + ' - 단계 문장에는 요청에 있는 것만 적고(요청에 없는 조건·전파·자동 처리를 덧붙이지 않는다), 이 이유를 감안해 다시 나눈다') if why else ''
+
 
 
 def _run(request=None, definition_file=None, dry=False, force=False, part_of=None, feedback=None):
@@ -101,8 +115,8 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
             saved = define.trial_save(framework, proposal['key'], written, TRIAL, leave=('rules',))
             proposal['definition'] = define.accepted(saved, written)
         else:
-            asked = request if not feedback else request + ('\n\n(앞선 시도는 적용 전에 업무 흐름 판정에서 떨어져 모두 되돌렸다: ' + feedback
-                                                            + ' - 이 판정을 감안해 흐름이 끝까지 맞게 다시 정한다. 요청에 없는 것은 덧붙이지 않는다.)')
+            asked = request if not feedback else request + ('\n\n(앞선 시도는 ' + feedback
+                                                            + ' - 이것을 감안해 끝까지 맞게 다시 정한다. 요청에 없는 것은 덧붙이지 않는다.)')
             (folder / 'request.txt').write_text(asked, encoding='utf-8')
             proposal = define.write(asked, framework, folder / '1-define', TRIAL, allow_steps=part_of is None)
         if proposal['action'] == 'other':
