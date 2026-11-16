@@ -111,3 +111,11 @@ def server_log(lines=300):
     text = done.stdout if done.returncode == 0 else f'서버 기록을 읽지 못했습니다: {done.stdout[-300:]}'
     state = subprocess.run(['docker', 'inspect', '-f', '{{.State.Status}} (시작 {{.State.StartedAt}})', site().api_container], capture_output=True, text=True, timeout=15).stdout.strip()
     return {'container': site().api_container, 'state': state, 'url': site().api_url, 'database': site().db, 'lines': text.splitlines()[-lines:]}
+
+
+def process():
+    """The project's processes as its framework reads them off the screen definitions (the 업무 안내서): flows, master data by layer,
+    every screen in sentences. The same text the model reads before it makes or changes a screen."""
+    _harness()
+    from framework import Framework
+    return Framework().ok('GET', '/api/meta/process')

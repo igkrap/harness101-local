@@ -602,6 +602,7 @@ class Handler(BaseHTTPRequestHandler):
                 if tool=='screen':self.send_json(devtools.screen(app.project,one('key'),one('rev')));return
                 if tool=='records':self.send_json(devtools.records(one('key'),one('limit','50')));return
                 if tool=='log':self.send_json(devtools.server_log(one('lines','300')));return
+                if tool=='process':self.send_json(devtools.process());return
             if parsed.path=='/api/release/screens':
                 import release
                 self.send_json({'screens':release.screens()});return

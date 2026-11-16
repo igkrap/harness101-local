@@ -35,6 +35,10 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 - 앞 단계 자료를 조회해서 다음 단계를 등록하는 요청("수주를 조회해서 출하 등록", "발주 기준 입고 등록", "~에서 골라서 한꺼번에 ~ 등록")은 새 등록 화면을 만들지 말고 이어받기 화면(take)으로 한다. 여러 건을 목록에서 고르고 수량만 고쳐 저장하는 화면이며 입력 폼이 없다. 만들 자료와 앞 단계 자료는 이미 있어야 하고, 만들 자료에 앞 단계를 한도로 하는 limits 가 있어야 한다(없으면 steps 로 그 한도부터 넣는다).
 - 수주·발주·견적처럼 흐름이 시작되는 자료도 한 건에 한 품목이다. 편집 패널은 언제나 한 건만 신규·수정한다. 여러 품목은 여러 건이다.
 - 프로세스 단계의 자료(지시, 실적, 검사, 이동 ...)는 한 건에 한 품목만 담는다: 줄 표(lines)를 붙이지 않고 품목·수량(필요하면 단가, LOT 번호)을 그 자료의 항목으로 둔다. 여러 품목은 여러 건이며, 이어받기 화면의 목록에서 여러 줄을 골라 한꺼번에 만든다. 줄 표(lines, moreLines)는 쓰지 않는다 (줄 표는 마스터-디테일 기준 정보에만).
+- 흐름의 루트(첫 단: 수주, 발주, 작업지시 ...)는 지시다. 지시 자료는 상태를 둔다: 진행 중 상태(처음), 마감, 취소 (필요하면 다 찬 완료), 동작 마감(조기 마감)·마감취소·취소, closed 에 마감·취소(·완료), locked 에도 마감·취소. 지시에서 이어진 다음 단계 자료에 상태가 있으면 cascade 로 마감·마감취소를 아래로 전파한다.
+  지시는 화면이 둘이다: 자료 정의의 title 은 "<지시> 관리" (등록·수정·취소·마감·마감취소를 다 하는 화면), 그리고 등록만 하는 업무 화면 "<지시> 등록" = over {entity: <지시 key>, create: true} (권한을 따로 주기 위해). 둘을 다 만들어야 하면 steps 로 나눈다 (관리 → 등록).
+- 후행 단계(출하지시, 출하, 입고, 출고, 생산 실적 ...)는 이름이 지시여도 루트 지시에 대한 실적이다: 앞 단계를 한도(limits)로 가리키고, 따로 마감 동작을 두지 않으며(루트 지시의 마감이 전파된다), 등록은 이어받기 화면(take)으로 한다 - 앞 단계에서 남은 것을 표에 뿌리고 체크해 수량을 고쳐 확정하면 뒤 자료가 생긴다.
+  후행 자료 정의에는 "follows": "<앞 단계를 가리키는 ref 항목>" 을 적어 자기 화면에서 신규 등록을 막는다 (그 ref 항목은 required 가 아니다). 앞 단계 없이 따로 등록해야 한다는 요청이면 기타 화면을 만든다: over {entity: <그 자료 key>, create: true}, title "기타 <이름>" (예: 기타 출하지시).
 - 실행 단계(출하, 입고, 생산 실적 ...)는 지시(출하지시, 작업지시 ...)를 거치는 것이 이 시스템의 기본 흐름이다: 요청 자료 → 지시 → 실행 (수주 → 출하지시 → 출하), 각 단계는 앞 단계를 이어받는 화면(take)으로 등록한다. 이미 그 지시 자료가 있으면 실행 화면은 지시를 앞 단계로 삼는다. 요청이 지시 없이 바로 실행을 말하면 요청대로 하되 "doubt" 에 지시 단계가 없다는 점을 한 줄 적는다.
 - 현황판·대시보드처럼 차트만 모아 보는 요청은 dashboard 로 한다. 패널은 이미 있는 집계 화면만 가리킬 수 있으므로, 맞는 집계 화면이 있으면 그것을 쓰고, 없으면 steps 로 필요한 집계 화면들을 먼저 만들고 마지막에 현황판을 만든다.
 - 잔량·미출하·미입고·재고처럼 한 자료에서 다른 자료를 뺀 나머지는 compare minus 로, 처리 기간·소요 일수는 values 의 between 으로, 누계는 cumulative 로 한다.
@@ -120,12 +124,16 @@ def describe(key, definition):
         text += f" / 순환 금지: 줄의 {definition['noCycle']['child']} 이(가) {definition['noCycle']['parent']} 자신이거나 돌고 돌아 다시 그것을 품을 수 없음"
     if definition.get('stock'):
         text += f" / 재고: {'늘림(입고)' if definition['stock']['direction'] == 'in' else '창고 이동' if definition['stock']['direction'] == 'move' else '재고 실사' if definition['stock']['direction'] == 'count' else '줄임(출고)'} - 품목 {definition['stock']['item']}, 수량 {definition['stock']['quantity']}, 창고 {definition['stock']['warehouse']}" + (f", LOT 번호 {definition['stock']['lot']}" if definition['stock'].get('lot') else '')
+    if definition.get('follows'):
+        text += f" / 후행 자료: {definition['follows']} 이(가) 가리키는 앞 단계를 이어받아서만 생긴다 (자기 화면에서 신규 등록 없음, 앞 단계 없이는 기타 화면에서)"
+    if (definition.get('status') or {}).get('closed'):
+        text += ' / 끝난 상태(더 이어지지 않음): ' + ', '.join(definition['status']['closed'])
     if definition.get('effects'):
-        text += ' / 자동 처리: ' + '; '.join(('등록할 때' if effect['on'] == 'create' else f"{effect['on']} 동작을 할 때") + ' → ' + (f"{effect['create']['entity']} 한 건을 만든다" if effect.get('create') else f"{effect['expand']['from']} 에서 {', '.join(effect['expand']['match'])} 이(가) 같은 것을 찾아 그 줄마다 {effect['expand']['into']} 한 건씩 만든다 (수량 = 줄의 수량 × 이 자료의 수량)" + (f", 이 자료의 {effect['expand']['at']} 날짜에 유효한 것만" if effect['expand'].get('at') else ', 등록하는 날(오늘) 유효한 것만') if effect.get('expand') else f"{effect['fill']['entity']} 의 수량이 다 차면 그 자료에 {effect['fill']['action']} 동작을 한다" if effect.get('fill') else f"{effect['act']['via']} 이(가) 가리키는 자료에 {effect['act']['action']} 동작을 한다") for effect in definition['effects'])
+        text += ' / 자동 처리: ' + '; '.join(('등록할 때' if effect['on'] == 'create' else f"{effect['on']} 동작을 할 때") + ' → ' + (f"{effect['create']['entity']} 한 건을 만든다" if effect.get('create') else f"{effect['expand']['from']} 에서 {', '.join(effect['expand']['match'])} 이(가) 같은 것을 찾아 그 줄마다 {effect['expand']['into']} 한 건씩 만든다 (수량 = 줄의 수량 × 이 자료의 수량)" + (f", 이 자료의 {effect['expand']['at']} 날짜에 유효한 것만" if effect['expand'].get('at') else ', 등록하는 날(오늘) 유효한 것만') if effect.get('expand') else f"{effect['fill']['entity']} 의 수량이 다 차면 그 자료에 {effect['fill']['action']} 동작을 한다" if effect.get('fill') else f"이 자료를 {effect['cascade']['via']} 로 가리키는 {effect['cascade']['entity']} 에도 {effect['cascade']['action']} 동작을 한다(아래로 전파)" if effect.get('cascade') else f"{effect['act']['via']} 이(가) 가리키는 자료에 {effect['act']['action']} 동작을 한다") for effect in definition['effects'])
     if definition.get('over'):
         part = definition['over']
         text = f"- key {key} / 화면 이름 {definition['title']} / 업무 화면: {part['entity']} 자료 중 " + (f"상태 {part['statuses']} 인 건" if part.get('statuses') else '모든 건') \
-            + f" / 이 화면의 동작: {part.get('actions') or '없음'}" + (' / 내용 수정 가능' if part.get('edit') else '')
+            + f" / 이 화면의 동작: {part.get('actions') or '없음'}" + (' / 내용 수정 가능' if part.get('edit') else '') + (' / 새로 등록 가능(등록 화면)' if part.get('create') else '')
     if definition.get('stockView'):
         text = f"- key {key} / 화면 이름 {definition['title']} / 재고 보기 화면: " + {'all': '현재고·LOT·수불 내역 셋 다 (탭)', 'balance': '현재고', 'lots': 'LOT', 'moves': '수불 내역'}.get(definition['stockView'].get('show') or 'all', '')
     if definition.get('take'):

@@ -994,8 +994,8 @@ def record_checks(key, definition, framework):
         if not (status and status['initial'] in status.get('locked', [])):
             code, _ = framework.call('DELETE', f"{api}/{row['id']}")
             report.add('삭제: 자료를 지울 수 있다', code == 204, f'{code}')
-            gone_code, gone = framework.call('GET', f"/api/history?entity={key}&action=DELETE")
-            report.add('변경 이력: 지운 자료가 언제·누가·지우기 전 내용과 함께 남는다', gone_code == 200 and any(item.get('recordId') == row['id'] and item.get('changes') for item in gone or []), f'{gone_code} {str(gone)[:200]}')
+            gone_code, gone = framework.call('GET', f"{api}/{row['id']}/history")
+            report.add('변경 이력: 지운 자료가 언제·누가·지우기 전 내용과 함께 남는다', gone_code == 200 and any(item.get('action') == 'DELETE' and item.get('changes') for item in gone or []), f'{gone_code} {str(gone)[:300]}')
             code, _ = framework.call('PUT', f"{api}/{row['id']}", changed)
             report.add('지운 자료는 더 수정할 수 없다', code == 404, f'{code}')
     finally:
@@ -1765,6 +1765,31 @@ def effect_checks(key, definition, framework):
                 after = framework.ok('GET', f"/api/data/{fill['entity']}/{first['id']}")
                 report.add(f"자동 처리: 등록해서 {other['title']} 의 수량이 다 차면 그 자료가 {names.get(wanted['to'], wanted['to'])} 상태가 된다",
                            code == 201 and first.get('status') in wanted['from'] and after.get('status') == wanted['to'], f"{code} {row if code != 201 else ''} / 앞 단계 상태 {first.get('status')} → {after.get('status')}")
+            elif effect.get('cascade'):
+                part, other = effect['cascade'], known[effect['cascade']['entity']]
+                wanted = next(item for item in other['status']['actions'] if item['name'] == part['action'])
+                names = {value['code']: value['label'] for value in other['status']['values']}
+                row = source()
+                # the records that point at it: made by it already (planned issues from a work order), or one made here
+                children = [item for item in framework.ok('GET', f"/api/data/{part['entity']}?{part['via']}={row['id']}&_limit=100") if item.get(part['via']) == row['id']]
+                if not children:
+                    body = fit({field['name']: sample(field, framework, made) for field in other['fields'] if not _computed(field)}, other, framework, made)
+                    body[part['via']] = row['id']
+                    for limit in other.get('limits') or []:
+                        if limit['entity'] == key and not limit.get('lines'):
+                            body[limit['field']] = 1
+                    code, child = framework.call('POST', f"/api/data/{part['entity']}", body)
+                    if code == 201:
+                        children = [child]
+                for child in children:
+                    made.append((part['entity'], child['id']))
+                ready = [child for child in children if child.get('status') in wanted['from']]
+                if not ready:
+                    continue                  # nothing that points at it could be made here (only through its own flow): left to the flows
+                code, answer = trigger(row, effect['on'])
+                after = [framework.ok('GET', f"/api/data/{part['entity']}/{child['id']}").get('status') for child in ready]
+                report.add(f"자동 처리: {when} 이 자료를 가리키는 {other['title']} 도 {names.get(wanted['to'], wanted['to'])} 상태가 된다 (아래로 전파)",
+                           code == 200 and all(state == wanted['to'] for state in after), f"{code} {answer if code != 200 else ''} / {len(ready)}건, 지금 상태 {after}")
             else:
                 act = effect['act']
                 pointer = next(field for field in definition['fields'] if field['name'] == act['via'])
@@ -1789,6 +1814,56 @@ def effect_checks(key, definition, framework):
                 names = {value['code']: value['label'] for value in other['status']['values']}
                 report.add(f"자동 처리: {when} 가리키는 {other['title']} 이(가) {names.get(wanted['to'], wanted['to'])} 상태가 된다 (그 동작을 할 수 있는 상태일 때)",
                            code in (200, 201) and (after.get('status') == wanted['to'] or after.get('status') not in wanted['from']), f"{code} / 지금 상태 {after.get('status')}")
+    finally:
+        report.leftover = sweep(framework, made)
+    return report
+
+
+def closed_checks(key, definition, framework):
+    """A finished record (status.closed: closed early, cancelled, done) takes nothing more: it leaves the take-over lists of the next stage,
+    a record of the next stage newly pointing at it is refused, and an action that takes it back out of the finished state lets it go on."""
+    report, made, api = Report(), [], f'/api/data/{key}'
+    status = definition.get('status') or {}
+    closed = status.get('closed') or []
+    if not closed:
+        return report
+    known = {item['key']: item['definition'] for item in framework.definitions()}
+    names = {value['code']: value['label'] for value in status['values']}
+    ending = next((item for item in status['actions'] if item['to'] in closed and status['initial'] in item['from']), None)
+    if not ending:
+        return report
+    takes = [(other, one['take']) for other, one in known.items() if one.get('take') and one['take'].get('from') == key]
+    followers = [(other, one, limit) for other, one in known.items() for limit in one.get('limits') or [] if limit['entity'] == key and 'id' in limit['entityBy']]
+    try:
+        body = {field['name']: sample(field, framework, made) for field in definition['fields'] if not _computed(field)}
+        if definition.get('lines'):
+            body['lines'] = [_line(definition['lines']['fields'], framework, made, 2)]
+        row = framework.ok('POST', api, fit(body, definition, framework, made))
+        made.append((key, row['id']))
+        code, answer = framework.call('POST', f"{api}/{row['id']}/actions/{ending['name']}")
+        if not report.add(f"끝난 상태: {ending['label']} 하면 {names.get(ending['to'])} 상태가 된다", code == 200, f'{code} {answer}'):
+            return report
+        for take_key, take in takes:
+            listed = [item for item in framework.ok('GET', f'/api/take/{take_key}') if item.get('sourceId') == row['id']]
+            report.add(f"끝난 상태: {names.get(ending['to'])} 인 자료는 이어받기 화면({known[take_key]['title']}) 목록에 나오지 않는다", not listed, f'{len(listed)}줄이 남아 있음')
+        for other, one, limit in followers[:2]:
+            pointer = limit['by'][limit['entityBy'].index('id')]
+            follow = fit({field['name']: sample(field, framework, made) for field in one['fields'] if not _computed(field)}, one, framework, made)
+            follow[pointer] = row['id']
+            if not limit.get('lines'):
+                follow[limit['field']] = 1
+            code, answer = framework.call('POST', f'/api/data/{other}', follow)
+            if code == 201:
+                made.append((other, answer['id']))
+            said = str((answer or {}).get('detail'))
+            if code != 201 and '이어서 등록할 수 없' not in said and '마감' not in said and '이어받기' in said:
+                continue             # the next stage is registered only through its take-over screen: that list was checked above
+            report.add(f"끝난 상태: {names.get(ending['to'])} 인 자료를 가리키는 {one['title']} 은(는) 새로 등록할 수 없다", code in (400, 409) and '이어서 등록할 수 없' in said, f'{code} {answer}')
+        back = next((item for item in status['actions'] if ending['to'] in item['from'] and item['to'] not in closed), None)
+        if back and takes:
+            code, answer = framework.call('POST', f"{api}/{row['id']}/actions/{back['name']}")
+            listed = [item for item in framework.ok('GET', f'/api/take/{takes[0][0]}') if item.get('sourceId') == row['id']]
+            report.add(f"끝난 상태: {back['label']} 하면 다시 이어받기 목록에 나온다", code == 200 and bool(listed), f'{code} {answer if code != 200 else ""} / {len(listed)}줄')
     finally:
         report.leftover = sweep(framework, made)
     return report

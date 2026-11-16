@@ -163,7 +163,7 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
         if definition.get('effects'):
             names = {action['name']: action['label'] for action in (definition.get('status') or {}).get('actions', [])}
             result['effects'] = [('등록하면 ' if effect['on'] == 'create' else names.get(effect['on'], effect['on']) + ' 하면 ')
-                                 + (f"{effect['create']['entity']} 을(를) 자동으로 만든다" if effect.get('create') else f"{effect['expand']['from']} 을(를) 펼쳐 그 줄마다 {effect['expand']['into']} 을(를) 만든다 (" + (f"{effect['expand']['at']} 날짜에 유효한 것" if effect['expand'].get('at') else '등록하는 날(오늘) 유효한 것') + ")" if effect.get('expand') else f"{effect['fill']['entity']} 의 수량이 다 차면 그 자료에 {effect['fill']['action']} 을(를) 한다" if effect.get('fill') else f"{effect['act']['via']} 이(가) 가리키는 자료에 {effect['act']['action']} 을(를) 한다")
+                                 + (f"{effect['create']['entity']} 을(를) 자동으로 만든다" if effect.get('create') else f"{effect['expand']['from']} 을(를) 펼쳐 그 줄마다 {effect['expand']['into']} 을(를) 만든다 (" + (f"{effect['expand']['at']} 날짜에 유효한 것" if effect['expand'].get('at') else '등록하는 날(오늘) 유효한 것') + ")" if effect.get('expand') else f"{effect['fill']['entity']} 의 수량이 다 차면 그 자료에 {effect['fill']['action']} 을(를) 한다" if effect.get('fill') else f"{effect['cascade']['entity']} 중 이 자료를 가리키는 것에도 {effect['cascade']['action']} 을(를) 한다 (아래로 전파)" if effect.get('cascade') else f"{effect['act']['via']} 이(가) 가리키는 자료에 {effect['act']['action']} 을(를) 한다")
                                  for effect in definition['effects']]
         if definition.get('calendar'):
             part = definition['calendar']
@@ -248,10 +248,12 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
             result['status'] = 'checked'
             return result
         saved = framework.save_definition(key, definition, 'PUBLISHED')
-        if definition.get('rules') or definition.get('effects'):
+        if definition.get('rules') or definition.get('effects') or (definition.get('status') or {}).get('closed'):
             ruled = checks.rule_checks(key, definition, framework) if definition.get('rules') else checks.Report()
             if definition.get('effects') and ruled.passed:
                 ruled.results += checks.effect_checks(key, definition, framework).results
+            if (definition.get('status') or {}).get('closed') and ruled.passed:
+                ruled.results += checks.closed_checks(key, definition, framework).results
             results += ruled.results
             (folder / '2-check' / 'results.json').write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding='utf-8')
             result.update(checks=len(results), failed=[item for item in results if not item['passed']])
