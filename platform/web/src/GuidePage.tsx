@@ -26,6 +26,15 @@ export default function GuidePage() {
   const go = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
   const masters = (guide?.screens ?? []).filter(screen => screen.layer !== undefined).sort((a, b) => (a.layer ?? 0) - (b.layer ?? 0));
   const layers = [...new Set(masters.map(screen => screen.layer ?? 1))];
+  // screens by category: master data by layer, then the work - instructions (first stage of a flow) and results (later stages) -, then the screens over them
+  const firstStages = new Set((guide?.flows ?? []).map(flow => flow.stages[0]));
+  const laterStages = new Set((guide?.flows ?? []).flatMap(flow => flow.stages.slice(1)));
+  const category = (screen: Screen) => screen.layer !== undefined ? `기준 정보 · Layer ${screen.layer}`
+    : screen.kind === "업무" ? (firstStages.has(screen.key) && !laterStages.has(screen.key) ? "업무 · 지시" : laterStages.has(screen.key) ? "업무 · 실적" : "업무")
+    : ["이어받기", "업무 처리"].includes(screen.kind) ? "이어받기·처리 화면" : "조회 화면";
+  const order = (name: string) => name.startsWith("기준 정보") ? `0${name}` : name === "업무 · 지시" ? "1" : name === "업무 · 실적" ? "2" : name === "업무" ? "3" : name === "이어받기·처리 화면" ? "4" : "5";
+  const groups = [...new Set((guide?.screens ?? []).map(category))].sort((a, b) => order(a).localeCompare(order(b)))
+    .map(name => ({ name, screens: (guide?.screens ?? []).filter(screen => category(screen) === name) }));
   const table = (fields: Field[]) => <table className="guide-fields"><thead><tr><th>항목</th><th>넣는 것</th></tr></thead>
     <tbody>{fields.map(field => <tr key={field.label}><td>{field.label}</td><td>{field.words}</td></tr>)}</tbody></table>;
   return <VStack gap={4}>
@@ -39,7 +48,8 @@ export default function GuidePage() {
         {guide.flows.map((flow, index) => <button type="button" key={flow.name} className="sub" onClick={() => go(`guide-flow-${index}`)}>{flow.name}</button>)}
         <button type="button" onClick={() => go("guide-masters")}>2. 기준 정보</button>
         <button type="button" onClick={() => go("guide-screens")}>3. 화면별 안내</button>
-        {guide.screens.map(screen => <button type="button" key={screen.key} className="sub" onClick={() => go(`guide-screen-${screen.key}`)}>{screen.title}</button>)}
+        {groups.map(group => <div key={group.name} className="guide-toc-group"><span>{group.name}</span>
+          {group.screens.map(screen => <button type="button" key={screen.key} className="sub" onClick={() => go(`guide-screen-${screen.key}`)}>{screen.title}</button>)}</div>)}
         <button type="button" onClick={() => go("guide-common")}>4. 모든 화면의 규칙</button>
       </nav>
       <article className="guide-book">
@@ -55,14 +65,15 @@ export default function GuidePage() {
         {layers.map(layer => <section key={layer}><h4>Layer {layer}</h4><ul>{masters.filter(screen => screen.layer === layer).map(screen => <li key={screen.key}>
           {screen.title}{screen.usedBy.length > 0 && <span className="muted"> - 쓰는 화면: {screen.usedBy.join(", ")}</span>}</li>)}</ul></section>)}
         <h3 id="guide-screens">3. 화면별 안내</h3>
-        {guide.screens.map(screen => <section key={screen.key} id={`guide-screen-${screen.key}`} className="guide-screen">
-          <h4>{screen.title} <span className="guide-kind">{screen.kind}{screen.layer ? ` · Layer ${screen.layer}` : ""}</span></h4>
+        {groups.map(group => <section key={group.name} className="guide-group"><h4 className="guide-group-title">{group.name}</h4>
+        {group.screens.map(screen => <section key={screen.key} id={`guide-screen-${screen.key}`} className="guide-screen">
+          <h5>{screen.title} <span className="guide-kind">{screen.kind}{screen.layer ? ` · Layer ${screen.layer}` : ""}</span></h5>
           {screen.flows.length > 0 && <p className="muted">속한 흐름: {screen.flows.join(" / ")}</p>}
           {screen.fields.length > 0 && table(screen.fields)}
           {screen.lines.map(lines => <div key={lines.label}><p><strong>줄 표: {lines.label}</strong></p>{table(lines.fields)}</div>)}
           {screen.sentences.length > 0 && <ul>{screen.sentences.map(sentence => <li key={sentence}>{sentence}</li>)}</ul>}
           {screen.usedBy.length > 0 && <p className="muted">이 자료를 쓰는 화면: {screen.usedBy.join(", ")}</p>}
-        </section>)}
+        </section>)}</section>)}
         <h3 id="guide-common">4. 모든 화면의 규칙</h3>
         <ul>{guide.common.map(rule => <li key={rule}>{rule}</li>)}</ul>
       </article>
