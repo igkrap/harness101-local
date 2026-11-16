@@ -148,6 +148,8 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
         result.update(action=action, key=key, title=definition['title'], fields=[label(field) for field in definition['fields']])
         if definition.get('dataOnly') or definition.get('screen') is False:
             result['data_only'] = True
+        if definition.get('lookups'):
+            result['lookups'] = [f"{', '.join(item['set'])} ← {item['from']}" + (f" ({item['at']} 기준)" if item.get('at') else '') for item in definition['lookups']]
         if definition.get('lines'):
             result['lines'] = [label(field) for field in definition['lines']['fields']]
             limit = definition['lines']
@@ -422,6 +424,8 @@ def say(result):
             lines.append('조합 기준 정보: ' + result['layer'])
         for more in result.get('more_lines') or []:
             lines.append(f"줄 표 {more['label']} 항목: " + ', '.join(more['fields']))
+        if result.get('lookups'):
+            lines.append('찾아 채우기: ' + '; '.join(result['lookups']))
         if result.get('data_only'):
             lines.append('화면: 없음 (다른 업무에서 저절로 만들어지는 데이터)')
         if result.get('statuses'):

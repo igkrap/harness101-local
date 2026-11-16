@@ -594,6 +594,44 @@ def stock_checks(report, definition, framework, new_body, post, api):
     report.add('재고: 자료를 지우면 움직인 재고가 되돌아간다', code == 204 and abs(back - before) < 1e-9, f'{code} / {before:g} → {after:g} → {back:g}')
 
 
+def lookup_checks(report, definition, framework, made, new_body, post, api):
+    """A field filled from master data: left empty, it takes the value of the master record that matches (valid on the day); typed by
+    hand, it stays; on a day no master record is valid for, it is not filled (a required one is refused, saying where it looked)."""
+    for lookup in definition.get('lookups') or []:
+        master = next((item['definition'] for item in framework.definitions() if item['key'] == lookup['from']), None)
+        if not master:
+            continue
+        target, theirs = next(iter(lookup['set'].items()))
+        field = next(item for item in definition['fields'] if item['name'] == target)
+        given = fit({item['name']: sample(item, framework, made) for item in master['fields'] if not _computed(item)}, master, framework, made)
+        body = new_body()
+        for their_field, mine in lookup['match'].items():
+            given[their_field] = body.get(mine)
+        value = 7777 if (next((item for item in master['fields'] if item['name'] == theirs), {}).get('type') == 'number') else f'찾은 값 {next(_serial)}'
+        given[theirs] = value
+        if master.get('effective'):
+            given[master['effective']['from']] = '2000-01-01'
+            if master['effective'].get('to'):
+                given[master['effective']['to']] = None
+        code, kept = framework.call('POST', f"/api/data/{lookup['from']}", given)
+        if not report.add(f"찾아 채우기: {master['title']} 에 맞는 기준 정보를 둔다", code == 201, f'{code} {kept}'):
+            continue
+        made.append((lookup['from'], kept['id']))
+        empty = dict(body, **{target: None})
+        code, row = post(empty)
+        report.add(f"찾아 채우기: {field['label']} 을(를) 비워 저장하면 {master['title']} 의 값({value})으로 채워진다", code == 201 and str(row.get(target)) in (str(value), f'{value}.0'), f"{code} {row.get(target) if code == 201 else row}")
+        typed = dict(body, **{target: 1234 if isinstance(value, int) else '직접 적은 값'})
+        code, row = post(typed)
+        report.add(f"찾아 채우기: {field['label']} 을(를) 직접 적으면 그대로 둔다", code == 201 and str(row.get(target)) in ('1234', '1234.0', '직접 적은 값'), f"{code} {row.get(target) if code == 201 else row}")
+        if master.get('effective') and lookup.get('at'):
+            early = dict(empty, **{lookup['at']: '1999-12-31'})
+            code, row = post(early)
+            if field.get('required'):
+                report.add(f"찾아 채우기: 그날 유효한 {master['title']} 이(가) 없으면 저장이 거절되고 이유가 나온다", code == 400 and '없습니다' in str((row or {}).get('detail')), f'{code} {row}')
+            else:
+                report.add(f"찾아 채우기: 그날 유효한 {master['title']} 이(가) 없으면 비워 둔다", code == 201 and row.get(target) in (None, ''), f"{code} {row.get(target) if code == 201 else row}")
+
+
 def closing_checks(report, definition, framework, new_body, post, api):
     """수불 마감: no stock moves on a day of a closed month, a record whose stock moved in it stays as it is, and opening it again lets it go.
     Months someone really closed are only read; otherwise a month long past (2000-01, nothing real in it) is closed for the check and opened again."""
@@ -898,6 +936,7 @@ def record_checks(key, definition, framework):
         conditions(report, definition, framework, made, new_body, post, api)
         stock_checks(report, definition, framework, new_body, post, api)
         closing_checks(report, definition, framework, new_body, post, api)
+        lookup_checks(report, definition, framework, made, new_body, post, api)
         layer_checks(report, definition, framework, made, new_body, post, api)
         effective_checks(report, definition, framework, made, new_body, post, api)
         line_ref_checks(report, definition, framework, made, new_body, post, api)

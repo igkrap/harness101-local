@@ -50,6 +50,7 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 - search 는 조회 조건으로 쓸 항목(1~3개, 줄 항목 제외)에 true.
 - 다른 자료에서 고르는 항목(거래처, 품목, 부서 ...)은 글자로 받지 말고 ref 로 한다. 이미 있는 자료만 가리킬 수 있고, ref.label 과 fill 의 값은 그 자료에 실제로 있는 항목 name 이어야 한다(위 '이미 있는 자료' 참고).
 - 정해진 값 중에서 고르는 항목은 code 로 하되 있는 공통 코드 그룹만 쓴다. 맞는 그룹이 없으면 글자(text)로 둔다.
+- 단가처럼 거래처·품목·날짜에 따라 정해지는 값은 그 값을 담은 기준 정보(예: 품목 단가 - 거래처·품목별, 적용 기간, effective by [거래처, 품목])를 두고, 쓰는 자료에 lookups 로 찾아 채운다 (거래처 단가 → 없으면 품목 기본 단가처럼 여러 개를 순서대로).
 - "~하면 ~못 하게" 같은 요청은 rules 로 적는다. 규칙이 가리키는 자료와 항목은 이미 있어야 한다.
 - 다른 자료가 가리키고 있는 자료는 프레임워크가 언제나 지우지 못하게 막는다: 그것을 막는 규칙(blockWhenReferenced 의 delete)을 따로 만들지 않는다. 요청에 없는 규칙은 덧붙이지 않는다.
 - effects 의 on 은 요청의 말 그대로 정한다: "등록하면·저장하면·입력하면"은 create, "확정하면·승인하면·완료하면"처럼 상태 버튼을 말하면 그 action 이름이다.
@@ -128,6 +129,8 @@ def describe(key, definition):
         text += f" / 재고: {'늘림(입고)' if definition['stock']['direction'] == 'in' else '창고 이동' if definition['stock']['direction'] == 'move' else '재고 실사' if definition['stock']['direction'] == 'count' else '줄임(출고)'} - 품목 {definition['stock']['item']}, 수량 {definition['stock']['quantity']}, 창고 {definition['stock']['warehouse']}" + (f", LOT 번호 {definition['stock']['lot']}" if definition['stock'].get('lot') else '')
     if definition.get('screen') is False or definition.get('dataOnly'):
         text += ' / 화면 없음: 다른 업무에서 저절로 만들어지고 바뀌는 데이터 ("screen": false)'
+    if definition.get('lookups'):
+        text += ' / 찾아 채우기: ' + '; '.join(f"{', '.join(item['set'])} ← {item['from']} ({', '.join(f'{theirs}={mine}' for theirs, mine in item['match'].items())}" + (f", {item['at']} 날짜 기준" if item.get('at') else '') + ')' for item in definition['lookups'])
     if definition.get('follows'):
         text += f" / 후행 자료: {definition['follows']} 이(가) 가리키는 앞 단계를 이어받아서만 생긴다 (자기 화면에서 신규 등록 없음, 앞 단계 없이는 기타 화면에서)"
     if (definition.get('status') or {}).get('closed'):
@@ -339,6 +342,8 @@ def differences(old, new):
     only = lambda definition: bool(definition.get('dataOnly') or definition.get('screen') is False)
     if only(old) != only(new):
         note('화면: ' + ('있음 → 없음 (데이터로만)' if only(new) else '없음 → 있음'), only(old) and not only(new))
+    if (old.get('lookups') or []) != (new.get('lookups') or []):
+        note(f"찾아 채우기: {json.dumps(old.get('lookups') or [], ensure_ascii=False)} → {json.dumps(new.get('lookups') or [], ensure_ascii=False)}", len(new.get('lookups') or []) < len(old.get('lookups') or []))
     if (old.get('follows') or None) != (new.get('follows') or None):
         note(f"후행 자료(앞 단계를 이어받아서만 생김): {old.get('follows')} → {new.get('follows')}", bool(old.get('follows')) and not new.get('follows'))
     if (old.get('over') or None) != (new.get('over') or None):
