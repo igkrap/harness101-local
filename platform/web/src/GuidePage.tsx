@@ -51,12 +51,12 @@ export default function GuidePage() {
             <ul>{step.how.map(how => <li key={how}>{how}</li>)}</ul></div>)}
         </section>)}
         <h3 id="guide-masters">2. 기준 정보</h3>
-        <p className="muted">업무 화면이 가져다 쓰는 자료입니다. 1층은 혼자 서는 자료, 2층부터는 아래층 자료를 묶어 만든 자료입니다.</p>
-        {layers.map(layer => <section key={layer}><h4>{layer}층</h4><ul>{masters.filter(screen => screen.layer === layer).map(screen => <li key={screen.key}>
+        <p className="muted">업무 화면이 가져다 쓰는 자료입니다. Layer 1 은 혼자 서는 자료, Layer 2 부터는 아래 Layer 의 자료를 묶어 만든 자료입니다.</p>
+        {layers.map(layer => <section key={layer}><h4>Layer {layer}</h4><ul>{masters.filter(screen => screen.layer === layer).map(screen => <li key={screen.key}>
           {screen.title}{screen.usedBy.length > 0 && <span className="muted"> - 쓰는 화면: {screen.usedBy.join(", ")}</span>}</li>)}</ul></section>)}
         <h3 id="guide-screens">3. 화면별 안내</h3>
         {guide.screens.map(screen => <section key={screen.key} id={`guide-screen-${screen.key}`} className="guide-screen">
-          <h4>{screen.title} <span className="guide-kind">{screen.kind}{screen.layer ? ` ${screen.layer}층` : ""}</span></h4>
+          <h4>{screen.title} <span className="guide-kind">{screen.kind}{screen.layer ? ` · Layer ${screen.layer}` : ""}</span></h4>
           {screen.flows.length > 0 && <p className="muted">속한 흐름: {screen.flows.join(" / ")}</p>}
           {screen.fields.length > 0 && table(screen.fields)}
           {screen.lines.map(lines => <div key={lines.label}><p><strong>줄 표: {lines.label}</strong></p>{table(lines.fields)}</div>)}
