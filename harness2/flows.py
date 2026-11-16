@@ -275,6 +275,32 @@ def simulate(flow, framework):
                     now = framework.ok('GET', f"/api/data/{fill['entity']}/{records[0]}")
                     names = {value['code']: value['label'] for value in target['status']['values']}
                     report.add(f"{title(fill['entity'])}: 수량이 다 차면 {names.get(action['to'], action['to'])} 상태가 된다", now.get('status') == action['to'], f"지금 상태 {names.get(now.get('status'), now.get('status'))}")
+        # the root instruction finished early (closed, cancelled ...): nothing that came of it goes on further down the flow
+        root_status = root.get('status') or {}
+        takes_in = {(one['take']['from'], one['take']['entity']): key for key, one in known.items() if one.get('take')}
+        for ending in [one for one in root_status.get('actions', []) if one['to'] in (root_status.get('closed') or []) and root_status.get('initial') in one['from']]:
+            code, again = framework.call('POST', f'/api/data/{stages[0]}', dict(body))
+            if code != 201:
+                report.add(f"{title(stages[0])} 을(를) {ending['label']} 해 보려고 한 건 더 등록한다", False, f'{code} {again}')
+                continue
+            made.append((stages[0], again['id']))
+            limit2, pointer2 = _link(known, stages[0], stages[1])
+            grown2, grown_pointer2 = _expansion(known, stages[0], stages[1])
+            pointer2 = pointer2 or grown_pointer2
+            children = [row['id'] for row in framework.ok('GET', f'/api/data/{stages[1]}?{pointer2}={again["id"]}&_limit=1000') if _value(row, pointer2) == again['id']] if pointer2 else []
+            for child in children:
+                made.append((stages[1], child))
+            code, answer = framework.call('POST', f"/api/data/{stages[0]}/{again['id']}/actions/{ending['name']}")
+            if not report.add(f"{title(stages[0])}: {ending['label']} 할 수 있다", code == 200, f'{code} {answer}'):
+                continue
+            left = []
+            for (source, target), take in takes_in.items():
+                if source == stages[0] and target in stages:
+                    left += [f"{known[take]['title']}: {title(stages[0])} {row['sourceId']}" for row in framework.ok('GET', f'/api/take/{take}') if row.get('sourceId') == again['id']]
+                if source == stages[1] and target in stages and children:
+                    left += [f"{known[take]['title']}: {title(stages[1])} {row['sourceId']}" for row in framework.ok('GET', f'/api/take/{take}') if row.get('sourceId') in children]
+            report.add(f"{title(stages[0])} 을(를) {ending['label']} 하면 그 뒤 단계로 더 이어지지 않는다 (이어받기 목록에서 빠진다)", not left,
+                       '아직 넘길 수 있게 남은 것: ' + ', '.join(left[:5]))
     except Exception as problem:
         report.add('흐름을 끝까지 돌린다', False, str(problem)[:300])
     finally:
