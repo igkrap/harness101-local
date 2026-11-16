@@ -147,7 +147,9 @@ def simulate(flow, framework):
             body['lines'] = [_line(root['lines']['fields'], framework, made, QUANTITY)]
         body = fit(body, root, framework, made)
         expected = {stages[0]: QUANTITY}
-        if first_limit:
+        if first_limit and not first_limit.get('field'):       # followed once: one record goes on as one
+            expected[stages[0]] = 1
+        elif first_limit:
             holder = body['lines'][0] if root.get('lines') and first_limit['entityField'] in body['lines'][0] else body
             holder[first_limit['entityField']] = QUANTITY
         else:
@@ -238,9 +240,13 @@ def simulate(flow, framework):
                 return report
             for one in existing:
                 made.append((later, one['id']))
-            total = sum(_quantity(one, limit['field']) for one in existing)
-            expected[later] = want
-            report.add(f"{title(later)}: {title(previous)} 의 수량({want:g})이 그대로 넘어온다 ({route})", abs(total - want) < 1e-9, f'넘어온 수량 {total:g}')
+            if not limit.get('field'):         # followed once: each earlier record goes on as exactly one
+                expected[later] = len(current)
+                report.add(f"{title(later)}: {title(previous)} 한 건에 한 건씩 이어진다 ({route})", len(existing) == len(current), f'{title(previous)} {len(current)}건 → {title(later)} {len(existing)}건')
+            else:
+                total = sum(_quantity(one, limit['field']) for one in existing)
+                expected[later] = want
+                report.add(f"{title(later)}: {title(previous)} 의 수량({want:g})이 그대로 넘어온다 ({route})", abs(total - want) < 1e-9, f'넘어온 수량 {total:g}')
             if take:          # nothing left behind, and no second way: the take-over list shows nothing more for these records
                 still = [row for row in framework.ok('GET', f'/api/take/{take}') if row['sourceId'] in ids]
                 report.add(f"{title(previous)} → {title(later)}: 넘긴 뒤 이어받기 목록에 남은 것이 없다" + (' (자동으로 만들어졌는데 손으로 또 넘길 길이 열려 있으면 두 번 처리됩니다)' if route == '자동 처리' else ''),

@@ -320,7 +320,8 @@ def fit(body, definition, framework, made, break_check=None):
         value_of = lambda name: row['id'] if name == 'id' else theirs_unit.get(name) if name in theirs_unit else row.get(name)
         for mine, theirs in pairs:
             holder(mine)[mine] = value_of(theirs)
-        unit[limit['field']] = value_of(limit['entityField']) or 0
+        if limit.get('field'):          # (a limit without quantities - followed once - has nothing to fill)
+            unit[limit['field']] = value_of(limit['entityField']) or 0
     if definition.get('limits'):
         obey()          # a limit may have changed a number a check compares: the checks are made true again
     if (definition.get('ledger') or {}).get('lot'):       # a lot number is only for items kept by lot: a plain sample leaves it empty
@@ -977,6 +978,18 @@ def record_checks(key, definition, framework):
             code, answer = post(broken)
             report.add(f"비교 규칙: {check['left']} {check['op']} {check['right']} 을(를) 어기면 거절되고 안내가 나온다 ({check['message']})", code == 400 and (answer or {}).get('detail') == check['message'], f'{code} {answer}')
         for limit in definition.get('limits') or []:
+            if not limit.get('field'):      # followed once: a second record pointing at the same earlier one is refused
+                once = new_body()
+                code, answer = post(once)
+                report.add(f"한도: {limit['entity']} 한 건을 처음 이어받으면 저장된다", code == 201, f'{code} {answer}')
+                again = new_body()
+                for name in limit['by']:
+                    holder = again['lines'][0] if limit.get('lines') and name in again['lines'][0] else again
+                    holder[name] = (once['lines'][0] if limit.get('lines') and name in once['lines'][0] else once).get(name)
+                code, answer = post(again)
+                report.add(f"한도: 같은 {limit['entity']} 을(를) 한 번 더 이어받으면 거절된다 ({limit['message']})",
+                           code == 400 and str((answer or {}).get('detail', '')).startswith(limit['message']), f'{code} {answer}')
+                continue
             over = new_body()
             unit = over['lines'][0] if limit.get('lines') else over
             allowed = unit[limit['field']]
@@ -1274,9 +1287,11 @@ def take_checks(key, definition, framework):
             return report
         values = {field['name']: sample(field, framework, made) for field in target['fields'] if field['name'] in shape.get('ask', []) and not _computed(field)}
         first = open_rows[0]
-        part_quantity = max(1, int(first['remaining'] // 2)) if first['remaining'] >= 2 else first['remaining']
-        code, answer = framework.call('POST', api, supplied({'values': values, 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': first['remaining'] + 1}]}))
-        report.add(f"남은 수량({first['remaining']:g})보다 많이 넘기면 거절된다", code == 400, f'{code} {answer}')
+        once = bool(shape.get('once'))      # followed once: no quantities, a row is taken whole
+        part_quantity = 1 if once else max(1, int(first['remaining'] // 2)) if first['remaining'] >= 2 else first['remaining']
+        if not once:
+            code, answer = framework.call('POST', api, supplied({'values': values, 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': first['remaining'] + 1}]}))
+            report.add(f"남은 수량({first['remaining']:g})보다 많이 넘기면 거절된다", code == 400, f'{code} {answer}')
         code, answer = framework.call('POST', api, supplied({'values': values, 'rows': []}))
         report.add('고른 줄이 없으면 거절된다', code == 400, f'{code} {answer}')
         typed = {field['name']: sample(field, framework, made) for field in shape.get('askLines') or [] if field.get('required')}     # what the row asks for and cannot do without
@@ -1289,7 +1304,14 @@ def take_checks(key, definition, framework):
         new = framework.ok('GET', f"/api/data/{part['entity']}/{answer['created'][0]['id']}")
         limit = next(item for item in target.get('limits') or [] if item['entity'] == part['from'])
         holder = (new.get('lines') or [{}])[0] if limit.get('lines') else new
-        report.add('만들어진 자료에 넘긴 수량이 들어 있다', holder.get(limit['field']) == part_quantity, f"{holder.get(limit['field'])}")
+        if limit.get('field'):
+            report.add('만들어진 자료에 넘긴 수량이 들어 있다', holder.get(limit['field']) == part_quantity, f"{holder.get(limit['field'])}")
+        else:
+            report.add('이어받은 것은 목록에서 빠진다', not [row for row in mine(framework.ok('GET', api)) if row['line'] == first['line']], '')
+            code, answer2 = framework.call('POST', api, supplied({'values': values, 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': 1, 'values': typed}]}))
+            for item in (answer2.get('created') or []) if isinstance(answer2, dict) else []:
+                made.append((part['entity'], item['id']))
+            report.add('이미 이어받은 것을 또 넘기면 거절된다', code == 400, f'{code} {answer2}')
         pointer = next((mine_name for mine_name, theirs in zip(limit['by'], limit['entityBy']) if theirs == 'id'), None)
         if pointer:
             where = holder if pointer in holder else new
@@ -1612,10 +1634,11 @@ def rule_checks(key, definition, framework):
                         for mine, theirs in zip(limit['by'], limit['entityBy']):
                             if theirs != 'id':
                                 pointer['lines'][0][mine] = ((row.get('lines') or [{}])[0] if limit.get('entityLines') else row).get(theirs)
-                        pointer['lines'][0][limit['field']] = ((row.get('lines') or [{}])[0] if limit.get('entityLines') else row).get(limit['entityField']) or 1
+                        if limit.get('field'):
+                            pointer['lines'][0][limit['field']] = ((row.get('lines') or [{}])[0] if limit.get('entityLines') else row).get(limit['entityField']) or 1
             for limit in other.get('limits') or []:     # use only part of what this record allows: filling it up may move it on (a fill effect) and lock it
                 if limit['entity'] == key and not limit.get('lines') and rule['field'] in limit['by']:
-                    whole = row.get(limit['entityField'])
+                    whole = row.get(limit['entityField']) if limit.get('field') else None
                     if isinstance(whole, (int, float)) and whole >= 2:
                         pointer[limit['field']] = 1
             user = framework.ok('POST', f"/api/data/{rule['entity']}", pointer)
@@ -1814,7 +1837,7 @@ def effect_checks(key, definition, framework):
                     stage = fresh(between['entity'], middle, (via['by'][via['entityBy'].index('id')], first['id']))
                     place(between['by'][between['entityBy'].index('id')])[between['by'][between['entityBy'].index('id')]] = stage['id']
                 place(pointer)[pointer] = first['id']
-                whole = first.get(limit['entityField'])
+                whole = first.get(limit['entityField']) if limit.get('field') else None       # (followed once: one record fills it)
                 if not limit.get('lines') and not limit.get('entityLines') and isinstance(whole, (int, float)) and whole >= 2 and first.get('status') in wanted['from']:
                     # part of it first: the earlier record stays where it is; the rest then fills it
                     part = fit(dict(body), definition, framework, made)          # (the sample is readied first: it would fill the quantity up to the limit)
@@ -1846,7 +1869,7 @@ def effect_checks(key, definition, framework):
                     body = fit({field['name']: sample(field, framework, made) for field in other['fields'] if not _computed(field)}, other, framework, made)
                     body[part['via']] = row['id']
                     for limit in other.get('limits') or []:
-                        if limit['entity'] == key and not limit.get('lines'):
+                        if limit['entity'] == key and not limit.get('lines') and limit.get('field'):
                             body[limit['field']] = 1
                     code, child = framework.call('POST', f"/api/data/{part['entity']}", body)
                     if code == 201:
@@ -1922,7 +1945,7 @@ def closed_checks(key, definition, framework):
             pointer = limit['by'][limit['entityBy'].index('id')]
             follow = fit({field['name']: sample(field, framework, made) for field in one['fields'] if not _computed(field)}, one, framework, made)
             follow[pointer] = row['id']
-            if not limit.get('lines'):
+            if not limit.get('lines') and limit.get('field'):
                 follow[limit['field']] = 1
             code, answer = framework.call('POST', f'/api/data/{other}', follow)
             if code == 201:
