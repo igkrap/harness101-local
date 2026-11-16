@@ -1349,7 +1349,8 @@ def ledger_view_checks(key, definition, framework):
     report = Report()
     show = (definition.get('ledgerView') or {}).get('show') or 'all'
     for view in (['balance', 'lots', 'moves'] if show == 'all' else [show]):
-        code, answer = framework.call('GET', f'/api/ledger/{view}')
+        thing = (definition.get('ledgerView') or {}).get('thing')
+        code, answer = framework.call('GET', f'/api/ledger/{view}' + (f'?entity={thing}' if thing else ''))
         report.add(f'원장 보기: {view} 를 읽을 수 있다', code == 200 and isinstance(answer, list), f'{code} {str(answer)[:120]}')
     report.leftover = []
     return report

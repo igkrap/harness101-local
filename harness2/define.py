@@ -42,7 +42,8 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
   후행 자료 정의에는 "follows": "<앞 단계를 가리키는 ref 항목>" 을 적어 자기 화면에서 신규 등록을 막는다 (그 ref 항목은 required 가 아니다). 앞 단계 없이 따로 등록해야 한다는 요청이면 기타 화면을 만든다: over {entity: <그 자료 key>, create: true}, title "기타 <이름>" (예: 기타 출하지시).
 - 실행 단계(출하, 입고, 처리 결과 ...)는 지시(출하지시, 작업지시, 처리 지시 ...)를 거치는 것이 이 시스템의 기본 흐름이다: 요청 자료 → 지시 → 실행 (주문 → 출하지시 → 출하, 민원 접수 → 처리 지시 → 처리 결과), 각 단계는 앞 단계를 이어받는 화면(take)으로 등록한다. 이미 그 지시 자료가 있으면 실행 화면은 지시를 앞 단계로 삼는다. 요청이 지시 없이 바로 실행을 말하면 요청대로 하되 "doubt" 에 지시 단계가 없다는 점을 한 줄 적는다.
 - 현황판·대시보드처럼 차트만 모아 보는 요청은 dashboard 로 한다. 패널은 이미 있는 집계 화면만 가리킬 수 있으므로, 맞는 집계 화면이 있으면 그것을 쓰고, 없으면 steps 로 필요한 집계 화면들을 먼저 만들고 마지막에 현황판을 만든다.
-- 잔량·미처리·남은 수량처럼 한 자료에서 다른 자료를 뺀 나머지는 compare minus 로, 처리 기간·소요 일수는 values 의 between 으로, 누계는 cumulative 로 한다.
+- 수량 원장(ledger)으로 들고 나는 것의 남은 수량·현재 수량을 보는 화면은 집계로 빼지 말고 원장 보기(ledgerView)로 하고, thing 에 그 대상 자료 key 를 적는다 (재고 현황 → item, 장비 보관 현황 → equipment).
+- 잔량·미처리·남은 수량처럼 한 자료에서 다른 자료를 뺀 나머지(원장이 아닌 것)는 compare minus 로, 처리 기간·소요 일수는 values 의 between 으로, 누계는 cumulative 로 한다.
 - 계획 대비·목표 대비·달성률은 compare plan 으로, 전월 대비·전년 대비·증감은 compare previous 로, 비중·점유율은 share 로, 순위·상위 N 은 top 으로 한다. 계획을 담은 자료가 없으면 이 요청으로는 그 등록 화면(예: 판매 계획, 점검 계획)부터 만든다.
 - 요청이 항목을 정해 주지 않았으면 그 업무에서 흔히 쓰는 항목으로 정한다(5~8개, 마스터-디테일이면 디테일 항목 3~5개).
 - 번호(serial), 상태(status)는 그 업무에 실제로 필요할 때만 붙인다. 줄 표(lines)는 하나의 마스터에 디테일이 여러 개 딸린 기준 정보에만 붙인다 (품목의 공정 순서, 점검표의 점검 항목). BOM 은 상위 품목·하위 자재·소요량 한 쌍을 한 건으로 등록한다 (줄 표 없이, noCycle 은 상위 품목과 하위 자재 항목에, 겹치면 안 되는 조합은 상위·하위 쌍). 이런 기준 정보는 업무보다 먼저 등록해 두는 것이다. 조합 기준 정보에는 uniqueBy(품목당 하나 등), 줄 항목 unique(같은 자재 두 줄 금지), noCycle(상위·하위가 같은 자료를 가리킬 때 순환 금지)을 요청에 맞게 적는다. 업무 흐름의 자료(작업지시, 생산실적 ...)에는 줄 표를 붙이지 않고, 자재나 공정이 필요하면 그 기준 정보를 가리킨다. 요청이 개수나 범위를 말하면("하나만", "0~100") 그대로 적는다.
@@ -147,7 +148,7 @@ def describe(key, definition):
         text = f"- key {key} / 화면 이름 {definition['title']} / 업무 화면: {part['entity']} 자료 중 " + (f"상태 {part['statuses']} 인 건" if part.get('statuses') else '모든 건') \
             + f" / 이 화면의 동작: {part.get('actions') or '없음'}" + (' / 내용 수정 가능' if part.get('edit') else '') + (' / 새로 등록 가능(등록 화면)' if part.get('create') else '')
     if definition.get('ledgerView'):
-        text = f"- key {key} / 화면 이름 {definition['title']} / 원장 보기 화면: " + {'all': '현재 수량·묶음·들고 난 내역 셋 다 (탭)', 'balance': '현재 수량', 'lots': '묶음', 'moves': '들고 난 내역'}.get(definition['ledgerView'].get('show') or 'all', '')
+        text = f"- key {key} / 화면 이름 {definition['title']} / 원장 보기 화면: " + {'all': '현재 수량·묶음·들고 난 내역 셋 다 (탭)', 'balance': '현재 수량', 'lots': '묶음', 'moves': '들고 난 내역'}.get(definition['ledgerView'].get('show') or 'all', '') + (f" / 보는 대상: {definition['ledgerView']['thing']}" if definition['ledgerView'].get('thing') else '')
     if definition.get('take'):
         part = definition['take']
         typed = part.get('ask') or (part.get('lines') or {}).get('ask') or []
