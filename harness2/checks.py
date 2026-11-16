@@ -621,8 +621,9 @@ def lookup_checks(report, definition, framework, made, new_body, post, api):
         given[theirs] = value
         if master.get('effective'):
             given[master['effective']['from']] = '2000-01-01'
-            if master['effective'].get('to'):
-                given[master['effective']['to']] = None
+            if master['effective'].get('to'):     # open-ended - or, when the screen asks for an end, one far ahead
+                end = next((item for item in master['fields'] if item['name'] == master['effective']['to']), {})
+                given[master['effective']['to']] = '9999-12-31' if end.get('required') else None
         code, kept = framework.call('POST', f"/api/data/{lookup['from']}", given)
         if not report.add(f"찾아 채우기: {master['title']} 에 맞는 기준 정보를 둔다", code == 201, f'{code} {kept}'):
             continue
