@@ -73,6 +73,21 @@ def _link(known, earlier, later):
     return None, None
 
 
+def _expansion(known, earlier, later):
+    """`earlier` makes the `later` records by itself from master data when it is registered (a work order → its planned issues from
+    the BOM): the expansion, and the field of `later` that points back at the earlier record."""
+    for effect in known[earlier].get('effects') or []:
+        part = effect.get('expand')
+        if effect.get('on') == 'create' and part and part.get('into') == later:
+            part = dict(part)
+            if isinstance(part.get('quantity'), dict):          # as written: {"into", "line", "times"}
+                part.update(quantityInto=part['quantity'].get('into'), quantityLine=part['quantity'].get('line'), quantityTimes=part['quantity'].get('times'))
+            pointer = next((into for into, come in (part.get('set') or {}).items() if come == 'id'), None)
+            if pointer:
+                return part, pointer
+    return None, None
+
+
 def _value(record, name):
     if name in record:
         return record.get(name)
@@ -122,15 +137,43 @@ def simulate(flow, framework):
     start = max([newest(key) for key in stored] or [0])        # ids come from one sequence: anything after this was made during the run
     try:
         first_limit, _ = _link(known, stages[0], stages[1])
-        if not report.add(f"{title(stages[1])} 이(가) {title(stages[0])} 의 수량을 한도로 이어진다", first_limit is not None, '두 화면을 잇는 한도(limits)가 없습니다'):
+        expansion, _ = _expansion(known, stages[0], stages[1])
+        if not report.add(f"{title(stages[1])} 이(가) {title(stages[0])} 에서 이어진다 ({'기준 정보로 저절로 만들어짐' if expansion and not first_limit else '수량 한도'})",
+                          first_limit is not None or expansion is not None, '두 화면을 잇는 한도(limits)도, 등록하면 저절로 만들어지는 길(expand)도 없습니다'):
             return report
         root = known[stages[0]]
         body = {field['name']: sample(field, framework, made) for field in root['fields'] if not _computed(field)}
         if root.get('lines'):
             body['lines'] = [_line(root['lines']['fields'], framework, made, QUANTITY)]
         body = fit(body, root, framework, made)
-        holder = body['lines'][0] if root.get('lines') and first_limit['entityField'] in body['lines'][0] else body
-        holder[first_limit['entityField']] = QUANTITY
+        expected = {stages[0]: QUANTITY}
+        if first_limit:
+            holder = body['lines'][0] if root.get('lines') and first_limit['entityField'] in body['lines'][0] else body
+            holder[first_limit['entityField']] = QUANTITY
+        else:
+            # the master data it draws on, valid on any day: one record (one pair of a BOM, or a master with two lines)
+            master = known[expansion['from']]
+            if expansion.get('quantityTimes'):
+                body[expansion['quantityTimes']] = QUANTITY
+            given = {field['name']: sample(field, framework, made) for field in master['fields'] if not _computed(field)}
+            if master.get('lines'):
+                given['lines'] = [_line(master['lines']['fields'], framework, made, 2 + index) for index in range(2)]
+            for theirs, mine in expansion['match'].items():
+                given[theirs] = body.get(mine)
+            given = fit(given, master, framework, made)
+            for theirs, mine in expansion['match'].items():
+                given[theirs] = body.get(mine)
+            if master.get('effective'):
+                given[master['effective']['from']] = '2000-01-01'
+                if master['effective'].get('to'):
+                    given[master['effective']['to']] = None
+            code, kept = framework.call('POST', f"/api/data/{expansion['from']}", given)
+            if not report.add(f"준비: {title(expansion['from'])} 에 맞는 기준 정보를 둔다", code == 201, f'{code} {kept}'):
+                return report
+            made.append((expansion['from'], kept['id']))
+            per = [float(line.get(expansion['quantityLine']) or 0) for line in (kept.get('lines') if master.get('lines') else [kept])]
+            expected[stages[1]] = sum(per) * (QUANTITY if expansion.get('quantityTimes') else 1)
+            expected['_count'] = len(per)
         code, record = framework.call('POST', f'/api/data/{stages[0]}', body)
         if not report.add(f"시작: {title(stages[0])} 한 건({QUANTITY})을 등록한다", code == 201, f'{code} {record}'):
             return report
@@ -142,8 +185,23 @@ def simulate(flow, framework):
         moved = {}
         for later in stages[1:]:
             limit, pointer = _link(known, previous, later)
-            if not report.add(f"{title(later)} 이(가) {title(previous)} 을(를) 가리켜 이어진다", limit is not None, '한도(limits)가 없어 어느 건에서 왔는지 알 수 없습니다'):
+            grown, grown_pointer = _expansion(known, previous, later)
+            if limit is None and grown is not None and previous == stages[0]:
+                # made by itself from master data when the earlier record was registered: as many as the master has, at line quantity × this one
+                rows = [row for row in framework.ok('GET', f'/api/data/{later}?{grown_pointer}={record["id"]}&_limit=1000') if _value(row, grown_pointer) == record['id']]
+                for one in rows:
+                    made.append((later, one['id']))
+                total = sum(_quantity(one, grown['quantityInto']) for one in rows) if grown.get('quantityInto') else 0
+                report.add(f"{title(previous)} → {title(later)}: 등록하면 {title(grown['from'])} 기준으로 {expected['_count']}건이 저절로 생기고 수량은 {expected[later]:g} (줄 수량 × {QUANTITY})",
+                           len(rows) == expected['_count'] and abs(total - expected[later]) < 1e-9, f'생긴 것 {len(rows)}건, 수량 {total:g}')
+                if not rows:
+                    return report
+                current, previous = rows, later
+                continue
+            if not report.add(f"{title(later)} 이(가) {title(previous)} 을(를) 가리켜 이어진다", limit is not None,
+                              '한도(limits)가 없어 어느 건에서 왔는지 알 수 없습니다' + (' (기준 정보로 저절로 만드는 길은 흐름의 첫 단계에서만 판정한다)' if grown else '')):
                 return report
+            want = expected.get(previous, QUANTITY)
             ids = [one['id'] for one in current]
 
             def mine():
@@ -181,7 +239,8 @@ def simulate(flow, framework):
             for one in existing:
                 made.append((later, one['id']))
             total = sum(_quantity(one, limit['field']) for one in existing)
-            report.add(f"{title(later)}: {title(previous)} 의 수량({QUANTITY})이 그대로 넘어온다 ({route})", abs(total - QUANTITY) < 1e-9, f'넘어온 수량 {total:g}')
+            expected[later] = want
+            report.add(f"{title(later)}: {title(previous)} 의 수량({want:g})이 그대로 넘어온다 ({route})", abs(total - want) < 1e-9, f'넘어온 수량 {total:g}')
             if take:          # nothing left behind, and no second way: the take-over list shows nothing more for these records
                 still = [row for row in framework.ok('GET', f'/api/take/{take}') if row['sourceId'] in ids]
                 report.add(f"{title(previous)} → {title(later)}: 넘긴 뒤 이어받기 목록에 남은 것이 없다" + (' (자동으로 만들어졌는데 손으로 또 넘길 길이 열려 있으면 두 번 처리됩니다)' if route == '자동 처리' else ''),
@@ -193,7 +252,7 @@ def simulate(flow, framework):
                 net = sum(float(move['quantity']) * (1 if move['direction'] == 'IN' else -1) for one in full for move in one.get('_stock') or [])
                 if sign:
                     moved[later] = net
-                    report.add(f"{title(later)}: 재고가 한 번만 {'늘어난다' if sign > 0 else '줄어든다'} ({QUANTITY})", abs(net - sign * QUANTITY) < 1e-9, f'움직인 수량 {net:g}')
+                    report.add(f"{title(later)}: 재고가 한 번만 {'늘어난다' if sign > 0 else '줄어든다'} ({want:g})", abs(net - sign * want) < 1e-9, f'움직인 수량 {net:g}')
                 elif part['direction'] == 'move':
                     report.add(f"{title(later)}: 창고 이동은 재고 합계를 바꾸지 않는다", abs(net) < 1e-9, f'움직인 수량 합 {net:g}')
             current, previous = existing, later
