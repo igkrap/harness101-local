@@ -1549,6 +1549,11 @@ def rule_checks(key, definition, framework):
                             if theirs != 'id':
                                 pointer['lines'][0][mine] = ((row.get('lines') or [{}])[0] if limit.get('entityLines') else row).get(theirs)
                         pointer['lines'][0][limit['field']] = ((row.get('lines') or [{}])[0] if limit.get('entityLines') else row).get(limit['entityField']) or 1
+            for limit in other.get('limits') or []:     # use only part of what this record allows: filling it up may move it on (a fill effect) and lock it
+                if limit['entity'] == key and not limit.get('lines') and rule['field'] in limit['by']:
+                    whole = row.get(limit['entityField'])
+                    if isinstance(whole, (int, float)) and whole >= 2:
+                        pointer[limit['field']] = 1
             user = framework.ok('POST', f"/api/data/{rule['entity']}", pointer)
             made.append((rule['entity'], user['id']))
             code, answer = attempt(row)

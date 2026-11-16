@@ -154,6 +154,9 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
         if definition.get('status'):
             result['statuses'] = [value['label'] for value in definition['status']['values']]
             result['actions'] = [action_['label'] for action_ in definition['status']['actions']]
+            if definition['status'].get('closed'):
+                names_ = {value['code']: value['label'] for value in definition['status']['values']}
+                result['closed'] = [names_.get(code, code) for code in definition['status']['closed']]
         if definition.get('rules'):
             result['rules'] = [rule['message'] for rule in definition['rules']]
         if definition.get('checks'):
@@ -406,7 +409,7 @@ def say(result):
         for more in result.get('more_lines') or []:
             lines.append(f"줄 표 {more['label']} 항목: " + ', '.join(more['fields']))
         if result.get('statuses'):
-            lines.append('상태: ' + ' → '.join(result['statuses']) + ' / 동작: ' + ', '.join(result.get('actions', [])))
+            lines.append('상태: ' + ' → '.join(result['statuses']) + ' / 동작: ' + ', '.join(result.get('actions', [])) + (' / 끝난 상태: ' + ', '.join(result['closed']) if result.get('closed') else ''))
         if result.get('print'):
             lines.append('출력 양식: ' + result['print'])
         if result.get('separate'):
