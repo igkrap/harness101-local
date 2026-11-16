@@ -1980,8 +1980,10 @@ def document_screen_criteria(definition):
         items.append(('줄 표가 있다', {'op': 'visible', 'selector': table}))
     if definition.get('status'):
         items.append(('목록에 상태 열이 있다', {'op': 'text', 'selector': '[data-ui="record-grid"]', 'contains': '상태'}))
-    for label in ('조회', '신규', '저장', '삭제'):
+    for label in ('조회', '저장', '삭제') if definition.get('follows') else ('조회', '신규', '저장', '삭제'):
         items.append((f'공통 버튼 {label} 이(가) 있다', {'op': 'visible', 'selector': f'{toolbar} >> role=button[name="{label}"]'}))
+    if definition.get('follows'):         # made from the earlier stage only: its own screen offers no 신규
+        items.append(('앞 단계에서 이어받아 만드는 자료라 신규 버튼이 없다', {'op': 'absent', 'selector': f'{toolbar} >> role=button[name="신규"]'}))
     for field in definition['fields']:
         if field.get('formula') or field.get('sum') or field['type'] == 'serial':
             items.append((f"입력 영역에 {field['label']} 이(가) 보인다", {'op': 'text', 'selector': editor, 'contains': field['label']}))
