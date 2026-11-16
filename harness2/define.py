@@ -38,6 +38,7 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 - 흐름의 루트(첫 단: 수주, 발주, 작업지시 ...)는 지시다. 지시 자료는 상태를 둔다: 진행 중 상태(처음), 마감, 취소 (필요하면 다 찬 완료), 동작 마감(조기 마감)·마감취소·취소, closed 에 마감·취소(·완료), locked 에도 마감·취소. 지시에서 이어진 다음 단계 자료에 상태가 있으면 cascade 로 마감·마감취소를 아래로 전파한다 - cascade 하는 동작은 그 다음 단계 자료에 먼저 있어야 하므로, 없으면 steps 의 앞 단계에서 그 자료에 상태·동작(마감, 마감취소 ...)부터 넣는다 (다음 단계 자료 → 지시 → 등록 화면 순서).
   지시는 화면이 둘이다: 자료 정의의 title 은 "<지시> 관리" (등록·수정·취소·마감·마감취소를 다 하는 화면), 그리고 등록만 하는 업무 화면 "<지시> 등록" = over {entity: <지시 key>, create: true} (권한을 따로 주기 위해). 둘을 다 만들어야 하면 steps 로 나눈다 (관리 → 등록).
 - 후행 단계(출하지시, 출하, 입고, 출고, 생산 실적 ...)는 이름이 지시여도 루트 지시에 대한 실적이다: 앞 단계를 한도(limits)로 가리키고, 따로 마감 동작을 두지 않으며(루트 지시의 마감이 전파된다), 등록은 이어받기 화면(take)으로 한다 - 앞 단계에서 남은 것을 표에 뿌리고 체크해 수량을 고쳐 확정하면 뒤 자료가 생긴다.
+  앞 단계를 등록하면 저절로 만들어지기만 하고 사람이 직접 보거나 등록하지 않는 자료(작업지시를 등록하면 BOM 에서 생기는 출고 예정 ...)는 화면이 필요 없다: "screen": false (프로그램·메뉴 없음, 다음 단계의 이어받기 목록과 고르기로만 읽힌다).
   후행 자료 정의에는 "follows": "<앞 단계를 가리키는 ref 항목>" 을 적어 자기 화면에서 신규 등록을 막는다 (그 ref 항목은 required 가 아니다). 앞 단계 없이 따로 등록해야 한다는 요청이면 기타 화면을 만든다: over {entity: <그 자료 key>, create: true}, title "기타 <이름>" (예: 기타 출하지시).
 - 실행 단계(출하, 입고, 생산 실적 ...)는 지시(출하지시, 작업지시 ...)를 거치는 것이 이 시스템의 기본 흐름이다: 요청 자료 → 지시 → 실행 (수주 → 출하지시 → 출하), 각 단계는 앞 단계를 이어받는 화면(take)으로 등록한다. 이미 그 지시 자료가 있으면 실행 화면은 지시를 앞 단계로 삼는다. 요청이 지시 없이 바로 실행을 말하면 요청대로 하되 "doubt" 에 지시 단계가 없다는 점을 한 줄 적는다.
 - 현황판·대시보드처럼 차트만 모아 보는 요청은 dashboard 로 한다. 패널은 이미 있는 집계 화면만 가리킬 수 있으므로, 맞는 집계 화면이 있으면 그것을 쓰고, 없으면 steps 로 필요한 집계 화면들을 먼저 만들고 마지막에 현황판을 만든다.
@@ -124,6 +125,8 @@ def describe(key, definition):
         text += f" / 순환 금지: 줄의 {definition['noCycle']['child']} 이(가) {definition['noCycle']['parent']} 자신이거나 돌고 돌아 다시 그것을 품을 수 없음"
     if definition.get('stock'):
         text += f" / 재고: {'늘림(입고)' if definition['stock']['direction'] == 'in' else '창고 이동' if definition['stock']['direction'] == 'move' else '재고 실사' if definition['stock']['direction'] == 'count' else '줄임(출고)'} - 품목 {definition['stock']['item']}, 수량 {definition['stock']['quantity']}, 창고 {definition['stock']['warehouse']}" + (f", LOT 번호 {definition['stock']['lot']}" if definition['stock'].get('lot') else '')
+    if definition.get('screen') is False or definition.get('dataOnly'):
+        text += ' / 화면 없음: 다른 업무에서 저절로 만들어지고 바뀌는 데이터 ("screen": false)'
     if definition.get('follows'):
         text += f" / 후행 자료: {definition['follows']} 이(가) 가리키는 앞 단계를 이어받아서만 생긴다 (자기 화면에서 신규 등록 없음, 앞 단계 없이는 기타 화면에서)"
     if (definition.get('status') or {}).get('closed'):

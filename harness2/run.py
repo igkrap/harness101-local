@@ -240,7 +240,7 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
         trial = {name: value for name, value in checked.items() if name not in ('rules', 'effects')}
         framework.save_definition(trial_key, dict(trial, title=trial_title), 'DRAFT')
         data = (checks.stock_view_checks if definition.get('stockView') else checks.take_checks if definition.get('take') else checks.view_checks if definition.get('calendar') or definition.get('tree') else checks.over_checks if definition.get('over') else checks.dashboard_checks if definition.get('dashboard') else checks.summary_checks if definition.get('summary') else checks.record_checks)(trial_key, checked, framework)
-        screen = checks.screen_checks(trial_title, definition, folder / '2-check', app_url())
+        screen = checks.Report() if definition.get('screen') is False else checks.screen_checks(trial_title, definition, folder / '2-check', app_url())     # data only: no screen to look at
         results = data.results + screen.results
         (folder / '2-check').mkdir(exist_ok=True)
         (folder / '2-check' / 'results.json').write_text(json.dumps(results, ensure_ascii=False, indent=1), encoding='utf-8')
