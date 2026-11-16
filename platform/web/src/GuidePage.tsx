@@ -43,6 +43,7 @@ export default function GuidePage() {
     {screen.sentences.length > 0 && <ul>{screen.sentences.map(sentence => <li key={sentence}>{sentence}</li>)}</ul>}
     {screen.usedBy.length > 0 && <p className="muted">이 자료를 쓰는 화면: {screen.usedBy.join(", ")}</p>}
   </section>;
+  const masterGroups = groups.filter(group => group.name.startsWith("기준 정보")), otherGroups = groups.filter(group => !group.name.startsWith("기준 정보"));
   const table = (fields: Field[]) => <table className="guide-fields"><thead><tr><th>항목</th><th>넣는 것</th></tr></thead>
     <tbody>{fields.map(field => <tr key={field.label}><td>{field.label}</td><td>{field.words}</td></tr>)}</tbody></table>;
   return <VStack gap={4}>
@@ -52,34 +53,35 @@ export default function GuidePage() {
     {error && <Text role="alert">{error}</Text>}
     {guide && <div className="guide-body">
       <nav className="guide-toc" aria-label="안내서 목차">
-        {guide.flows.map((flow, index) => <div key={flow.name} className="guide-toc-group">
-          <button type="button" onClick={() => go(`guide-flow-${index}`)}>{index + 1}. {flowTitle(flow)}</button>
-          {flowScreens(flow).map(key => <button type="button" key={key} className="sub" onClick={() => go(`guide-screen-${key}`)}>{name(key)}</button>)}</div>)}
-        <button type="button" onClick={() => go("guide-masters")}>{guide.flows.length + 1}. 기준 정보</button>
-        {groups.filter(group => group.name.startsWith("기준 정보")).map(group => <div key={group.name} className="guide-toc-group"><span>{group.name.replace("기준 정보 · ", "")}</span>
-          {group.screens.map(screen => <button type="button" key={screen.key} className="sub" onClick={() => go(`guide-screen-${screen.key}`)}>{screen.title}</button>)}</div>)}
-        {groups.some(group => !group.name.startsWith("기준 정보")) && <button type="button" onClick={() => go("guide-others")}>{guide.flows.length + 2}. 그 밖의 화면</button>}
-        {groups.filter(group => !group.name.startsWith("기준 정보")).map(group => <div key={group.name} className="guide-toc-group"><span>{group.name}</span>
-          {group.screens.map(screen => <button type="button" key={screen.key} className="sub" onClick={() => go(`guide-screen-${screen.key}`)}>{screen.title}</button>)}</div>)}
-        <button type="button" onClick={() => go("guide-common")}>모든 화면의 규칙</button>
+        <button type="button" onClick={() => go("guide-masters")}>1. 기준 정보</button>
+        {masterGroups.map((group, index) => <div key={group.name} className="guide-toc-group"><button type="button" className="sub" onClick={() => go(`guide-group-${group.name}`)}>1-{index + 1}. {group.name.replace("기준 정보 · ", "")}</button>
+          {group.screens.map(screen => <button type="button" key={screen.key} className="sub2" onClick={() => go(`guide-screen-${screen.key}`)}>{screen.title}</button>)}</div>)}
+        <button type="button" onClick={() => go("guide-flows")}>2. 업무 프로세스</button>
+        {guide.flows.map((flow, index) => <div key={flow.name} className="guide-toc-group"><button type="button" className="sub" onClick={() => go(`guide-flow-${index}`)}>2-{index + 1}. {flowTitle(flow)}</button>
+          {flowScreens(flow).map(key => <button type="button" key={key} className="sub2" onClick={() => go(`guide-screen-${key}`)}>{name(key)}</button>)}</div>)}
+        {otherGroups.length > 0 && <button type="button" onClick={() => go("guide-others")}>3. 그 밖의 화면</button>}
+        {otherGroups.map((group, index) => <div key={group.name} className="guide-toc-group"><button type="button" className="sub" onClick={() => go(`guide-group-${group.name}`)}>3-{index + 1}. {group.name}</button>
+          {group.screens.map(screen => <button type="button" key={screen.key} className="sub2" onClick={() => go(`guide-screen-${screen.key}`)}>{screen.title}</button>)}</div>)}
+        <button type="button" onClick={() => go("guide-common")}>{otherGroups.length > 0 ? 4 : 3}. 모든 화면의 규칙</button>
       </nav>
       <article className="guide-book">
-        {guide.flows.length === 0 && <p className="muted">화면끼리 이어진 흐름이 아직 없습니다.</p>}
-        {guide.flows.map((flow, index) => <section key={flow.name} id={`guide-flow-${index}`}>
-          <h3>{index + 1}. {flowTitle(flow)}</h3>
-          <p className="muted">{flow.name}</p>
+        <h3 id="guide-masters">1. 기준 정보</h3>
+        <p className="muted">업무 화면이 가져다 쓰는 자료입니다. Layer 1 은 혼자 서는 자료, Layer 2 부터는 아래 Layer 의 자료를 묶어 만든 자료입니다.</p>
+        {masterGroups.map((group, index) => <section key={group.name} className="guide-group"><h4 id={`guide-group-${group.name}`} className="guide-group-title">1-{index + 1}. {group.name.replace("기준 정보 · ", "")}</h4>
+          {group.screens.map(card)}</section>)}
+        <h3 id="guide-flows">2. 업무 프로세스</h3>
+        {guide.flows.length === 0 && <p className="muted">화면끼리 이어진 프로세스가 아직 없습니다.</p>}
+        {guide.flows.map((flow, index) => <section key={flow.name} id={`guide-flow-${index}`} className="guide-group">
+          <h4 className="guide-group-title">2-{index + 1}. {flowTitle(flow)}</h4>
+          <p className="muted">{flowScreens(flow).map(name).join(" → ")}</p>
           {flow.steps.map(step => <div key={`${step.from}-${step.to}`} className="guide-step"><strong>{name(step.from)} → {name(step.to)}</strong>
             <ul>{step.how.map(how => <li key={how}>{how}</li>)}</ul></div>)}
           {flowScreens(flow).map(key => card(byKey.get(key)!))}
         </section>)}
-        <h3 id="guide-masters">{guide.flows.length + 1}. 기준 정보</h3>
-        <p className="muted">업무 화면이 가져다 쓰는 자료입니다. Layer 1 은 혼자 서는 자료, Layer 2 부터는 아래 Layer 의 자료를 묶어 만든 자료입니다.</p>
-        {groups.filter(group => group.name.startsWith("기준 정보")).map(group => <section key={group.name} className="guide-group"><h4 className="guide-group-title">{group.name.replace("기준 정보 · ", "")}</h4>
+        {otherGroups.length > 0 && <h3 id="guide-others">3. 그 밖의 화면</h3>}
+        {otherGroups.map((group, index) => <section key={group.name} className="guide-group"><h4 id={`guide-group-${group.name}`} className="guide-group-title">3-{index + 1}. {group.name}</h4>
           {group.screens.map(card)}</section>)}
-        {groups.some(group => !group.name.startsWith("기준 정보")) && <h3 id="guide-others">{guide.flows.length + 2}. 그 밖의 화면</h3>}
-        {groups.filter(group => !group.name.startsWith("기준 정보")).map(group => <section key={group.name} className="guide-group"><h4 className="guide-group-title">{group.name}</h4>
-          {group.screens.map(card)}</section>)}
-        <h3 id="guide-common">모든 화면의 규칙</h3>
+        <h3 id="guide-common">{otherGroups.length > 0 ? 4 : 3}. 모든 화면의 규칙</h3>
         <ul>{guide.common.map(rule => <li key={rule}>{rule}</li>)}</ul>
       </article>
     </div>}

@@ -4,7 +4,8 @@
   border-right: 1px solid color-mix(in srgb, currentColor 18%, transparent); padding-right: 8px; }
 .guide-toc button { all: unset; cursor: pointer; padding: 4px 6px; border-radius: 4px; font-size: 13px; }
 .guide-toc button:hover, .guide-toc button:focus-visible { background: color-mix(in srgb, currentColor 10%, transparent); }
-.guide-toc button.sub { padding-left: 18px; opacity: .75; }
+.guide-toc button.sub { padding-left: 14px; font-weight: 500; }
+.guide-toc button.sub2 { padding-left: 26px; opacity: .7; }
 .guide-toc-group { display: flex; flex-direction: column; }
 .guide-toc-group > span { font-size: 12px; font-weight: 600; opacity: .6; padding: 6px 6px 2px 12px; }
 .guide-book { flex: 1; min-width: 0; max-width: 980px; line-height: 1.6; }
