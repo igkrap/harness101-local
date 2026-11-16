@@ -3,7 +3,7 @@
 The framework draws every screen, so this is a check of the framework: run it after changing it. The screens are built the way a
 setup pack builds them (a development preview is not optimised and would say nothing about operation), served beside the
 development server's API, and measured signed in as the platform's checking account - the home page, and one screen of every kind
-the project has (a form, a master with details, a take-over list, a stock view, a summary ...).
+the project has (a form, a master with details, a take-over list, a ledger view, a summary ...).
 
 Run: python3 tests/lighthouse_check.py [--keep]     (needs Lighthouse in ~/.local/share/local-workshop/tools/lighthouse)
 """
@@ -33,7 +33,7 @@ def chrome():
 
 
 def kind(definition):
-    for part, word in (('take', '이어받기'), ('stockView', '재고 보기'), ('summary', '집계'), ('dashboard', '현황판'), ('over', '업무 화면'), ('calendar', '달력'), ('tree', '트리')):
+    for part, word in (('take', '이어받기'), ('ledgerView', '원장 보기'), ('summary', '집계'), ('dashboard', '현황판'), ('over', '업무 화면'), ('calendar', '달력'), ('tree', '트리')):
         if definition.get(part):
             return word
     return '마스터-디테일' if definition.get('lines') else '업무(번호·상태)' if definition.get('status') or any(f.get('type') == 'serial' for f in definition.get('fields', [])) else '기준 정보'

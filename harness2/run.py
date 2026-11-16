@@ -184,11 +184,13 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
         if definition.get('uniqueBy') or definition.get('noCycle'):
             result['layer'] = ' / '.join(filter(None, ['겹치면 안 되는 조합 ' + ', '.join('·'.join(group) for group in definition.get('uniqueBy') or []) if definition.get('uniqueBy') else '',
                                                       f"순환 금지 ({definition['noCycle']['parent']} ↔ 줄의 {definition['noCycle']['child']})" if definition.get('noCycle') else '']))
-        if definition.get('stock'):
-            part = definition['stock']
-            result['stock'] = ('재고가 늘어난다 (줄마다 LOT, 단가 ' + (part.get('unitCost') or '없음') + ')' if part['direction'] == 'in' else '센 수량으로 그 창고의 장부를 맞춘다 (재고 실사·기초재고)' if part['direction'] == 'count' else f"재고가 {part['warehouse']} 창고에서 {part['toWarehouse']} 창고로 옮겨진다 (LOT 번호·단가 그대로)" if part['direction'] == 'move' else '재고가 줄어든다 (오래된 LOT 부터, 모자라면 거절)') + f" - 품목 {part['item']}, 수량 {part['quantity']}, 창고 {part['warehouse']}" + (f", LOT 번호 {part['lot']} (LOT 관리 품목만)" if part.get('lot') else '')
-        if definition.get('stockView'):
-            result['view'] = '재고 보기 화면 - ' + {'all': '현재고·LOT·수불 내역 셋 다 (탭)', 'balance': '현재고', 'lots': 'LOT', 'moves': '수불 내역'}[definition['stockView'].get('show') or 'all']
+        if definition.get('ledger'):
+            part = definition['ledger']
+            result['ledger'] = ({'in': '수량이 들어온다 (줄마다 묶음, 단가 ' + (part.get('unitCost') or '없음') + ')', 'count': '센 수량으로 그 위치의 장부를 맞춘다',
+                                 'move': f"{part['place']} 에서 {part.get('toPlace')} 로 옮긴다 (묶음 번호·단가 그대로)"}.get(part['direction'], '수량이 나간다 (먼저 들어온 묶음부터, 모자라면 거절)')
+                                + f" - 대상 {part['thing']}, 수량 {part['quantity']}, 위치 {part['place']}" + (f", 묶음 번호 {part['lot']}" if part.get('lot') else ''))
+        if definition.get('ledgerView'):
+            result['view'] = '원장 보기 화면 - ' + {'all': '현재 수량·묶음·들고 난 내역 셋 다 (탭)', 'balance': '현재 수량', 'lots': '묶음', 'moves': '들고 난 내역'}[definition['ledgerView'].get('show') or 'all']
         if definition.get('take'):
             part = definition['take']
             result['view'] = f"이어받기 화면 - {part['from']} 에서 아직 남은 것을 목록으로 조회해, 고른 줄로 {part['entity']} 을(를) 만든다 (입력 폼 없이 목록에서 처리)" \
@@ -229,7 +231,7 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
 
         current = next((item for item in framework.definitions() if item['key'] == key), None)
         if current and action == 'change':
-            notes, blocking = ([], []) if definition.get('summary') or current['definition'].get('summary') or definition.get('dashboard') or current['definition'].get('dashboard') or definition.get('over') or current['definition'].get('over') or any(definition.get(part) or current['definition'].get(part) for part in ('calendar', 'tree', 'take', 'stockView')) else impact(framework, key, current['definition'], definition)
+            notes, blocking = ([], []) if definition.get('summary') or current['definition'].get('summary') or definition.get('dashboard') or current['definition'].get('dashboard') or definition.get('over') or current['definition'].get('over') or any(definition.get(part) or current['definition'].get(part) for part in ('calendar', 'tree', 'take', 'ledgerView')) else impact(framework, key, current['definition'], definition)
             result.update(impact=notes, needs_decision=blocking)
             result['changes'], result['removed'] = define.differences(current['definition'], definition)
             if not result['changes']:
@@ -248,7 +250,7 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
         checked = define.repoint(definition, key, trial_key)
         trial = {name: value for name, value in checked.items() if name not in ('rules', 'effects')}
         framework.save_definition(trial_key, dict(trial, title=trial_title), 'DRAFT')
-        data = (checks.stock_view_checks if definition.get('stockView') else checks.take_checks if definition.get('take') else checks.view_checks if definition.get('calendar') or definition.get('tree') else checks.over_checks if definition.get('over') else checks.dashboard_checks if definition.get('dashboard') else checks.summary_checks if definition.get('summary') else checks.record_checks)(trial_key, checked, framework)
+        data = (checks.ledger_view_checks if definition.get('ledgerView') else checks.take_checks if definition.get('take') else checks.view_checks if definition.get('calendar') or definition.get('tree') else checks.over_checks if definition.get('over') else checks.dashboard_checks if definition.get('dashboard') else checks.summary_checks if definition.get('summary') else checks.record_checks)(trial_key, checked, framework)
         screen = checks.Report() if definition.get('screen') is False else checks.screen_checks(trial_title, definition, folder / '2-check', app_url())     # data only: no screen to look at
         results = data.results + screen.results
         (folder / '2-check').mkdir(exist_ok=True)
@@ -427,8 +429,8 @@ def say(result):
             lines.append(('위쪽 항목: ' if result.get('lines') else '항목: ') + ', '.join(result.get('fields', [])))
         if result.get('lines'):
             lines.append('줄 표 항목: ' + ', '.join(result['lines']) + (f"  [{result['line_limit']}]" if result.get('line_limit') else ''))
-        if result.get('stock'):
-            lines.append('재고: ' + result['stock'])
+        if result.get('ledger'):
+            lines.append('수량 원장: ' + result['ledger'])
         if result.get('layer'):
             lines.append('조합 기준 정보: ' + result['layer'])
         for more in result.get('more_lines') or []:

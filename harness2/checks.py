@@ -323,56 +323,56 @@ def fit(body, definition, framework, made, break_check=None):
         unit[limit['field']] = value_of(limit['entityField']) or 0
     if definition.get('limits'):
         obey()          # a limit may have changed a number a check compares: the checks are made true again
-    if (definition.get('stock') or {}).get('lot'):       # a lot number is only for items kept by lot: a plain sample leaves it empty
-        for _, _, _, unit in _stock_units(body, definition):
-            unit[definition['stock']['lot']] = None
-    stock_ready(body, definition, framework)
+    if (definition.get('ledger') or {}).get('lot'):       # a lot number is only for items kept by lot: a plain sample leaves it empty
+        for _, _, _, unit in _ledger_units(body, definition):
+            unit[definition['ledger']['lot']] = None
+    ledger_ready(body, definition, framework)
     return body
 
 
-def _stock_units(body, definition):
-    """What a record moves, as (item, warehouse, quantity, the unit the quantity sits in) per line (or once, when the quantity is above the lines)."""
-    part = definition.get('stock')
+def _ledger_units(body, definition):
+    """What a record moves, as (item, at_place, quantity, the unit the quantity sits in) per line (or once, when the quantity is above the lines)."""
+    part = definition.get('ledger')
     if not part:
         return []
     line_names = {field['name'] for field in (definition.get('lines') or {}).get('fields', [])}
     units = (body.get('lines') or []) if part['quantity'] in line_names else [body]
     at = lambda unit, name: unit.get(name) if name in unit else body.get(name)
-    return [(at(unit, part['item']), at(unit, part['warehouse']), at(unit, part['quantity']) or 0, unit) for unit in units]
+    return [(at(unit, part['thing']), at(unit, part['place']), at(unit, part['quantity']) or 0, unit) for unit in units]
 
 
-def stock_of(framework, item, warehouse):
-    rows = framework.ok('GET', f'/api/stock/balance?item={item}&warehouse={warehouse}')
+def held(framework, item, at_place):
+    rows = framework.ok('GET', f'/api/ledger/balance?thing={item}&place={at_place}')
     return float(rows[0]['quantity']) if rows else 0.0
 
 
-def stock_ready(body, definition, framework, cost=100):
-    """A sample of an issuing screen can only be stored when the stock is there: what it lacks is put in (as opening stock, at a known cost)."""
-    part = definition.get('stock')
+def ledger_ready(body, definition, framework, cost=100):
+    """A sample of an issuing screen can only be stored when the quantity is there: what it lacks is put in (as an opening quantity, at a known cost)."""
+    part = definition.get('ledger')
     if not part or part['direction'] in ('in', 'count'):
         return
     need = {}
-    for item, warehouse, quantity, _ in _stock_units(body, definition):
-        if item and warehouse and isinstance(quantity, (int, float)):
-            need[(item, warehouse)] = need.get((item, warehouse), 0) + quantity
-    for (item, warehouse), quantity in need.items():
-        short = quantity - stock_of(framework, item, warehouse)
+    for item, at_place, quantity, _ in _ledger_units(body, definition):
+        if item and at_place and isinstance(quantity, (int, float)):
+            need[(item, at_place)] = need.get((item, at_place), 0) + quantity
+    for (item, at_place), quantity in need.items():
+        short = quantity - held(framework, item, at_place)
         if short > 0:
-            framework.ok('POST', '/api/system/stock/adjust', {'itemEntity': part['itemEntity'], 'itemId': item, 'warehouseEntity': part['warehouseEntity'], 'warehouseId': warehouse, 'quantity': short, 'unitCost': cost})
+            framework.ok('POST', '/api/system/ledger/adjust', {'thingEntity': part['thingEntity'], 'thingId': item, 'placeEntity': part['placeEntity'], 'placeId': at_place, 'quantity': short, 'unitCost': cost})
 
 
 def lot_checks(report, definition, framework, new_body, api):
     """Items kept by lot: a lot number typed when receiving names the lot; typed when issuing, only that lot is taken from; for an item
     kept by quantity only a lot number is refused. Tried on the sample's own item, switched to 'by lot' for the occasion."""
-    part = definition['stock']
+    part = definition['ledger']
     if not part.get('lot'):
         return
     counting = part['direction'] == 'count'          # a count names the lot it counts: only the "not for a quantity-only item" rule applies
     known = {item['key']: item['definition'] for item in framework.definitions()}
     rule = part.get('lotWhen')              # which things are kept by lots: the item's field and the values that mean it (none said: any may be)
-    mode = next((field for field in known[part['itemEntity']]['fields'] if rule and field['name'] == rule['field']), None)
+    mode = next((field for field in known[part['thingEntity']]['fields'] if rule and field['name'] == rule['field']), None)
     lot_label = next((field['label'] for field in definition['fields'] + ((definition.get('lines') or {}).get('fields') or []) if field['name'] == part['lot']), part['lot'])
-    meta = ('id', 'status', 'statusLabel', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt', '_names', '_files', '_stock')
+    meta = ('id', 'status', 'statusLabel', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt', '_names', '_files', '_ledger')
     made = []
 
     def remove():
@@ -382,18 +382,18 @@ def lot_checks(report, definition, framework, new_body, api):
         made.clear()
     try:
         body = new_body()
-        every = _stock_units(body, definition)
-        item, warehouse, quantity, unit = next(one for one in every if one[0] and one[1] and one[2])
+        every = _ledger_units(body, definition)
+        item, at_place, quantity, unit = next(one for one in every if one[0] and one[1] and one[2])
         place = next(index for index, one in enumerate(every) if one[3] is unit) + 1        # the line the lot is typed on: only its movements are looked at
         if not mode:
             return
-        record = framework.ok('GET', f"/api/data/{part['itemEntity']}/{item}")
+        record = framework.ok('GET', f"/api/data/{part['thingEntity']}/{item}")
         plain = {name: value for name, value in record.items() if name not in meta}
         other = None                          # a value that does not mean 'by lot'
         if mode.get('codeGroup'):
             codes = framework.ok('GET', f"/api/auth/codes?groups={mode['codeGroup']}").get(mode['codeGroup'], [])
             other = next((code['code'] for code in codes if code['code'] not in rule['is']), None)
-        framework.ok('PUT', f"/api/data/{part['itemEntity']}/{item}", dict(plain, **{mode['name']: other}))
+        framework.ok('PUT', f"/api/data/{part['thingEntity']}/{item}", dict(plain, **{mode['name']: other}))
         unit[part['lot']] = 'L-NONE-1'
         code, answer = framework.call('POST', api, body)
         if code == 201:
@@ -402,29 +402,29 @@ def lot_checks(report, definition, framework, new_body, api):
         remove()
         if counting:
             return
-        framework.ok('PUT', f"/api/data/{part['itemEntity']}/{item}", dict(plain, **{mode['name']: rule['is'][0]}))
+        framework.ok('PUT', f"/api/data/{part['thingEntity']}/{item}", dict(plain, **{mode['name']: rule['is'][0]}))
         number = f'L-{next(_serial)}'
         if part['direction'] == 'in':
             unit[part['lot']] = number
             code, row = framework.call('POST', api, body)
             if code == 201:
                 made.append(row['id'])
-            lots = [line.get('lot') for line in (row.get('_stock') or []) if line.get('line') == place] if code == 201 else []
+            lots = [line.get('lot') for line in (row.get('_ledger') or []) if line.get('line') == place] if code == 201 else []
             report.add('LOT: LOT 관리 품목은 입고할 때 적은 번호가 LOT 번호가 된다', code == 201 and number in lots, f'{code} {lots or row}')
         else:
-            have = stock_of(framework, item, warehouse)        # what the sample put in sits in lots with numbers of their own
+            have = held(framework, item, at_place)        # what the sample put in sits in lots with numbers of their own
             unit[part['lot']] = number
             code, answer = framework.call('POST', api, body)
             if code == 201:
                 made.append(answer['id'])
-            report.add('LOT: 없는 LOT 번호를 지정해 꺼내면 (다른 LOT 에 재고가 있어도) 거절된다', code == 400 and have >= quantity and lot_label in str((answer or {}).get('detail')), f'{code} 현재고 {have:g} {answer}')
-            there = framework.ok('GET', f'/api/stock/lots?item={item}&warehouse={warehouse}')
+            report.add('LOT: 없는 LOT 번호를 지정해 꺼내면 (다른 묶음에 수량이 있어도) 거절된다', code == 400 and have >= quantity and lot_label in str((answer or {}).get('detail')), f'{code} 현재고 {have:g} {answer}')
+            there = framework.ok('GET', f'/api/ledger/lots?thing={item}&place={at_place}')
             if there:
                 unit[part['lot']] = there[0]['lot']
                 code, row = framework.call('POST', api, body)
                 if code == 201:
                     made.append(row['id'])
-                lots = {line.get('lot') for line in (row.get('_stock') or []) if line.get('line') == place} if code == 201 else set()
+                lots = {line.get('lot') for line in (row.get('_ledger') or []) if line.get('line') == place} if code == 201 else set()
                 report.add('LOT: 있는 LOT 번호를 지정하면 그 LOT 에서만 꺼낸다', code == 201 and lots == {there[0]['lot']} or (code == 400 and float(there[0]['remaining']) < quantity), f'{code} {lots or row}')
     finally:
         remove()
@@ -505,7 +505,7 @@ def layer_checks(report, definition, framework, made, new_body, post, api):
         body = new_body()
         code, row = post(body)
         if code == 201 and row.get('lines'):
-            again = {name: value for name, value in row.items() if name not in ('id', 'status', 'statusLabel', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt', '_names', '_files', '_stock')}
+            again = {name: value for name, value in row.items() if name not in ('id', 'status', 'statusLabel', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt', '_names', '_files', '_ledger')}
             ids = [line['_line'] for line in row['lines']]
             code2, after = framework.call('PUT', f"{api}/{row['id']}", again)
             report.add('기준 정보의 줄은 고쳐 저장해도 같은 줄로 남는다 (다른 기준 정보가 그 줄을 가리킬 수 있도록)', code2 == 200 and [line.get('_line') for line in after.get('lines', [])] == ids, f'{code2} {ids} → {[line.get("_line") for line in (after or {}).get("lines", [])] if isinstance(after, dict) else after}')
@@ -531,26 +531,26 @@ def layer_checks(report, definition, framework, made, new_body, post, api):
                 code, answer = post(deeper)
                 report.add('순환 금지: 하위의 하위를 등록하는 것(다단계 구조)은 된다', code == 201, f'{code} {answer}')
 
-def stock_checks(report, definition, framework, new_body, post, api):
-    """A screen that moves stock: receiving makes lots at the line's cost and the stock goes up; issuing takes from the oldest lots at their cost,
-    the stock goes down, and more than there is is refused; deleting the record takes its movement back."""
-    part = definition.get('stock')
+def ledger_checks(report, definition, framework, new_body, post, api):
+    """A screen that moves the ledger: in makes lots at the line's cost and the quantity goes up; out takes from the oldest lots at their cost,
+    the quantity goes down, and more than there is is refused; deleting the record takes its movement back."""
+    part = definition.get('ledger')
     if not part:
         return
     body = new_body()
-    units = [unit for unit in _stock_units(body, definition) if unit[0] and unit[1] and unit[2]]
+    units = [unit for unit in _ledger_units(body, definition) if unit[0] and unit[1] and unit[2]]
     if not units:
         return
-    item, warehouse = units[0][0], units[0][1]
-    moved = sum(quantity for one, house, quantity, _ in units if (one, house) == (item, warehouse))
-    before = stock_of(framework, item, warehouse)
+    item, at_place = units[0][0], units[0][1]
+    moved = sum(quantity for one, spot, quantity, _ in units if (one, spot) == (item, at_place))
+    before = held(framework, item, at_place)
     code, row = post(body)
-    if not report.add('재고: 자료가 저장된다', code == 201, f'{code} {row}'):
+    if not report.add('수량 원장: 자료가 저장된다', code == 201, f'{code} {row}'):
         return
-    after, lines = stock_of(framework, item, warehouse), row.get('_stock') or []
+    after, lines = held(framework, item, at_place), row.get('_ledger') or []
     if part['direction'] == 'count':
-        report.add(f'재고 실사: 저장하면 그 창고의 장부가 센 수량({moved:g})이 된다', abs(after - moved) < 1e-9, f'{before:g} → {after:g}')
-        recount = {name: value for name, value in body.items() if name not in ('lines',)}          # the same item and warehouse, counted again
+        report.add(f'세기(count): 저장하면 그 위치의 장부가 센 수량({moved:g})이 된다', abs(after - moved) < 1e-9, f'{before:g} → {after:g}')
+        recount = {name: value for name, value in body.items() if name not in ('lines',)}          # the same item and at_place, counted again
         for field in definition['fields']:
             if field.get('type') == 'serial' or _computed(field):
                 recount.pop(field['name'], None)
@@ -560,48 +560,48 @@ def stock_checks(report, definition, framework, new_body, post, api):
             unit = recount['lines'][0]
         unit[part['quantity']] = max(moved - 1, 0)
         code, again = post(recount)
-        report.add(f'재고 실사: 다시 세어 줄면({max(moved - 1, 0):g}) 장부도 줄고 차이가 수불에 남는다', code == 201 and abs(stock_of(framework, item, warehouse) - max(moved - 1, 0)) < 1e-9
-                   and any(line['direction'] == 'OUT' for line in again.get('_stock') or []), f'{code} {stock_of(framework, item, warehouse):g} {(again or {}).get("_stock") if isinstance(again, dict) else again}')
+        report.add(f'세기(count): 다시 세어 줄면({max(moved - 1, 0):g}) 장부도 줄고 차이가 들고 난 내역에 남는다', code == 201 and abs(held(framework, item, at_place) - max(moved - 1, 0)) < 1e-9
+                   and any(line['direction'] == 'OUT' for line in again.get('_ledger') or []), f'{code} {held(framework, item, at_place):g} {(again or {}).get("_ledger") if isinstance(again, dict) else again}')
         if code == 201:
             framework.call('DELETE', f"{api}/{again['id']}")
         lines = []
     elif part['direction'] == 'in':
-        report.add(f'재고: 등록하면 그 창고의 재고가 수량만큼({moved:g}) 늘어난다', abs(after - before - moved) < 1e-9, f'{before:g} → {after:g}')
+        report.add(f'수량 원장: 등록하면 그 위치의 수량이 그만큼({moved:g}) 늘어난다', abs(after - before - moved) < 1e-9, f'{before:g} → {after:g}')
         cost = units[0][3].get(part['unitCost']) if part.get('unitCost') else 0
-        report.add('재고: 줄마다 LOT 가 생기고 그 줄의 단가가 LOT 단가가 된다', len(lines) == len(_stock_units(body, definition)) and all(line.get('lot') for line in lines) and float(lines[0]['unitCost']) == float(cost or 0), f'{lines[:2]}')
+        report.add('수량 원장: 줄마다 묶음이 생기고 그 줄의 단가가 묶음 단가가 된다', len(lines) == len(_ledger_units(body, definition)) and all(line.get('lot') for line in lines) and float(lines[0]['unitCost']) == float(cost or 0), f'{lines[:2]}')
     else:
-        report.add(f"재고: 등록하면 {'보내는' if part['direction'] == 'move' else '그'} 창고의 재고가 수량만큼({moved:g}) 줄어든다", abs(before - after - moved) < 1e-9, f'{before:g} → {after:g}')
+        report.add(f"수량 원장: 등록하면 {'보내는' if part['direction'] == 'move' else '그'} 위치의 수량이 그만큼({moved:g}) 줄어든다", abs(before - after - moved) < 1e-9, f'{before:g} → {after:g}')
         if part['direction'] == 'move':
-            there = units[0][3].get(part['toWarehouse']) if part['toWarehouse'] in units[0][3] else body.get(part['toWarehouse'])
+            there = units[0][3].get(part['toPlace']) if part['toPlace'] in units[0][3] else body.get(part['toPlace'])
             arrived = [line for line in lines if line['direction'] == 'IN']
-            report.add(f'재고: 받는 창고의 재고가 그만큼({moved:g}) 늘어나고 LOT 번호와 단가가 따라간다', abs(stock_of(framework, item, there) - moved) < 1e-9
-                       and sorted((line['lot'], float(line['unitCost'])) for line in arrived) == sorted((line['lot'], float(line['unitCost'])) for line in lines if line['direction'] == 'OUT'), f'{stock_of(framework, item, there):g} {lines[:4]}')
+            report.add(f'수량 원장: 받는 위치의 수량이 그만큼({moved:g}) 늘어나고 묶음 번호와 단가가 따라간다', abs(held(framework, item, there) - moved) < 1e-9
+                       and sorted((line['lot'], float(line['unitCost'])) for line in arrived) == sorted((line['lot'], float(line['unitCost'])) for line in lines if line['direction'] == 'OUT'), f'{held(framework, item, there):g} {lines[:4]}')
             lines = [line for line in lines if line['direction'] == 'OUT']
             same = new_body()
-            holder = (same.get('lines') or [same])[0] if part['toWarehouse'] in ((same.get('lines') or [{}])[0]) else same
-            source = (same.get('lines') or [same])[0] if part['warehouse'] in ((same.get('lines') or [{}])[0]) else same
-            holder[part['toWarehouse']] = source[part['warehouse']]
+            holder = (same.get('lines') or [same])[0] if part['toPlace'] in ((same.get('lines') or [{}])[0]) else same
+            source = (same.get('lines') or [same])[0] if part['place'] in ((same.get('lines') or [{}])[0]) else same
+            holder[part['toPlace']] = source[part['place']]
             code, answer = framework.call('POST', api, same)
-            report.add('재고: 보내는 창고와 받는 창고가 같으면 거절된다', code == 400, f'{code} {answer}')
+            report.add('수량 원장: 보내는 위치와 받는 위치가 같으면 거절된다', code == 400, f'{code} {answer}')
             if code == 201:
                 framework.call('DELETE', f"{api}/{answer['id']}?force=true")
-        report.add('재고: 꺼낸 LOT 와 그 단가로 원가가 잡힌다 (수량 × LOT 단가)', bool(lines) and all(abs(float(line['amount']) - float(line['quantity']) * float(line['unitCost'])) < 1e-6 for line in lines)
+        report.add('수량 원장: 꺼낸 묶음과 그 단가로 원가가 잡힌다 (수량 × 묶음 단가)', bool(lines) and all(abs(float(line['amount']) - float(line['quantity']) * float(line['unitCost'])) < 1e-6 for line in lines)
                    and abs(sum(float(line['quantity']) for line in lines if line['line'] == 1) - (units[0][2])) < 1e-9, f'{lines[:3]}')
         short = new_body()
-        for one, house, quantity, _ in [unit for unit in _stock_units(short, definition) if unit[0] and unit[1]]:
-            have = stock_of(framework, one, house)
+        for one, spot, quantity, _ in [unit for unit in _ledger_units(short, definition) if unit[0] and unit[1]]:
+            have = held(framework, one, spot)
             if have > 0:
-                framework.ok('POST', '/api/system/stock/adjust', {'itemEntity': part['itemEntity'], 'itemId': one, 'warehouseEntity': part['warehouseEntity'], 'warehouseId': house, 'quantity': -have})
+                framework.ok('POST', '/api/system/ledger/adjust', {'thingEntity': part['thingEntity'], 'thingId': one, 'placeEntity': part['placeEntity'], 'placeId': spot, 'quantity': -have})
         code, answer = framework.call('POST', api, short)
-        report.add('재고: 남은 수량이 모자라면 저장이 거절되고 이유가 나온다', code == 400 and '남은 수량' in str((answer or {}).get('detail')), f'{code} {answer}')
+        report.add('수량 원장: 남은 수량이 모자라면 저장이 거절되고 이유가 나온다', code == 400 and '남은 수량' in str((answer or {}).get('detail')), f'{code} {answer}')
         if code == 201:
             framework.call('DELETE', f"{api}/{answer['id']}?force=true")
     lot_checks(report, definition, framework, new_body, api)
     code, _ = framework.call('DELETE', f"{api}/{row['id']}")
     if code == 409:
         code, _ = framework.call('DELETE', f"{api}/{row['id']}?force=true")
-    back = stock_of(framework, item, warehouse)
-    report.add('재고: 자료를 지우면 움직인 재고가 되돌아간다', code == 204 and abs(back - before) < 1e-9, f'{code} / {before:g} → {after:g} → {back:g}')
+    back = held(framework, item, at_place)
+    report.add('수량 원장: 자료를 지우면 움직인 수량이 되돌아간다', code == 204 and abs(back - before) < 1e-9, f'{code} / {before:g} → {after:g} → {back:g}')
 
 
 def lookup_checks(report, definition, framework, made, new_body, post, api):
@@ -650,7 +650,7 @@ def closing_checks(report, definition, framework, new_body, post, api):
     if not part:
         return
     group, date = part['group'], part['date']
-    meta = ('id', 'status', 'statusLabel', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt', '_names', '_files', '_stock')
+    meta = ('id', 'status', 'statusLabel', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt', '_names', '_files', '_ledger')
     said = lambda answer: '마감' in str((answer or {}).get('detail'))
     through = next((item.get('through') for item in framework.ok('GET', '/api/locks') if item['group'] == group), None)
     if through:
@@ -658,7 +658,7 @@ def closing_checks(report, definition, framework, new_body, post, api):
         report.add(f'{group} 마감: 마감된 달({through}) 날짜로는 등록할 수 없다 (이유가 나온다)', code == 409 and said(answer), f'{code} {answer}')
         return
     day, month, kept = '2000-01-15', '2000-01', None
-    if not definition.get('stock') or definition['stock']['direction'] == 'in':
+    if not definition.get('ledger') or definition['ledger']['direction'] == 'in':
         code, kept = post(dict(new_body(), **{date: day}))
         if not report.add(f'{group} 마감: 지난 달 날짜로 자료가 저장된다 (마감 전)', code == 201, f'{code} {kept}'):
             return
@@ -699,7 +699,7 @@ def sweep(framework, made):
         else:                # the platform's records leave no trace in the system's own history (platform and system kept apart)
             framework.call('DELETE', f'/api/system/history?entity={entity}&id={record}')
     left.reverse()
-    framework.call('DELETE', '/api/system/stock/orphans')      # stock put in for sample items that are gone again
+    framework.call('DELETE', '/api/system/ledger/orphans')      # quantities put in for sample things that are gone again
     LEFTOVER.extend(left)      # the run sweeps these once more after the trial definition is gone
     return left
 
@@ -938,7 +938,7 @@ def record_checks(key, definition, framework):
                     broken['lines'][0][field['name']] = None
                     refused(f"줄의 필수 항목 {field['label']}: 비우면 거절된다", broken)
         conditions(report, definition, framework, made, new_body, post, api)
-        stock_checks(report, definition, framework, new_body, post, api)
+        ledger_checks(report, definition, framework, new_body, post, api)
         closing_checks(report, definition, framework, new_body, post, api)
         lookup_checks(report, definition, framework, made, new_body, post, api)
         layer_checks(report, definition, framework, made, new_body, post, api)
@@ -1248,20 +1248,20 @@ def take_checks(key, definition, framework):
         if wanted and source.get('status') not in wanted:
             report.add(f"앞 단계 자료를 이 화면이 다루는 상태({', '.join(wanted)})로 만들 수 있다", False, f"상태 {source.get('status')} 에서 더 갈 수 없었다")
             return report
-        out_stock = target.get('stock') if (target.get('stock') or {}).get('direction') == 'out' else None
+        out_ledger = target.get('ledger') if (target.get('ledger') or {}).get('direction') == 'out' else None
 
-        def stocked(payload):
-            """When the new entity issues stock, what the chosen rows need is put in first (the check is about taking over, not about stock)."""
-            if out_stock:
+        def supplied(payload):
+            """When the new entity takes quantities out, what the chosen rows need is put in first (the check is about taking over, not about the ledger)."""
+            if out_ledger:
                 limit_ = next(item for item in target.get('limits') or [] if item['entity'] == part['from'])
-                theirs = dict(zip(limit_['by'], limit_['entityBy'])).get(out_stock['item'])
-                house = (payload.get('values') or {}).get(out_stock['warehouse'])
+                theirs = dict(zip(limit_['by'], limit_['entityBy'])).get(out_ledger['thing'])
+                spot = (payload.get('values') or {}).get(out_ledger['place'])
                 listed = {(row['sourceId'], row['line']): row for row in framework.ok('GET', api)}
                 for chosen in payload.get('rows') or []:
                     row = listed.get((chosen['sourceId'], chosen['line']))
                     item = ((row.get('unit') or {}).get(theirs) if row else None) or (row['head'].get(theirs) if row else None)
-                    if item and house and stock_of(framework, item, house) < chosen['quantity']:
-                        framework.ok('POST', '/api/system/stock/adjust', {'itemEntity': out_stock['itemEntity'], 'itemId': item, 'warehouseEntity': out_stock['warehouseEntity'], 'warehouseId': house, 'quantity': chosen['quantity'], 'unitCost': 100})
+                    if item and spot and held(framework, item, spot) < chosen['quantity']:
+                        framework.ok('POST', '/api/system/ledger/adjust', {'thingEntity': out_ledger['thingEntity'], 'thingId': item, 'placeEntity': out_ledger['placeEntity'], 'placeId': spot, 'quantity': chosen['quantity'], 'unitCost': 100})
             return payload
         mine = lambda rows: [row for row in rows if row.get('sourceId') == source['id']]
         code, rows = framework.call('GET', api)
@@ -1274,12 +1274,12 @@ def take_checks(key, definition, framework):
         values = {field['name']: sample(field, framework, made) for field in target['fields'] if field['name'] in shape.get('ask', []) and not _computed(field)}
         first = open_rows[0]
         part_quantity = max(1, int(first['remaining'] // 2)) if first['remaining'] >= 2 else first['remaining']
-        code, answer = framework.call('POST', api, stocked({'values': values, 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': first['remaining'] + 1}]}))
+        code, answer = framework.call('POST', api, supplied({'values': values, 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': first['remaining'] + 1}]}))
         report.add(f"남은 수량({first['remaining']:g})보다 많이 넘기면 거절된다", code == 400, f'{code} {answer}')
-        code, answer = framework.call('POST', api, stocked({'values': values, 'rows': []}))
+        code, answer = framework.call('POST', api, supplied({'values': values, 'rows': []}))
         report.add('고른 줄이 없으면 거절된다', code == 400, f'{code} {answer}')
         typed = {field['name']: sample(field, framework, made) for field in shape.get('askLines') or [] if field.get('required')}     # what the row asks for and cannot do without
-        code, answer = framework.call('POST', api, stocked({'values': values, 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': part_quantity, 'values': typed}]}))
+        code, answer = framework.call('POST', api, supplied({'values': values, 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': part_quantity, 'values': typed}]}))
         ok = code in (200, 201) and isinstance(answer, dict) and answer.get('count') == 1
         for item in (answer.get('created') or []) if isinstance(answer, dict) else []:
             made.append((part['entity'], item['id']))
@@ -1319,12 +1319,12 @@ def take_checks(key, definition, framework):
             for way, expected, words in (('same', 1, '위쪽 값이 같은 두 건의 줄을 함께 넘기면 한 건으로 묶인다'), ('source', 2, '앞 단계 한 건마다 따로 넘기면 두 건이 만들어진다')):
                 pair = [twin(), twin()]
                 chosen = [row for row in framework.ok('GET', api) if row.get('sourceId') in (pair[0]['id'], pair[1]['id']) and row['line'] == 0]
-                code, both = framework.call('POST', api, stocked({'values': values, 'per': way, 'rows': [{'sourceId': row['sourceId'], 'line': row['line'], 'quantity': 1} for row in chosen]}))
+                code, both = framework.call('POST', api, supplied({'values': values, 'per': way, 'rows': [{'sourceId': row['sourceId'], 'line': row['line'], 'quantity': 1} for row in chosen]}))
                 for item in (both.get('created') or []) if isinstance(both, dict) else []:
                     made.append((part['entity'], item['id']))
                 report.add(f'묶는 기준: {words}', code in (200, 201) and len(chosen) == 2 and both.get('count') == expected, f'{code} {both}')
         else:
-            code, answer2 = framework.call('POST', api, stocked({'values': values, 'per': 'same', 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': 1}]}))
+            code, answer2 = framework.call('POST', api, supplied({'values': values, 'per': 'same', 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': 1}]}))
             report.add('묶는 기준: 앞 단계를 위쪽에서 가리키는 자료는 여러 건을 한 건으로 묶을 수 없다고 거절한다', code == 400, f'{code} {answer2}')
         now = framework.ok('GET', f"/api/data/{part['from']}/{source['id']}")
         if wanted and now.get('status') not in wanted:
@@ -1334,7 +1334,7 @@ def take_checks(key, definition, framework):
         left = first['remaining'] - part_quantity
         report.add(f'넘긴 만큼 남은 수량이 줄어든다 ({first["remaining"]:g} → {left:g})', (not after and left == 0) or (bool(after) and after[0]['remaining'] == left and after[0]['done'] == part_quantity), f'{after}')
         if left > 0 and after:
-            code, answer = framework.call('POST', api, stocked({'values': values, 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': left}]}))
+            code, answer = framework.call('POST', api, supplied({'values': values, 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': left}]}))
             for item in (answer.get('created') or []) if isinstance(answer, dict) else []:
                 made.append((part['entity'], item['id']))
             gone = not [row for row in mine(framework.ok('GET', api)) if row['line'] == first['line']] if code in (200, 201) else False
@@ -1344,23 +1344,23 @@ def take_checks(key, definition, framework):
     return report
 
 
-def stock_view_checks(key, definition, framework):
-    """A screen that shows the stock: what it reads is there and answers."""
+def ledger_view_checks(key, definition, framework):
+    """A screen that shows the ledger: what it reads is there and answers."""
     report = Report()
-    show = (definition.get('stockView') or {}).get('show') or 'all'
+    show = (definition.get('ledgerView') or {}).get('show') or 'all'
     for view in (['balance', 'lots', 'moves'] if show == 'all' else [show]):
-        code, answer = framework.call('GET', f'/api/stock/{view}')
-        report.add(f'재고 보기: {view} 를 읽을 수 있다', code == 200 and isinstance(answer, list), f'{code} {str(answer)[:120]}')
+        code, answer = framework.call('GET', f'/api/ledger/{view}')
+        report.add(f'원장 보기: {view} 를 읽을 수 있다', code == 200 and isinstance(answer, list), f'{code} {str(answer)[:120]}')
     report.leftover = []
     return report
 
 
-def stock_view_criteria(definition):
-    show = (definition.get('stockView') or {}).get('show') or 'all'
+def ledger_view_criteria(definition):
+    show = (definition.get('ledgerView') or {}).get('show') or 'all'
     words = {'balance': '현재 수량', 'lots': '묶음(LOT)', 'moves': '들고 난 내역'}
-    items = [('수량 보기 화면이 있다', {'op': 'visible', 'selector': '[data-ui="stock"]'}), ('목록이 있다', {'op': 'visible', 'selector': '[data-ui="stock"] [data-ui="record-grid"]'})]
+    items = [('수량 보기 화면이 있다', {'op': 'visible', 'selector': '[data-ui="ledger"]'}), ('목록이 있다', {'op': 'visible', 'selector': '[data-ui="ledger"] [data-ui="record-grid"]'})]
     for view in (['balance', 'lots', 'moves'] if show == 'all' else [show]):
-        items.append((f'{words[view]} 보기 버튼이 있다', {'op': 'visible', 'selector': f'[data-ui="stock"] [data-view="{view}"]'}))
+        items.append((f'{words[view]} 보기 버튼이 있다', {'op': 'visible', 'selector': f'[data-ui="ledger"] [data-view="{view}"]'}))
     return [{'id': f'C{index + 1}', 'requirement_id': 'R1', 'description': description, 'check': check} for index, (description, check) in enumerate(items)]
 
 
@@ -1721,7 +1721,7 @@ def effect_checks(key, definition, framework):
                         report.add(f"펼치기: 생긴 {target['title']} 의 {into} 이(가) 이 자료를 가리킨다", bool(new) and all(item.get(into) == (row or {}).get('id') for item in new), f"{[item.get(into) for item in new]}")
                 if new and part.get('quantityLine'):
                     # what was drawn is kept as it was at that moment: changing the master afterwards changes nothing already made
-                    meta = ('id', 'status', 'statusLabel', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt', '_names', '_files', '_stock')
+                    meta = ('id', 'status', 'statusLabel', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt', '_names', '_files', '_ledger')
                     record = framework.ok('GET', f"/api/data/{part['from']}/{kept['id']}")
                     changed = {name: value for name, value in record.items() if name not in meta}
                     holder = changed['lines'][0] if master.get('lines') and changed.get('lines') else changed
@@ -1979,8 +1979,8 @@ def screen_checks(title, definition, record_to, app):
     """Open the screen in a real browser (read-only) and look for what the definition promises."""
     sys.path.insert(0, str(HARNESS))
     import standard_contract
-    if definition.get('stockView'):
-        criteria = stock_view_criteria(definition)
+    if definition.get('ledgerView'):
+        criteria = ledger_view_criteria(definition)
     elif definition.get('take'):
         criteria = take_screen_criteria(definition)
     elif definition.get('calendar') or definition.get('tree'):
@@ -1997,7 +1997,7 @@ def screen_checks(title, definition, record_to, app):
         sheet = {'path': '/api/x', 'fields': [{'name': field['name'], 'label': field['label'], 'required': field['required'], 'sample': 'x'} for field in definition['fields']
                                               if not field.get('showWhen') or _holds(field['showWhen'], {})]}
         criteria = standard_contract.screen_criteria(sheet)
-    if not any(definition.get(part) for part in ('summary', 'dashboard', 'over', 'calendar', 'tree', 'take', 'stockView')):
+    if not any(definition.get(part) for part in ('summary', 'dashboard', 'over', 'calendar', 'tree', 'take', 'ledgerView')):
         criteria.append({'id': f'C{len(criteria) + 1}', 'requirement_id': 'R1', 'description': '한 건을 양식으로 뽑는 출력 버튼이 있다',
                          'check': {'op': 'visible', 'selector': '[role="toolbar"][aria-label="업무 버튼"] >> role=button[name="출력"]'}})
     out = Path(record_to) / 'browser'

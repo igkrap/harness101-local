@@ -10,7 +10,7 @@ Judging a flow = running it end to end on records made for the occasion, with th
   - every step is reachable: the next stage's records appear by themselves (an effect), or a take-over screen makes them;
   - the quantity arrives whole at every stage - not more (a second way doubled it), not less (a way lost some);
   - nothing is left open behind: the take-over list of the step before shows nothing more for these records;
-  - stock moves exactly once by what entered or left;
+  - the ledger moves exactly once by what entered or left;
   - a follow-up that should move an earlier record's status ("다 입고되면 발주 완료") did.
 Every change of a screen in a flow, and every undo, is judged by the flows it touches; a change that breaks one is taken back.
 """
@@ -19,10 +19,10 @@ import re
 from pathlib import Path
 
 import checks
-from checks import Report, sample, fit, _line, _computed, sweep, stock_of
+from checks import Report, sample, fit, _line, _computed, sweep, held
 
 QUANTITY = 10
-META = ('id', 'status', 'statusLabel', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt', '_names', '_files', '_stock')
+META = ('id', 'status', 'statusLabel', 'createdBy', 'createdAt', 'updatedBy', 'updatedAt', '_names', '_files', '_ledger')
 
 
 def _file():
@@ -51,7 +51,7 @@ def _titled(definition):
 def resolve(names, framework):
     """Screen keys for the names of a flow's stages: a screen's key, its title, or its title without 등록 - screens that keep records only."""
     keeping = {item['key']: item['definition'] for item in framework.definitions()
-               if item['definition'].get('fields') and not any(item['definition'].get(part) for part in ('summary', 'dashboard', 'over', 'calendar', 'tree', 'take', 'stockView'))}
+               if item['definition'].get('fields') and not any(item['definition'].get(part) for part in ('summary', 'dashboard', 'over', 'calendar', 'tree', 'take', 'ledgerView'))}
     keys, problems = [], []
     for name in names:
         word = name.strip()
@@ -223,13 +223,13 @@ def simulate(flow, framework):
                 values = {field['name']: sample(field, framework, made) for field in known[later]['fields'] if field['name'] in shape.get('ask', []) and not _computed(field)}
                 rows = [{'sourceId': row['sourceId'], 'line': row['line'], 'quantity': row['remaining'],
                          'values': {field['name']: sample(field, framework, made) for field in shape.get('askLines') or [] if field.get('required')}} for row in open_rows]
-                part = known[later].get('stock')
+                part = known[later].get('ledger')
                 if part and part['direction'] in ('out', 'move'):
-                    house = values.get(part['warehouse'])
+                    spot = values.get(part['place'])
                     for row in open_rows:
-                        item = (row.get('unit') or {}).get(dict(zip(limit['by'], limit['entityBy'])).get(part['item'], part['item'])) or row['head'].get(dict(zip(limit['by'], limit['entityBy'])).get(part['item'], part['item']))
-                        if item and house and stock_of(framework, item, house) < row['remaining']:
-                            framework.ok('POST', '/api/system/stock/adjust', {'itemEntity': part['itemEntity'], 'itemId': item, 'warehouseEntity': part['warehouseEntity'], 'warehouseId': house, 'quantity': row['remaining'], 'unitCost': 100})
+                        item = (row.get('unit') or {}).get(dict(zip(limit['by'], limit['entityBy'])).get(part['thing'], part['thing'])) or row['head'].get(dict(zip(limit['by'], limit['entityBy'])).get(part['thing'], part['thing']))
+                        if item and spot and held(framework, item, spot) < row['remaining']:
+                            framework.ok('POST', '/api/system/ledger/adjust', {'thingEntity': part['thingEntity'], 'thingId': item, 'placeEntity': part['placeEntity'], 'placeId': spot, 'quantity': row['remaining'], 'unitCost': 100})
                 code, answer = framework.call('POST', f'/api/take/{take}', {'values': values, 'rows': rows})
                 if not report.add(f"{title(previous)} → {title(later)}: 이어받기 화면({known[take]['title']})으로 넘긴다", code == 200 and rows, f'{code} {answer}' if code != 200 else f'넘길 줄 {len(rows)}개'):
                     return report
@@ -245,16 +245,16 @@ def simulate(flow, framework):
                 still = [row for row in framework.ok('GET', f'/api/take/{take}') if row['sourceId'] in ids]
                 report.add(f"{title(previous)} → {title(later)}: 넘긴 뒤 이어받기 목록에 남은 것이 없다" + (' (자동으로 만들어졌는데 손으로 또 넘길 길이 열려 있으면 두 번 처리됩니다)' if route == '자동 처리' else ''),
                            not still, f"남은 줄 {[(row['sourceId'], row['remaining']) for row in still]}")
-            part = known[later].get('stock')
+            part = known[later].get('ledger')
             if part:
                 sign = {'in': 1, 'out': -1}.get(part['direction'])
                 full = [framework.ok('GET', f"/api/data/{later}/{one['id']}") for one in existing]
-                net = sum(float(move['quantity']) * (1 if move['direction'] == 'IN' else -1) for one in full for move in one.get('_stock') or [])
+                net = sum(float(move['quantity']) * (1 if move['direction'] == 'IN' else -1) for one in full for move in one.get('_ledger') or [])
                 if sign:
                     moved[later] = net
-                    report.add(f"{title(later)}: 재고가 한 번만 {'늘어난다' if sign > 0 else '줄어든다'} ({want:g})", abs(net - sign * want) < 1e-9, f'움직인 수량 {net:g}')
+                    report.add(f"{title(later)}: 수량이 한 번만 {'늘어난다' if sign > 0 else '줄어든다'} ({want:g})", abs(net - sign * want) < 1e-9, f'움직인 수량 {net:g}')
                 elif part['direction'] == 'move':
-                    report.add(f"{title(later)}: 창고 이동은 재고 합계를 바꾸지 않는다", abs(net) < 1e-9, f'움직인 수량 합 {net:g}')
+                    report.add(f"{title(later)}: 위치 이동은 수량 합계를 바꾸지 않는다", abs(net) < 1e-9, f'움직인 수량 합 {net:g}')
             current, previous = existing, later
         # records the run made that are not on the path: a second way that does not point back (a shipment made by itself, unlinked)
         on_path = {(key, record) for key, record in made}

@@ -125,8 +125,9 @@ def describe(key, definition):
         text += ' / ' + ', '.join('·'.join(group) + ' 이(가) 같은 자료는 하나만 (중복 등록 금지)' for group in definition['uniqueBy'])
     if definition.get('noCycle'):
         text += f" / 순환 금지: 줄의 {definition['noCycle']['child']} 이(가) {definition['noCycle']['parent']} 자신이거나 돌고 돌아 다시 그것을 품을 수 없음"
-    if definition.get('stock'):
-        text += f" / 재고: {'늘림(입고)' if definition['stock']['direction'] == 'in' else '창고 이동' if definition['stock']['direction'] == 'move' else '재고 실사' if definition['stock']['direction'] == 'count' else '줄임(출고)'} - 품목 {definition['stock']['item']}, 수량 {definition['stock']['quantity']}, 창고 {definition['stock']['warehouse']}" + (f", LOT 번호 {definition['stock']['lot']}" if definition['stock'].get('lot') else '')
+    if definition.get('ledger'):
+        part = definition['ledger']
+        text += f" / 수량 원장: {dict(zip(('in', 'out', 'move', 'count'), ('들어옴', '나감', '위치 이동', '세기'))).get(part['direction'], part['direction'])} - 대상 {part['thing']}, 수량 {part['quantity']}, 위치 {part['place']}" + (f", 받는 위치 {part['toPlace']}" if part.get('toPlace') else '') + (f", 묶음 번호 {part['lot']}" if part.get('lot') else '')
     if definition.get('screen') is False or definition.get('dataOnly'):
         text += ' / 화면 없음: 다른 업무에서 저절로 만들어지고 바뀌는 데이터 ("screen": false)'
     if definition.get('codeGroups'):
@@ -145,8 +146,8 @@ def describe(key, definition):
         part = definition['over']
         text = f"- key {key} / 화면 이름 {definition['title']} / 업무 화면: {part['entity']} 자료 중 " + (f"상태 {part['statuses']} 인 건" if part.get('statuses') else '모든 건') \
             + f" / 이 화면의 동작: {part.get('actions') or '없음'}" + (' / 내용 수정 가능' if part.get('edit') else '') + (' / 새로 등록 가능(등록 화면)' if part.get('create') else '')
-    if definition.get('stockView'):
-        text = f"- key {key} / 화면 이름 {definition['title']} / 재고 보기 화면: " + {'all': '현재고·LOT·수불 내역 셋 다 (탭)', 'balance': '현재고', 'lots': 'LOT', 'moves': '수불 내역'}.get(definition['stockView'].get('show') or 'all', '')
+    if definition.get('ledgerView'):
+        text = f"- key {key} / 화면 이름 {definition['title']} / 원장 보기 화면: " + {'all': '현재 수량·묶음·들고 난 내역 셋 다 (탭)', 'balance': '현재 수량', 'lots': '묶음', 'moves': '들고 난 내역'}.get(definition['ledgerView'].get('show') or 'all', '')
     if definition.get('take'):
         part = definition['take']
         typed = part.get('ask') or (part.get('lines') or {}).get('ask') or []
@@ -340,7 +341,7 @@ def differences(old, new):
                 note(f'패널이 생기거나 바뀜: {panel}')
         if was != now and sorted(was) == sorted(now):
             note('패널 순서가 바뀜')
-    for part, word in (('calendar', '달력 화면'), ('tree', '트리 화면'), ('take', '이어받기 화면'), ('stockView', '재고 보기 화면'), ('stock', '재고'), ('uniqueBy', '겹치면 안 되는 조합'), ('effective', '적용 기간'), ('noCycle', '순환 금지'), ('period', '처음 조회 기간')):
+    for part, word in (('calendar', '달력 화면'), ('tree', '트리 화면'), ('take', '이어받기 화면'), ('ledgerView', '원장 보기 화면'), ('ledger', '수량 원장'), ('uniqueBy', '겹치면 안 되는 조합'), ('effective', '적용 기간'), ('noCycle', '순환 금지'), ('period', '처음 조회 기간')):
         if (old.get(part) or None) != (new.get(part) or None):
             note(f"{word}: {json.dumps(old.get(part), ensure_ascii=False)} → {json.dumps(new.get(part), ensure_ascii=False)}", bool(old.get(part)) and not new.get(part))
     only = lambda definition: bool(definition.get('dataOnly') or definition.get('screen') is False)
