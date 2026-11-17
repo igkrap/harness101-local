@@ -128,14 +128,14 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
         if proposal['action'] == 'steps':
             # More than one screen: each step is a request of its own, done in order; a later step sees what the earlier ones made.
             (folder / '1-define' / 'steps.json').write_text(json.dumps(proposal['steps'], ensure_ascii=False, indent=1), encoding='utf-8')
-            done, plan, index, split = [], list(proposal['steps']), 0, False
+            done, plan, index, split = [], list(proposal['steps']), 0, 0
             while index < len(plan):
                 step = plan[index]
                 time.sleep(1.1)                                   # run folders are named by the second
                 outcome = run(step, dry=dry, force=force, part_of=request)
-                if outcome.get('status') == 'split' and not split and len(plan) - 1 + len(outcome['parts']) <= 6:
-                    plan[index:index + 1] = outcome['parts']      # a step that needed more than one screen: its parts take its place (once)
-                    split = True
+                if outcome.get('status') == 'split' and split < 2 and len(plan) - 1 + len(outcome['parts']) <= 8:
+                    plan[index:index + 1] = outcome['parts']      # a step that needed more than one screen: its parts take its place (twice at most;
+                    split += 1                                     #  a part already done is found unchanged and passed)
                     continue
                 index += 1
                 done.append(dict(outcome, step=index, request=step))
