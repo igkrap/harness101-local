@@ -2029,6 +2029,8 @@ def document_screen_criteria(definition):
             items.append((f"입력 영역에 {field['label']} 이(가) 보인다", {'op': 'text', 'selector': editor, 'contains': field['label']}))
         elif field.get('showWhen') and not _holds(field['showWhen'], {}):
             pass                                  # there only under another field's value: an empty form does not show it
+        elif field['type'] == 'yesno':           # a tick box draws its own box over a hidden input: its label is what shows
+            items.append((f"입력 영역에 {field['label']} 체크 칸이 있다", {'op': 'text', 'selector': editor, 'contains': field['label']}))
         else:
             items.append((f"입력 영역에 {field['label']} 입력칸이 있다", {'op': 'visible', 'selector': f'{editor} >> {standard_contract.by_label(field["label"])}'}))
         items.append((f"목록에 {field['label']} 열이 있다", {'op': 'text', 'selector': '[data-ui="record-grid"]', 'contains': field['label']}))

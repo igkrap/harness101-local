@@ -469,7 +469,10 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
             if action not in ('create', 'change') or not isinstance(key, str) or key.startswith(trial_prefix):
                 raise ValueError('action(create|change) 과 key 가 있어야 한다')
             if action == 'change' and key not in stored:
-                raise ValueError(f'change 인데 {key} 라는 자료가 없다. 있는 자료: {sorted(stored)}')
+                if isinstance(definition, dict) and definition.get('title'):
+                    action = 'create'            # a whole definition for a key that is not there yet: a new one, as meant
+                else:
+                    raise ValueError(f'change 인데 {key} 라는 자료가 없다. 새 자료면 {{"action": "create", "key": ..., "definition": <정의 전체>}} 로 답한다. 있는 자료: {sorted(stored)}')
             if action == 'create' and key in stored:
                 raise ValueError(f'{key} 는 이미 있다. 그 자료를 고치는 요청이면 action 을 change 로, 새 자료면 다른 key 를 쓴다')
             if action == 'change' and target != key:
