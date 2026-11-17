@@ -340,6 +340,13 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
                     framework.delete_definition(back_key, force=True)
             except Exception as again:
                 result['error'] += f' / 되돌리지 못했습니다: {str(again)[:200]}'
+        steps_done = [item for item in (locals().get('done') or []) if isinstance(item, dict) and item.get('status') == 'applied']
+        if steps_done and not dry:          # steps applied before the break: a request leaves nothing behind, whatever stopped it
+            try:
+                done_back, said_back = undo({'planned': [item.get('request') for item in steps_done], 'steps': steps_done, '_inner': True})
+                result['rolled_back'] = said_back if done_back else ['앞 단계를 되돌리지 못했습니다: '] + said_back
+            except Exception as again:
+                result['error'] += f' / 앞 단계를 되돌리지 못했습니다: {str(again)[:200]}'
         return result
     finally:
         if result.get('key'):
