@@ -219,6 +219,10 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
                                 + f" - 대상 {part['thing']}, 수량 {part['quantity']}, 위치 {part['place']}" + (f", 묶음 번호 {part['lot']}" if part.get('lot') else ''))
         if definition.get('ledgerView'):
             result['view'] = '원장 보기 화면 - ' + {'all': '현재 수량·묶음·들고 난 내역 셋 다 (탭)', 'balance': '현재 수량', 'lots': '묶음', 'moves': '들고 난 내역'}[definition['ledgerView'].get('show') or 'all']
+        if definition.get('from'):
+            part = definition['from']
+            result['view'] = f"{part['entity']} 에서 이어 만든다 (한 건에 한 번, 자기 화면의 '가져오기' 탭에서 목록으로)" + (f" / 상태 {', '.join(part['statuses'])} 인 건만" if part.get('statuses') else '') \
+                + (f" / 넘겨받는 값: {', '.join(part.get('carry') or [])}" if part.get('carry') else '') + (f" / 줄에서 적는 값: {', '.join(part.get('ask') or [])}" if part.get('ask') else '')
         if definition.get('take'):
             part = definition['take']
             result['view'] = f"이어받기 화면 - {part['from']} 에서 아직 남은 것을 목록으로 조회해, 고른 줄로 {part['entity']} 을(를) 만든다 (입력 폼 없이 목록에서 처리)" \
@@ -279,6 +283,9 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
         trial = {name: value for name, value in checked.items() if name not in ('rules', 'effects')}
         framework.save_definition(trial_key, dict(trial, title=trial_title), 'DRAFT')
         data = (checks.ledger_view_checks if definition.get('ledgerView') else checks.take_checks if definition.get('take') else checks.view_checks if definition.get('calendar') or definition.get('tree') else checks.over_checks if definition.get('over') else checks.dashboard_checks if definition.get('dashboard') else checks.summary_checks if definition.get('summary') else checks.record_checks)(trial_key, checked, framework)
+        if definition.get('from'):          # made from an earlier list: its own screen takes over from it, tried like a take-over screen
+            taking = checks.take_checks(trial_key, dict(checked, take=checks.take_of(checked, trial_key)), framework)
+            data.results += taking.results
         screen = checks.Report() if definition.get('screen') is False else checks.screen_checks(trial_title, definition, folder / '2-check', app_url())     # data only: no screen to look at
         results = data.results + screen.results
         (folder / '2-check').mkdir(exist_ok=True)

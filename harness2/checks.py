@@ -1345,6 +1345,17 @@ def summary_checks(key, definition, framework):
     return report
 
 
+def take_of(definition, key):
+    """The take-over a screen offers: its own take part, or - made from an earlier list (from) - the one the framework derives for it."""
+    if definition.get('take'):
+        return definition['take']
+    part = definition.get('from')
+    if not part:
+        return None
+    return {'entity': key, 'from': part['entity'], 'statuses': part.get('statuses') or [], 'set': {name: name for name in part.get('carry') or []},
+            'lineSet': {}, 'columns': [], 'group': None, 'ask': part.get('ask') or []}
+
+
 def take_checks(key, definition, framework):
     """A take-over screen: what an earlier record leaves open is listed, chosen rows become the next-stage record, the open quantity
     goes down by what was taken, and more than is open is refused - tried on an earlier record made for the occasion."""
@@ -2061,7 +2072,7 @@ def closed_checks(key, definition, framework):
     ending = next((item for item in status['actions'] if item['to'] in closed and status['initial'] in item['from'] and framework.acts_somewhere(key, item['name'])), None)
     if not ending:
         return report       # (an ending kept for a work screen that does not stand yet is judged when that screen comes)
-    takes = [(other, one['take']) for other, one in known.items() if one.get('take') and one['take'].get('from') == key]
+    takes = [(other, take_of(one, other)) for other, one in known.items() if take_of(one, other) and take_of(one, other).get('from') == key]
     followers = [(other, one, limit) for other, one in known.items() for limit in one.get('limits') or [] if limit['entity'] == key and 'id' in limit['entityBy']]
     try:
         body = {field['name']: sample(field, framework, made) for field in definition['fields'] if not _computed(field)}
@@ -2162,6 +2173,9 @@ def screen_checks(title, definition, record_to, app):
         sheet = {'path': '/api/x', 'fields': [{'name': field['name'], 'label': field['label'], 'required': field['required'], 'sample': 'x'} for field in definition['fields']
                                               if not field.get('showWhen') or _holds(field['showWhen'], {})]}
         criteria = standard_contract.screen_criteria(sheet)
+    if definition.get('from'):            # made from an earlier list: its screen has a tab that takes over from it
+        criteria.append({'id': f'C{len(criteria) + 1}', 'requirement_id': 'R1', 'description': '앞 자료에서 가져오는 탭이 있다',
+                         'check': {'op': 'visible', 'selector': 'role=tab[name=/에서 가져오기/]'}})
     if not any(definition.get(part) for part in ('summary', 'dashboard', 'over', 'calendar', 'tree', 'take', 'ledgerView')):
         criteria.append({'id': f'C{len(criteria) + 1}', 'requirement_id': 'R1', 'description': '한 건을 양식으로 뽑는 출력 버튼이 있다',
                          'check': {'op': 'visible', 'selector': '[role="toolbar"][aria-label="업무 버튼"] >> role=button[name="출력"]'}})

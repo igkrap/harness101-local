@@ -178,7 +178,7 @@ def simulate(flow, framework):
             out = moved
         return out
     newest = lambda key: max([row['id'] for row in framework.ok('GET', f'/api/data/{key}?_sort=id&_desc=true&_limit=1')] or [0])
-    takes = {(one['take']['from'], one['take']['entity']): key for key, one in known.items() if one.get('take')}
+    takes = {(checks.take_of(one, key)['from'], checks.take_of(one, key)['entity']): key for key, one in known.items() if checks.take_of(one, key)}
     stored = [key for key, one in known.items() if one.get('fields')]
     start = max([newest(key) for key in stored] or [0])        # ids come from one sequence: anything after this was made during the run
     try:
@@ -258,8 +258,8 @@ def simulate(flow, framework):
                     rows += [row for row in framework.ok('GET', f'/api/data/{later}?{pointer}={record_id}&_limit=1000') if _value(row, pointer) == record_id]
                 return rows
             take = takes.get((previous, later))
-            if take and known[take]['take'].get('statuses'):        # the earlier records first stand where the take-over screen lists them
-                current = [_bring(framework, previous, known[previous], framework.ok('GET', f"/api/data/{previous}/{one['id']}"), known[take]['take']['statuses']) for one in current]
+            if take and checks.take_of(known[take], take).get('statuses'):        # the earlier records first stand where the take-over screen lists them
+                current = [_bring(framework, previous, known[previous], framework.ok('GET', f"/api/data/{previous}/{one['id']}"), checks.take_of(known[take], take)['statuses']) for one in current]
             existing = mine()
             if not existing and not take:         # no take-over screen: the earlier records are carried on as a person would (their status actions), which may make the next ones
                 current = [_bring(framework, previous, known[previous], framework.ok('GET', f"/api/data/{previous}/{one['id']}"), ['__end__']) for one in current]
@@ -274,7 +274,7 @@ def simulate(flow, framework):
                 part = known[later].get('ledger')
                 if part and part['direction'] in ('out', 'move'):
                     for row in open_rows:
-                        spot = checks.taken_place(row, known[take]['take'], limit, part['place'], values)
+                        spot = checks.taken_place(row, checks.take_of(known[take], take), limit, part['place'], values)
                         item = (row.get('unit') or {}).get(dict(zip(limit['by'], limit['entityBy'])).get(part['thing'], part['thing'])) or row['head'].get(dict(zip(limit['by'], limit['entityBy'])).get(part['thing'], part['thing']))
                         if item and spot and held(framework, item, spot) < row['remaining']:
                             framework.ok('POST', '/api/system/ledger/adjust', {'thingEntity': part['thingEntity'], 'thingId': item, 'placeEntity': part['placeEntity'], 'placeId': spot, 'quantity': row['remaining'], 'unitCost': 100})
@@ -329,7 +329,7 @@ def simulate(flow, framework):
                     report.add(f"{title(fill['entity'])}: 수량이 다 차면 {names.get(action['to'], action['to'])} 상태가 된다", now.get('status') == action['to'], f"지금 상태 {names.get(now.get('status'), now.get('status'))}")
         # the root instruction finished early (closed, cancelled ...): nothing that came of it goes on further down the flow
         root_status = root.get('status') or {}
-        takes_in = {(one['take']['from'], one['take']['entity']): key for key, one in known.items() if one.get('take')}
+        takes_in = {(checks.take_of(one, key)['from'], checks.take_of(one, key)['entity']): key for key, one in known.items() if checks.take_of(one, key)}
         for ending in [one for one in root_status.get('actions', []) if len(stages) > 1 and one['to'] in (root_status.get('closed') or []) and root_status.get('initial') in one['from']]:
             code, again = framework.call('POST', f'/api/data/{stages[0]}', dict(body))
             if code != 201:
