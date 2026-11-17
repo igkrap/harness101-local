@@ -70,7 +70,7 @@ class Platform:
                 problem = text
             raise RuntimeError(str(problem)[:800])
 
-    def order(self, goal, order=None, wait=3600):
+    def order(self, goal, order=None, wait=10800):
         """Put one piece of work in the queue and wait for it. Returns the finished queue."""
         queue = self.call('POST', '/api/queues', {'goal': goal, **({'order': order} if order else {})})
         end = time.time() + wait
