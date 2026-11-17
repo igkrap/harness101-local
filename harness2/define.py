@@ -452,6 +452,7 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
                                                   'code_screens': ', '.join(code_screens()) or '(없음)'}}]
     stored = {item['key']: item['definition'] for item in real(framework, trial_prefix)}
     messages, error, answer, target, asked_back, compared, doubt = list(base), '', '', None, False, False, ''
+    told_done = False      # a step told once that the work it put before itself is there already
     trials = set()       # trial copies saved along the way; only the accepted one is left for the checks
     for attempt in range(1, 5):
         answer = llm.ask(messages, record_to, f'define-{attempt}')
@@ -466,6 +467,15 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
                 if not 1 <= len(steps) <= 6:
                     raise ValueError('steps 는 1~6개의 요청 문장이어야 한다')
                 if not allow_steps:
+                    itself = re.sub(r'\s+', '', request.split('\n')[0])
+                    if any(re.sub(r'\s+', '', step) in itself or itself in re.sub(r'\s+', '', step) for step in steps) and not told_done:
+                        # the step names itself again behind work it takes to come first: that work is there already (the plan put it
+                        # before this step) - the screen itself is asked for, once
+                        told_done = True
+                        messages = list(base) + [{'role': 'assistant', 'content': answer},
+                                                 {'role': 'user', 'content': '그 앞의 일(' + ' / '.join(step for step in steps if re.sub(r'\s+', '', step) not in itself and itself not in re.sub(r'\s+', '', step))
+                                                  + ')은 이미 되어 있다 (위의 이미 있는 자료를 보라). steps 로 나누지 말고 이 화면 하나의 정의를 JSON 으로 답하라.'}]
+                        continue
                     # a step that turns out to need more than one screen: its parts go into the plan it belongs to, in its place
                     for other in trials:
                         framework.delete_definition(other, force=True)
