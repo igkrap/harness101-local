@@ -266,6 +266,57 @@ def _there(field, unit, above=None):
     return not field.get('showWhen') or _holds(field['showWhen'], unit, above)
 
 
+_spans = itertools.count(int(_time.time()) % 1000 * 3)
+
+
+def _kind(definition, name):
+    return next((field['type'] for field in definition['fields'] if field['name'] == name), None)
+
+
+def spread(body, definition, span, index, start='09:00:00', end='10:00:00'):
+    """A span of its own for this sample: a day far from the others (its date in by, or the span itself for dates)."""
+    import datetime as _dt
+    day = _dt.date(2031, 1, 1) + _dt.timedelta(days=index * 3)
+    if _kind(definition, span['from']) == 'time':
+        for name in span.get('by') or []:
+            if _kind(definition, name) == 'date':
+                body[name] = day.isoformat()
+        body[span['from']], body[span['to']] = start, end
+    else:
+        body[span['from']], body[span['to']] = day.isoformat(), (day + _dt.timedelta(days=1)).isoformat()
+    return body
+
+
+def overlap_checks(report, definition, new_body, post):
+    """Spans that may not overlap: one meeting a stored one is refused with the reason, one just after it is kept."""
+    import datetime as _dt
+    for span in definition.get('noOverlap') or []:
+        first = new_body()
+        code, kept = post(first)
+        if not report.add(f"겹침 금지: {span['from']}~{span['to']} 한 건이 저장된다", code == 201, f'{code} {kept}'):
+            continue
+        times = _kind(definition, span['from']) == 'time'
+        clash = new_body()
+        for name in span.get('by') or []:
+            clash[name] = first.get(name)
+        if times:
+            clash[span['from']], clash[span['to']] = '09:30:00', '10:30:00'
+        else:
+            clash[span['from']], clash[span['to']] = first[span['to']], (_dt.date.fromisoformat(first[span['to']]) + _dt.timedelta(days=1)).isoformat()
+        code, answer = post(clash)
+        report.add(f"겹침 금지: 같은 {'·'.join(span.get('by') or []) or '자료'} 에서 겹치는 시간·기간은 거절되고 이유가 나온다", code == 400 and '겹' in str((answer or {}).get('detail', '')), f'{code} {answer}')
+        after = new_body()
+        for name in span.get('by') or []:
+            after[name] = first.get(name)
+        if times:
+            after[span['from']], after[span['to']] = '10:00:00', '11:00:00'      # touching the end of the first: not a clash
+        else:
+            start = _dt.date.fromisoformat(first[span['to']]) + _dt.timedelta(days=1)
+            after[span['from']], after[span['to']] = start.isoformat(), (start + _dt.timedelta(days=1)).isoformat()
+        code, answer = post(after)
+        report.add(f"겹침 금지: 겹치지 않으면{' (끝과 시작이 맞닿아도)' if times else ''} 저장된다", code == 201, f'{code} {answer}')
+
+
 def fit(body, definition, framework, made, break_check=None):
     """Make a sample body obey the definition's own checks and limits (a sample of plain values would not: every date is
     the same day, and a limit allows nothing until the other entity holds a matching row). break_check: the one check to violate."""
@@ -325,6 +376,11 @@ def fit(body, definition, framework, made, break_check=None):
             own = next((item for item in (definition['lines']['fields'] if limit.get('lines') else definition['fields']) if item['name'] == limit['field']), {})
             if own.get('max') is not None and unit[limit['field']] > own['max']:
                 unit[limit['field']] = own['max']     # one record holds no more than its field allows (one seat per application): the rest is other records
+    for span in definition.get('noOverlap') or []:       # samples of their own spans: two samples never meet by chance
+        if not (break_check and {break_check.get('left'), break_check.get('right')} & {span['from'], span['to']}):
+            spread(body, definition, span, next(_spans))     # (a sample breaking a comparison of the span keeps its broken times, on a day of its own)
+        else:
+            spread(dict(), definition, span, next(_spans))
     if definition.get('limits'):
         obey()          # a limit may have changed a number a check compares: the checks are made true again
     if (definition.get('ledger') or {}).get('lot'):       # a lot number is only for items kept by lot: a plain sample leaves it empty
@@ -980,6 +1036,7 @@ def record_checks(key, definition, framework):
             broken = fit(new_body(), definition, framework, made, break_check=check)
             code, answer = post(broken)
             report.add(f"비교 규칙: {check['left']} {check['op']} {check['right']} 을(를) 어기면 거절되고 안내가 나온다 ({check['message']})", code == 400 and (answer or {}).get('detail') == check['message'], f'{code} {answer}')
+        overlap_checks(report, definition, new_body, post)
         for limit in definition.get('limits') or []:
             if not limit.get('field'):      # followed once: a second record pointing at the same earlier one is refused
                 once = new_body()

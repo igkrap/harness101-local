@@ -114,6 +114,8 @@ def describe(key, definition):
     if definition.get('limits'):
         text += ' / 한도: ' + '; '.join(f"{rule['message']} (" + (f"{rule['entity']} 한 건에 한 번만, " if not rule.get('field') else f"{rule['field']} 합이 {rule['entity']} 의 {rule['entityField']} 을(를) 넘지 못함, ")
                                          + ', '.join(f'{mine}↔{theirs}' for mine, theirs in zip(rule['by'], rule['entityBy'])) + ' 이(가) 같은 것끼리)' for rule in definition['limits'])
+    for span in definition.get('noOverlap') or []:
+        text += f" / 겹침 금지: {span['from']}~{span['to']}" + (f" ({', '.join(span['by'])} 이(가) 같은 것끼리)" if span.get('by') else '') + (f", 세지 않는 상태 {span['ignore']}" if span.get('ignore') else '')
     if definition.get('effective'):
         part = definition['effective']
         text += f" / 적용 기간: {part['from']} ~ {part.get('to') or '(계속)'}" + (f" ({', '.join(part.get('by') or [])} 이(가) 같은 것끼리 기간이 겹치지 않음)" if part.get('by') else '')
@@ -344,7 +346,7 @@ def differences(old, new):
                 note(f'패널이 생기거나 바뀜: {panel}')
         if was != now and sorted(was) == sorted(now):
             note('패널 순서가 바뀜')
-    for part, word in (('calendar', '달력 화면'), ('tree', '트리 화면'), ('take', '이어받기 화면'), ('ledgerView', '원장 보기 화면'), ('ledger', '수량 원장'), ('uniqueBy', '겹치면 안 되는 조합'), ('effective', '적용 기간'), ('noCycle', '순환 금지'), ('period', '처음 조회 기간')):
+    for part, word in (('calendar', '달력 화면'), ('tree', '트리 화면'), ('take', '이어받기 화면'), ('ledgerView', '원장 보기 화면'), ('ledger', '수량 원장'), ('uniqueBy', '겹치면 안 되는 조합'), ('effective', '적용 기간'), ('noOverlap', '겹침 금지'), ('noCycle', '순환 금지'), ('period', '처음 조회 기간')):
         if (old.get(part) or None) != (new.get(part) or None):
             note(f"{word}: {json.dumps(old.get(part), ensure_ascii=False)} → {json.dumps(new.get(part), ensure_ascii=False)}", bool(old.get(part)) and not new.get(part))
     only = lambda definition: bool(definition.get('dataOnly') or definition.get('screen') is False)
