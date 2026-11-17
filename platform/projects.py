@@ -18,7 +18,7 @@ import sites
 from first_setup import Setup
 
 HOME = sites.ROOT / 'projects'          # where new projects are made (ignored by the platform's own git)
-LEFT_OUT = ('release/',)                # the reference project's own screens do not belong to the base framework
+LEFT_OUT = ('release/', 'principles.md')  # the reference project's own screens and business principles do not belong to the base framework
 
 
 def kinds():
