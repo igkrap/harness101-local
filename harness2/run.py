@@ -187,6 +187,10 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
             result['checks_rules'] = [rule['message'] for rule in definition['checks']]
         if definition.get('limits'):
             result['limits'] = [rule['message'] for rule in definition['limits']]
+        if definition.get('noOverlap'):
+            labels = {field['name']: field['label'] for field in definition['fields']}
+            result['spans'] = [span.get('message') or (('·'.join(labels.get(name, name) for name in span.get('by') or []) + ' 이(가) 같은 것끼리 ') if span.get('by') else '')
+                               + f"{labels.get(span['from'], span['from'])}~{labels.get(span['to'], span['to'])} 이(가) 겹칠 수 없음" for span in definition['noOverlap']]
         if definition.get('effects'):
             names = {action['name']: action['label'] for action in (definition.get('status') or {}).get('actions', [])}
             result['effects'] = [('등록하면 ' if effect['on'] == 'create' else names.get(effect['on'], effect['on']) + ' 하면 ')
@@ -467,6 +471,8 @@ def say(result):
             lines.append('비교 규칙: ' + rule)
         for rule in result.get('limits', []):
             lines.append('한도: ' + rule)
+        for rule in result.get('spans', []):
+            lines.append('겹침 금지: ' + rule)
         for rule in result.get('effects', []):
             lines.append('자동 처리: ' + rule)
         for rule in result.get('rules', []):
