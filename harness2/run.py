@@ -119,19 +119,29 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
                                                             + ' - 이것을 감안해 끝까지 맞게 다시 정한다. 요청에 없는 것은 덧붙이지 않는다.)')
             (folder / 'request.txt').write_text(asked, encoding='utf-8')
             proposal = define.write(asked, framework, folder / '1-define', TRIAL, allow_steps=part_of is None)
+        if proposal['action'] == 'split':          # (only ever inside a step: the plan it belongs to takes its parts in its place)
+            result.update(status='split', steps=proposal['steps'])
+            return result
         if proposal['action'] == 'other':
             result.update(status='other', reason=proposal.get('reason', ''))
             return result
         if proposal['action'] == 'steps':
             # More than one screen: each step is a request of its own, done in order; a later step sees what the earlier ones made.
             (folder / '1-define' / 'steps.json').write_text(json.dumps(proposal['steps'], ensure_ascii=False, indent=1), encoding='utf-8')
-            done = []
-            for index, step in enumerate(proposal['steps'], 1):
+            done, plan, index, split = [], list(proposal['steps']), 0, False
+            while index < len(plan):
+                step = plan[index]
                 time.sleep(1.1)                                   # run folders are named by the second
                 outcome = run(step, dry=dry, force=force, part_of=request)
+                if outcome.get('status') == 'split' and not split and len(plan) - 1 + len(outcome['steps']) <= 6:
+                    plan[index:index + 1] = outcome['steps']      # a step that needed more than one screen: its parts take its place (once)
+                    split = True
+                    continue
+                index += 1
                 done.append(dict(outcome, step=index, request=step))
                 if outcome.get('status') not in ('applied', 'checked', 'unchanged'):      # (a step whose screen already was so is done, not stuck)
                     break
+            proposal['steps'] = plan
             finished = len(done) == len(proposal['steps']) and done[-1].get('status') in ('applied', 'checked', 'unchanged') and any(item.get('status') in ('applied', 'checked') for item in done)
             if finished and not dry:          # a change in several steps is judged by the business flows as a whole, at its end
                 passed, flowed, said = flows.judge([item['key'] for item in done if item.get('key')], framework)
@@ -504,6 +514,8 @@ def say(result):
         lines += ['  ' + line for line in result.get('flows') or []]
     elif status == 'other':
         lines.append('정의로 처리할 수 없는 요청입니다: ' + result.get('reason', ''))
+    elif status == 'split':
+        lines.append('이 단계가 다시 여러 화면으로 나뉘어 멈췄습니다: ' + ' / '.join(result.get('steps') or []))
     else:
         lines.append('실패: ' + result.get('error', ''))
     lines.append('기록: ' + result['folder'])

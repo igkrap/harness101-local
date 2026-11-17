@@ -463,11 +463,14 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
                 return {'action': 'other', 'reason': str(proposal.get('reason') or '')[:300]}
             if proposal.get('action') == 'steps':
                 steps = [str(step).strip() for step in proposal.get('steps') or [] if str(step).strip()]
+                if not 1 <= len(steps) <= 6:
+                    raise ValueError('steps 는 1~6개의 요청 문장이어야 한다')
                 if not allow_steps:
-                    raise ValueError('이 요청은 화면 하나에 대한 것이다. steps 로 나누지 말고 그 화면의 정의를 답하라')
-                if not 2 <= len(steps) <= 6:
-                    raise ValueError('steps 는 2~6개의 요청 문장이어야 한다 (화면 하나면 steps 를 쓰지 않는다)')
-                return {'action': 'steps', 'steps': steps}
+                    # a step that turns out to need more than one screen: its parts go into the plan it belongs to, in its place
+                    for other in trials:
+                        framework.delete_definition(other, force=True)
+                    return {'action': 'split', 'steps': steps}
+                return {'action': 'steps', 'steps': steps}         # (one step only: that one request, done as a step)
             action, key, definition = proposal.get('action'), proposal.get('key'), proposal.get('definition')
             if action not in ('create', 'change') or not isinstance(key, str) or key.startswith(trial_prefix):
                 raise ValueError('action(create|change) 과 key 가 있어야 한다')
