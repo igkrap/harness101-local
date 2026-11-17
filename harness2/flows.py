@@ -227,8 +227,8 @@ def simulate(flow, framework):
                          'values': {field['name']: sample(field, framework, made) for field in shape.get('askLines') or [] if field.get('required')}} for row in open_rows]
                 part = known[later].get('ledger')
                 if part and part['direction'] in ('out', 'move'):
-                    spot = values.get(part['place'])
                     for row in open_rows:
+                        spot = checks.taken_place(row, known[take]['take'], limit, part['place'], values)
                         item = (row.get('unit') or {}).get(dict(zip(limit['by'], limit['entityBy'])).get(part['thing'], part['thing'])) or row['head'].get(dict(zip(limit['by'], limit['entityBy'])).get(part['thing'], part['thing']))
                         if item and spot and held(framework, item, spot) < row['remaining']:
                             framework.ok('POST', '/api/system/ledger/adjust', {'thingEntity': part['thingEntity'], 'thingId': item, 'placeEntity': part['placeEntity'], 'placeId': spot, 'quantity': row['remaining'], 'unitCost': 100})

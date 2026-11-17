@@ -1269,10 +1269,10 @@ def take_checks(key, definition, framework):
             if out_ledger:
                 limit_ = next(item for item in target.get('limits') or [] if item['entity'] == part['from'])
                 theirs = dict(zip(limit_['by'], limit_['entityBy'])).get(out_ledger['thing'])
-                spot = (payload.get('values') or {}).get(out_ledger['place'])
                 listed = {(row['sourceId'], row['line']): row for row in framework.ok('GET', api)}
                 for chosen in payload.get('rows') or []:
                     row = listed.get((chosen['sourceId'], chosen['line']))
+                    spot = taken_place(row, part, limit_, out_ledger['place'], payload.get('values'))
                     item = ((row.get('unit') or {}).get(theirs) if row else None) or (row['head'].get(theirs) if row else None)
                     if item and spot and held(framework, item, spot) < chosen['quantity']:
                         framework.ok('POST', '/api/system/ledger/adjust', {'thingEntity': out_ledger['thingEntity'], 'thingId': item, 'placeEntity': out_ledger['placeEntity'], 'placeId': spot, 'quantity': chosen['quantity'], 'unitCost': 100})
@@ -1365,6 +1365,16 @@ def take_checks(key, definition, framework):
     finally:
         report.leftover = sweep(framework, made)
     return report
+
+
+def taken_place(row, take, limit, place, values):
+    """Where a take-over row's new record will stand: typed with the rows, or handed over from the earlier record (set, line set, the limit's pairs)."""
+    if (values or {}).get(place):
+        return values[place]
+    come = (take.get('set') or {}).get(place) or ((take.get('lines') or {}).get('set') or {}).get(place) or dict(zip(limit['by'], limit['entityBy'])).get(place)
+    if not come or not row:
+        return None
+    return (row.get('unit') or {}).get(come) or row['head'].get(come)
 
 
 def ledger_view_checks(key, definition, framework):
