@@ -120,7 +120,7 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
             (folder / 'request.txt').write_text(asked, encoding='utf-8')
             proposal = define.write(asked, framework, folder / '1-define', TRIAL, allow_steps=part_of is None)
         if proposal['action'] == 'split':          # (only ever inside a step: the plan it belongs to takes its parts in its place)
-            result.update(status='split', steps=proposal['steps'])
+            result.update(status='split', parts=proposal['steps'])
             return result
         if proposal['action'] == 'other':
             result.update(status='other', reason=proposal.get('reason', ''))
@@ -133,8 +133,8 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
                 step = plan[index]
                 time.sleep(1.1)                                   # run folders are named by the second
                 outcome = run(step, dry=dry, force=force, part_of=request)
-                if outcome.get('status') == 'split' and not split and len(plan) - 1 + len(outcome['steps']) <= 6:
-                    plan[index:index + 1] = outcome['steps']      # a step that needed more than one screen: its parts take its place (once)
+                if outcome.get('status') == 'split' and not split and len(plan) - 1 + len(outcome['parts']) <= 6:
+                    plan[index:index + 1] = outcome['parts']      # a step that needed more than one screen: its parts take its place (once)
                     split = True
                     continue
                 index += 1
@@ -515,7 +515,7 @@ def say(result):
     elif status == 'other':
         lines.append('정의로 처리할 수 없는 요청입니다: ' + result.get('reason', ''))
     elif status == 'split':
-        lines.append('이 단계가 다시 여러 화면으로 나뉘어 멈췄습니다: ' + ' / '.join(result.get('steps') or []))
+        lines.append('이 단계가 다시 여러 화면으로 나뉘어 멈췄습니다: ' + ' / '.join(result.get('parts') or []))
     else:
         lines.append('실패: ' + result.get('error', ''))
     lines.append('기록: ' + result['folder'])
