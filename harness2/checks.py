@@ -1038,6 +1038,32 @@ def record_checks(key, definition, framework):
             report.add(f"비교 규칙: {check['left']} {check['op']} {check['right']} 을(를) 어기면 거절되고 안내가 나온다 ({check['message']})", code == 400 and (answer or {}).get('detail') == check['message'], f'{code} {answer}')
         overlap_checks(report, definition, new_body, post)
         for limit in definition.get('limits') or []:
+            if not limit.get('field') and limit.get('entityField'):      # counted: as many records as the other side's number, then refused
+                first_one = new_body()
+                pointer = next((mine for mine, theirs in zip(limit['by'], limit['entityBy']) if theirs == 'id'), None)
+                at = (lambda body: body['lines'][0] if limit.get('lines') and pointer in body['lines'][0] else body)
+                cap = None
+                if pointer and at(first_one).get(pointer):
+                    source_row = framework.ok('GET', f"/api/data/{limit['entity']}/{at(first_one)[pointer]}")
+                    cap = ((source_row.get('lines') or [{}])[0] if limit.get('entityLines') else source_row).get(limit['entityField'])
+                if not isinstance(cap, (int, float)) or cap < 1 or cap > 50:
+                    report.add(f"한도(건수): {limit['message']} - {limit['entity']} 의 {limit['entityField']} 만큼 채워 볼 수 없었다", False, f'한도 {cap}')
+                    continue
+                count, kept_all = 0, True
+                while kept_all and count < cap:
+                    one_more = new_body()
+                    for name in limit['by']:
+                        at(one_more)[name] = at(first_one).get(name)
+                    code, answer = post(one_more)
+                    kept_all = code == 201
+                    count += 1 if kept_all else 0
+                report.add(f"한도(건수): {limit['entity']} 의 {limit['entityField']}({cap:g})건까지는 저장된다", kept_all and count == cap, f'{count}건 ({code} {answer if not kept_all else ""})')
+                beyond_one = new_body()
+                for name in limit['by']:
+                    at(beyond_one)[name] = at(first_one).get(name)
+                code, answer = post(beyond_one)
+                report.add(f"한도(건수): 다 차면 더는 거절된다 ({limit['message']})", code == 400 and str((answer or {}).get('detail', '')).startswith(limit['message']), f'{code} {answer}')
+                continue
             if not limit.get('field'):      # followed once: a second record pointing at the same earlier one is refused
                 once = new_body()
                 code, answer = post(once)
@@ -1393,6 +1419,10 @@ def take_checks(key, definition, framework):
         holder = (new.get('lines') or [{}])[0] if limit.get('lines') else new
         if limit.get('field'):
             report.add('만들어진 자료에 넘긴 수량이 들어 있다', holder.get(limit['field']) == part_quantity, f"{holder.get(limit['field'])}")
+        elif limit.get('entityField'):         # counted against a number: one fewer is left
+            after_one = [row for row in mine(framework.ok('GET', api)) if row['line'] == first['line']]
+            report.add(f"이어받으면 남은 수가 하나 줄어든다 ({first['remaining']:g} → {first['remaining'] - 1:g})",
+                       (not after_one and first['remaining'] <= 1) or (bool(after_one) and after_one[0]['remaining'] == first['remaining'] - 1), f'{after_one}')
         else:
             report.add('이어받은 것은 목록에서 빠진다', not [row for row in mine(framework.ok('GET', api)) if row['line'] == first['line']], '')
             code, answer2 = framework.call('POST', api, supplied({'values': values, 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': 1, 'values': typed}]}))
@@ -1443,7 +1473,7 @@ def take_checks(key, definition, framework):
         after = [row for row in mine(framework.ok('GET', api)) if row['line'] == first['line']]
         left = first['remaining'] - part_quantity
         report.add(f'넘긴 만큼 남은 수량이 줄어든다 ({first["remaining"]:g} → {left:g})', (not after and left == 0) or (bool(after) and after[0]['remaining'] == left and after[0]['done'] == part_quantity), f'{after}')
-        if left > 0 and after:
+        if left > 0 and after and not once:      # (counted rows are taken one record at a time)
             code, answer = framework.call('POST', api, supplied({'values': values, 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': left}]}))
             for item in (answer.get('created') or []) if isinstance(answer, dict) else []:
                 made.append((part['entity'], item['id']))
@@ -2068,7 +2098,7 @@ def closed_checks(key, definition, framework):
 
 def rich(definition):
     """The framework draws these with the screen that has a number line, status buttons and a lines table."""
-    return bool(definition.get('lines') or definition.get('status') or any(field.get('type') == 'serial' for field in definition['fields']))
+    return bool(definition.get('lines') or definition.get('status') or any(field.get('type') in ('serial', 'user') for field in definition['fields']))
 
 
 def document_screen_criteria(definition):

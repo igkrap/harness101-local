@@ -71,8 +71,9 @@ class Framework:
         own = path.endswith('#own')
         path = path[:-4] if own else path
         status, data = self._raw(method, path, body)
-        if status == 401:
-            # One live session per account: the browser check signs in with the same account and ends this one.
+        if status == 401 or (status == 403 and 'CSRF' in str(data)):
+            # One live session per account: the browser check signs in with the same account and ends this one;
+            # a server started again (a deploy) forgets the session's token
             self._sign_in()
             status, data = self._raw(method, path, body)
         if status == 403 and method == 'POST' and not own:
