@@ -322,6 +322,9 @@ def fit(body, definition, framework, made, break_check=None):
             holder(mine)[mine] = value_of(theirs)
         if limit.get('field'):          # (a limit without quantities - followed once - has nothing to fill)
             unit[limit['field']] = value_of(limit['entityField']) or 0
+            own = next((item for item in (definition['lines']['fields'] if limit.get('lines') else definition['fields']) if item['name'] == limit['field']), {})
+            if own.get('max') is not None and unit[limit['field']] > own['max']:
+                unit[limit['field']] = own['max']     # one record holds no more than its field allows (one seat per application): the rest is other records
     if definition.get('limits'):
         obey()          # a limit may have changed a number a check compares: the checks are made true again
     if (definition.get('ledger') or {}).get('lot'):       # a lot number is only for items kept by lot: a plain sample leaves it empty
@@ -993,6 +996,33 @@ def record_checks(key, definition, framework):
             over = new_body()
             unit = over['lines'][0] if limit.get('lines') else over
             allowed = unit[limit['field']]
+            cap_field = next((item for item in (line_fields if limit.get('lines') else plain) if item['name'] == limit['field']), {})
+            if cap_field.get('max') is not None and allowed + 1 > cap_field['max']:
+                # a record cannot hold more than its field allows: the allowance is filled by records of their own, then one more goes over it
+                cap_pointer = next((mine for mine, theirs in zip(limit['by'], limit['entityBy']) if theirs == 'id'), None)
+                cap_holder = (lambda body: body['lines'][0] if limit.get('lines') and cap_pointer in body['lines'][0] else body)
+                cap = None
+                if cap_pointer and cap_holder(over).get(cap_pointer):
+                    cap_source = framework.ok('GET', f"/api/data/{limit['entity']}/{cap_holder(over)[cap_pointer]}")
+                    cap = ((cap_source.get('lines') or [{}])[0] if limit.get('entityLines') else cap_source).get(limit['entityField'])
+                if not isinstance(cap, (int, float)) or allowed <= 0 or cap / allowed > 50:
+                    report.add(f"한도: {limit['message']} - 한 건이 {cap_field['max']:g} 까지라 여러 건으로 채워 봐야 하는데 채울 수 없었다", False, f'한도 {cap}, 한 건 {allowed}')
+                    continue
+                cap_total, cap_kept = 0, True
+                while cap_kept and cap_total + allowed <= cap + 1e-9:
+                    cap_one = new_body()
+                    for name in limit['by']:
+                        cap_holder(cap_one)[name] = cap_holder(over).get(name)
+                    code, answer = post(cap_one)
+                    cap_kept = code == 201
+                    cap_total += allowed if cap_kept else 0
+                report.add(f"한도: {limit['entity']} 의 {limit['entityField']}({cap:g}) 만큼은 여러 건으로 저장된다", cap_kept and abs(cap_total - cap) < allowed, f'{cap_total:g} / {cap:g} ({code} {answer if not cap_kept else ""})')
+                cap_more = new_body()
+                for name in limit['by']:
+                    cap_holder(cap_more)[name] = cap_holder(over).get(name)
+                code, answer = post(cap_more)
+                report.add(f"한도: 다 차면 더는 거절된다 ({limit['message']})", code == 400 and str((answer or {}).get('detail', '')).startswith(limit['message']), f'{code} {answer}')
+                continue
             unit[limit['field']] = allowed + 1
             code, answer = post(over)
             report.add(f"한도: {limit['field']} 이(가) {limit['entity']} 의 {limit['entityField']}({allowed:g}) 을(를) 넘으면 거절된다 ({limit['message']})",
@@ -1034,7 +1064,7 @@ def record_checks(key, definition, framework):
                     continue                          # reached only through another action; that chain is not walked here
                 _, fresh = post(new_body())
                 if action.get('separate'):            # kept for a work screen: the entity's own screen must refuse it
-                    code, answer = framework.call('POST', f"{api}/{fresh['id']}/actions/{action['name']}")
+                    code, answer = framework.call('POST', f"{api}/{fresh['id']}/actions/{action['name']}#own")
                     report.add(f"동작 {action['label']}: 등록 화면에서는 거절된다 (업무 화면에서만 한다)", code == 403, f'{code} {answer}')
                     continue
                 code, after = framework.call('POST', f"{api}/{fresh['id']}/actions/{action['name']}")
@@ -1486,7 +1516,7 @@ def over_checks(key, definition, framework):
                 report.add(f"동작 {action['label']}: 이 화면의 동작이 아니라서 거절된다", code == 404, f'{code} {answer}')
             if action.get('separate'):
                 other = fresh()
-                code, answer = framework.call('POST', f"{own}/{other['id']}/actions/{action['name']}")
+                code, answer = framework.call('POST', f"{own}/{other['id']}/actions/{action['name']}#own")
                 report.add(f"동작 {action['label']}: 등록 화면에서는 거절된다 (이 화면에서만 한다)", code == 403, f'{code} {answer}')
     finally:
         report.leftover = sweep(framework, made)
@@ -1932,9 +1962,9 @@ def closed_checks(key, definition, framework):
         return report
     known = {item['key']: item['definition'] for item in framework.definitions()}
     names = {value['code']: value['label'] for value in status['values']}
-    ending = next((item for item in status['actions'] if item['to'] in closed and status['initial'] in item['from']), None)
+    ending = next((item for item in status['actions'] if item['to'] in closed and status['initial'] in item['from'] and framework.acts_somewhere(key, item['name'])), None)
     if not ending:
-        return report
+        return report       # (an ending kept for a work screen that does not stand yet is judged when that screen comes)
     takes = [(other, one['take']) for other, one in known.items() if one.get('take') and one['take'].get('from') == key]
     followers = [(other, one, limit) for other, one in known.items() for limit in one.get('limits') or [] if limit['entity'] == key and 'id' in limit['entityBy']]
     try:

@@ -68,12 +68,39 @@ class Framework:
 
     def call(self, method, path, body=None):
         """(status, json). Never raises for 4xx: a refusal is an answer the caller wants to look at."""
+        own = path.endswith('#own')
+        path = path[:-4] if own else path
         status, data = self._raw(method, path, body)
         if status == 401:
             # One live session per account: the browser check signs in with the same account and ends this one.
             self._sign_in()
             status, data = self._raw(method, path, body)
+        if status == 403 and method == 'POST' and not own:
+            # An action kept for a work screen is taken there, as a person would (a check that wants the refusal asks with #own)
+            done = self._on_work_screen(path, body)
+            if done:
+                status, data = done
         return status, data
+
+    def _on_work_screen(self, path, body):
+        import re as _re
+        found = _re.fullmatch(r'/api/data/([a-z0-9_]+)/(\d+)/actions/([A-Za-z0-9]+)(\?.*)?', path)
+        if not found:
+            return None
+        key, record, action, query = found.groups()
+        for item in self.definitions():
+            over = item['definition'].get('over') or {}
+            if over.get('entity') == key and action in (over.get('actions') or []):
+                return self._raw('POST', f"/api/over/{item['key']}/{record}/actions/{action}{query or ''}", body)
+        return None
+
+    def acts_somewhere(self, key, action):
+        """Whether a status action can be taken at all now: on the entity's own screen, or on a work screen that offers it."""
+        definition = next((item['definition'] for item in self.definitions() if item['key'] == key), {}) or {}
+        own = next((one for one in (definition.get('status') or {}).get('actions', []) if one['name'] == action), None)
+        if own and not own.get('separate'):
+            return True
+        return any((item['definition'].get('over') or {}).get('entity') == key and action in ((item['definition'].get('over') or {}).get('actions') or []) for item in self.definitions())
 
     def ok(self, method, path, body=None):
         status, data = self.call(method, path, body)
