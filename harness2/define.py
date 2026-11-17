@@ -24,6 +24,9 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 업무 흐름과 기준 정보 (지금 시스템의 화면 정의에서 프레임워크가 읽어 낸 것 - 사람이 보는 업무 안내서와 같은 내용):
 %(process)s
 
+이 프로젝트의 업무 원칙 (사용자가 정해 둔 것 - 있으면 따른다. 없으면 요청과 그 업무의 상식으로 정한다):
+%(principles)s
+
 규칙:
 - 요청이 이미 있는 자료를 고치는 것이면 {"action": "change", "key": "<그 자료의 key>"} 까지만 답한다(그러면 그 자료의 정의 전체를 받아서 고치게 된다).
 - 새 자료면 action 은 "create" 이고 key 는 이미 있는 key 와 겹치지 않게 한다.
@@ -33,17 +36,6 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 - 현황·합계·통계·차트처럼 이미 있는 자료를 모아서 보는 요청은 새 자료를 만들지 말고 집계 화면(summary)으로 한다. 모을 자료는 이미 있어야 한다.
 - 승인 화면·처리 화면·대기 목록·조회 전용 화면처럼 이미 있는 자료를 다른 화면으로 여는 요청은 새 자료를 만들지 말고 over 로 한다. 권한은 화면 단위이므로 "팀장만 승인"은 승인 화면을 따로 만드는 것으로 푼다(누구에게 그 화면을 줄지는 사람이 정한다). 그 동작을 등록 화면에서는 못 하게 하려면 steps 로: 먼저 그 자료의 등록 화면에서 동작에 separate 를 붙이고(없는 상태·동작이면 추가하고), 다음에 업무 화면을 만든다.
 - 앞 단계 자료를 조회해서 다음 단계를 등록하는 요청("주문을 조회해서 출하 등록", "점검 지시에서 골라 점검 결과 등록", "~에서 골라서 한꺼번에 ~ 등록")은 새 등록 화면을 만들지 말고 이어받기 화면(take)으로 한다. 여러 건을 목록에서 고르고 수량만 고쳐 저장하는 화면이며 입력 폼이 없다. 만들 자료와 앞 단계 자료는 이미 있어야 하고, 만들 자료에 앞 단계를 한도로 하는 limits 가 있어야 한다(없으면 steps 로 그 한도부터 넣는다).
-  만들 자료가 아직 없으면 steps: ① "<만들 자료> 관리 화면을 만들어줘: <항목들>, 앞 단계를 가리키는 항목, 앞 단계를 한도로 (수량이 없으면 한 건에 한 번만)" ② "<앞 단계>에서 골라 <만들 자료>를 만드는 이어받기 화면". 앞 단계 화면에 상태·동작을 더하지 않는다 - 남은 것은 한도가 안다.
-  앞 단계에 수량이 없는 일(민원 하나에 처리 지시 하나, 신청 하나에 심사 하나)은 한 건에 한 번만 이어지는 한도로 한다 (field·entityField 없이).
-- 흐름이 시작되는 자료(주문, 작업지시, 점검 지시, 교육 신청 ...)도 한 건에 한 대상(품목, 장비, 사람 ...)이다. 편집 패널은 언제나 한 건만 신규·수정한다. 대상이 여럿이면 여러 건이다.
-- 프로세스 단계의 자료(지시, 실적, 검사, 이동 ...)는 한 건에 한 대상만 담는다: 줄 표(lines)를 붙이지 않고 대상·수량(필요하면 단가, 묶음 번호)을 그 자료의 항목으로 둔다. 대상이 여럿이면 여러 건이며, 이어받기 화면의 목록에서 여러 줄을 골라 한꺼번에 만든다. 줄 표(lines, moreLines)는 쓰지 않는다 (줄 표는 마스터-디테일 기준 정보에만).
-- 흐름의 루트(첫 단: 주문, 작업지시, 점검 지시, 교육 신청 ...)는 지시다. 지시 자료는 상태를 둔다: 진행 중 상태(처음), 마감, 취소 (필요하면 다 찬 완료), 동작 마감(조기 마감)·마감취소·취소, closed 에 마감·취소(·완료), locked 에도 마감·취소. 지시가 끝나면(마감·취소) 그 지시에서는 더 이어지지 않는다 - 이어받기 목록에서 빠지고, 끝난 지시를 새로 가리키는 자료는 거절된다 (프레임워크가 한다, 따로 적지 않는다).
-  이미 있는 다음 단계 자료에 마감·마감취소 동작이 있으면 지시에 cascade 를 적어 같이 마감한다. 전파하려고 다음 단계 자료에 상태·동작을 새로 넣거나, 아직 없는 자료로 cascade 하는 단계를 만들지 않는다.
-  지시는 화면이 둘이다: 자료 정의의 title 은 "<지시> 관리" (등록·수정·취소·마감·마감취소를 다 하는 화면), 그리고 등록만 하는 업무 화면 "<지시> 등록" = over {entity: <지시 key>, create: true} (권한을 따로 주기 위해). 둘을 다 만들어야 하면 steps 로 나눈다 (관리 → 등록).
-- 후행 단계(출하지시, 출하, 입고, 점검 결과, 수료 ...)는 이름이 지시여도 루트 지시에 대한 실적이다: 앞 단계를 한도(limits)로 가리키고, 따로 마감 동작을 두지 않으며(루트 지시의 마감이 전파된다), 등록은 이어받기 화면(take)으로 한다 - 앞 단계에서 남은 것을 표에 뿌리고 체크해 수량을 고쳐 확정하면 뒤 자료가 생긴다.
-  앞 단계를 등록하면 저절로 만들어지기만 하고 사람이 직접 보거나 등록하지 않는 자료(작업지시를 등록하면 BOM 에서 생기는 출고 예정, 점검 지시를 등록하면 체크리스트에서 생기는 점검 항목 ...)는 화면이 필요 없다: "screen": false (프로그램·메뉴 없음, 다음 단계의 이어받기 목록과 고르기로만 읽힌다).
-  후행 자료 정의에는 "follows": "<앞 단계를 가리키는 ref 항목>" 을 적어 자기 화면에서 신규 등록을 막는다 (그 ref 항목은 required 가 아니다). 앞 단계 없이 따로 등록해야 한다는 요청이면 기타 화면을 만든다: over {entity: <그 자료 key>, create: true}, title "기타 <이름>" (예: 기타 출하지시).
-- 실행 단계(출하, 입고, 처리 결과 ...)는 지시(출하지시, 작업지시, 처리 지시 ...)를 거치는 것이 이 시스템의 기본 흐름이다: 요청 자료 → 지시 → 실행 (주문 → 출하지시 → 출하, 민원 접수 → 처리 지시 → 처리 결과), 각 단계는 앞 단계를 이어받는 화면(take)으로 등록한다. 이미 그 지시 자료가 있으면 실행 화면은 지시를 앞 단계로 삼는다. 요청이 지시 없이 바로 실행을 말하면 요청대로 하되 "doubt" 에 지시 단계가 없다는 점을 한 줄 적는다.
 - 현황판·대시보드처럼 차트만 모아 보는 요청은 dashboard 로 한다. 패널은 이미 있는 집계 화면만 가리킬 수 있으므로, 맞는 집계 화면이 있으면 그것을 쓰고, 없으면 steps 로 필요한 집계 화면들을 먼저 만들고 마지막에 현황판을 만든다.
 - 수량 원장(ledger)으로 들고 나는 것의 남은 수량·현재 수량을 보는 화면은 집계로 빼지 말고 원장 보기(ledgerView)로 하고, thing 에 그 대상 자료 key 를 적는다 (재고 현황 → item, 장비 보관 현황 → equipment).
 - 잔량·미처리·남은 수량처럼 한 자료에서 다른 자료를 뺀 나머지(원장이 아닌 것)는 compare minus 로, 처리 기간·소요 일수는 values 의 between 으로, 누계는 cumulative 로 한다.
@@ -61,7 +53,6 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 - 한 건 안에서 두 값을 견주는 조건(날짜 순서 등)은 checks 로, 다른 자료의 수량을 넘지 못하게 하는 것(지시보다 많이 처리하기 방지)은 limits 로, "~하면 자동으로 ~된다/만들어진다"는 effects 로 적는다. 그 규칙은 저장이 거절되어야 하는 자료, 일이 시작되는 자료의 정의에 붙인다(출하 수량 제한은 출하에, 수주 확정 시 출하 생성은 수주에).
 - id, 상태, 등록·수정자/일시는 프레임워크가 관리하므로 항목으로 넣지 않는다(상태는 definition.status 로).
 - 요청이 업무 흐름 속 화면을 만들거나 고치는 것이면 그 흐름 전체를 보고 정한다: 앞뒤 단계를 잇는 길(이어받기 화면, 자동 처리, 한도)이 끊기지 않게, 같은 수량이 두 길로 두 번 처리되지 않게 한다. '판정하는 흐름'은 적용 전에 하네스가 끝까지 돌려 본다.
-- 요청이 이어받을 앞 단계("<앞 단계>에서 골라", "<앞 단계>에서 아직 ~하지 않은 것")가 아직 없는 자료이면 그것을 지어내지 않는다: {"action": "other", "reason": "<앞 단계> 화면이 먼저 있어야 합니다"} 로 답한다 (요청이 새로 만들라는 것은 앞 단계가 아니라 그 뒤의 자료다).
 - 정의로 할 수 없는 요청이면 {"action": "other", "reason": "<이유 한 줄>"} 로만 답한다. 해당하는 경우: 아래 '코드로 만든 화면'을 고치는 요청, 로그인·메뉴·권한·디자인 같은 시스템 요청, 프레임워크 안내에 없는 동작.
 
 코드로 만든 화면(정의가 아니라서 여기서 고칠 수 없음): %(code_screens)s
@@ -193,6 +184,13 @@ def process(framework):
 
 def _existing(framework):
     return '\n'.join(describe(item['key'], item['definition']) for item in real(framework)) or '(없음)'
+
+
+def principles():
+    """The project's own business principles (principles.md at its root, written and changed by the user): what the harness itself never assumes."""
+    path = __import__('framework').site().root / 'principles.md'
+    text = path.read_text(encoding='utf-8').strip() if path.exists() else ''
+    return text or '(없음)'
 
 
 def code_screens():
@@ -447,7 +445,7 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
     capabilities = framework.capabilities()
     shown = {key: capabilities[key] for key in ('parts', 'fieldTypes', 'builtInRules', 'ruleTypes', 'codeGroups') if key in capabilities}
     base = [{'role': 'system', 'content': 'JSON only'},
-            {'role': 'user', 'content': PROMPT % {'guide': capabilities.get('guide', ''), 'capabilities': json.dumps(shown, ensure_ascii=False, indent=1), 'existing': _existing(framework), 'process': process(framework), 'request': request,
+            {'role': 'user', 'content': PROMPT % {'guide': capabilities.get('guide', ''), 'capabilities': json.dumps(shown, ensure_ascii=False, indent=1), 'existing': _existing(framework), 'process': process(framework), 'principles': principles(), 'request': request,
                                                   'code_screens': ', '.join(code_screens()) or '(없음)'}}]
     stored = {item['key']: item['definition'] for item in real(framework, trial_prefix)}
     messages, error, answer, target, asked_back, compared, doubt = list(base), '', '', None, False, False, ''
