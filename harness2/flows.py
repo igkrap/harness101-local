@@ -51,7 +51,8 @@ def _titled(definition):
 def resolve(names, framework):
     """Screen keys for the names of a flow's stages: a screen's key, its title, or its title without 등록 - screens that keep records only."""
     keeping = {item['key']: item['definition'] for item in framework.definitions()
-               if item['definition'].get('fields') and not any(item['definition'].get(part) for part in ('summary', 'dashboard', 'over', 'calendar', 'tree', 'take', 'ledgerView'))}
+               if (item['definition'].get('fields') and not any(item['definition'].get(part) for part in ('summary', 'dashboard', 'over', 'calendar', 'tree', 'take', 'ledgerView')))
+               or (item['definition'].get('over') and item['definition']['over'].get('actions'))}      # a work screen where a record takes its next step
     keys, problems = [], []
     for name in names:
         word = name.strip()
@@ -61,7 +62,7 @@ def resolve(names, framework):
         if len(found) == 1:
             keys.append(found[0])
         else:
-            problems.append(f'"{word}": ' + ('그런 등록 화면이 없습니다' if not found else '여러 화면이 맞습니다 - ' + ', '.join(keeping[key]['title'] for key in found)))
+            problems.append(f'"{word}": ' + ('그런 화면이 없습니다' if not found else '여러 화면이 맞습니다 - ' + ', '.join(keeping[key]['title'] for key in found)))
     return keys, problems
 
 
@@ -131,14 +132,59 @@ def simulate(flow, framework):
         report.leftover = []
         return report
     title = lambda key: known[key].get('title', key)
+    # Work screens are steps of the record they open (a report received → assigned → confirmed): stages of the same entity fold into one,
+    # and its records are walked through those screens' actions where the flow names them.
+    plan = []
+    for key in stages:
+        entity = (known[key].get('over') or {}).get('entity') or key
+        if not plan or plan[-1][0] != entity:
+            plan.append((entity, []))
+        if known[key].get('over'):
+            plan[-1][1].append(key)
+    walks = dict(plan)
+    stages = [entity for entity, _ in plan]
+    # A first stage the next one only chooses from (master data: a facility a report is about) is not a stage records flow out of.
+    if len(stages) >= 2 and not _link(known, stages[0], stages[1])[0] and not _expansion(known, stages[0], stages[1])[0]:
+        chooser = next((field for field in known[stages[1]].get('fields', []) if (field.get('ref') or {}).get('entity') == stages[0]), None)
+        if chooser:
+            report.add(f"{title(stages[0])} 은(는) {title(stages[1])} 이(가) 고르는 기준 정보다 ({chooser['label']})", True)
+            stages = stages[1:]
+
+    def walk(entity, records):
+        """Take the records through the work screens the flow names for this entity, as a person would: each screen lists them and its
+        action moves them on."""
+        out = list(records)
+        for key in walks.get(entity, []):
+            part = known[key]['over']
+            status = known[entity].get('status') or {}
+            labels = {value['code']: value['label'] for value in status.get('values', [])}
+            if part.get('statuses'):         # the steps between are taken on the record's own screen first, as a person would
+                out = [one if one.get('status') in part['statuses'] else _bring(framework, entity, known[entity], one, part['statuses']) for one in out]
+            listed = {row['id'] for row in framework.ok('GET', f'/api/over/{key}?_limit=1000')}
+            if not report.add(f"{title(key)}: 앞 단계의 {title(entity)} 이(가) 이 화면에 보인다", all(one['id'] in listed for one in out),
+                              f"보이지 않는 건 {[one['id'] for one in out if one['id'] not in listed]} (상태 {[labels.get(one.get('status'), one.get('status')) for one in out]})"):
+                continue
+            moved = []
+            for one in out:
+                step = next((action for action in status.get('actions', []) if action['name'] in part['actions'] and one.get('status') in action['from']
+                             and not re.search(r'취소|반려|거절|거부|돌려', action['label'])), None)
+                if not step:
+                    report.add(f"{title(key)}: 이 화면에서 {title(entity)} 을(를) 다음으로 넘기는 동작이 있다", False, f"상태 {labels.get(one.get('status'), one.get('status'))} 에서 할 동작이 없습니다")
+                    moved.append(one)
+                    continue
+                code, answer = framework.call('POST', f"/api/over/{key}/{one['id']}/actions/{step['name']}")
+                report.add(f"{title(key)}: {step['label']} 하면 {labels.get(step['to'], step['to'])} 상태가 된다", code == 200 and answer.get('status') == step['to'], f'{code} {answer}')
+                moved.append(answer if code == 200 else one)
+            out = moved
+        return out
     newest = lambda key: max([row['id'] for row in framework.ok('GET', f'/api/data/{key}?_sort=id&_desc=true&_limit=1')] or [0])
     takes = {(one['take']['from'], one['take']['entity']): key for key, one in known.items() if one.get('take')}
     stored = [key for key, one in known.items() if one.get('fields')]
     start = max([newest(key) for key in stored] or [0])        # ids come from one sequence: anything after this was made during the run
     try:
-        first_limit, _ = _link(known, stages[0], stages[1])
-        expansion, _ = _expansion(known, stages[0], stages[1])
-        if not report.add(f"{title(stages[1])} 이(가) {title(stages[0])} 에서 이어진다 ({'기준 정보로 저절로 만들어짐' if expansion and not first_limit else '수량 한도'})",
+        first_limit, _ = _link(known, stages[0], stages[1]) if len(stages) > 1 else (None, None)
+        expansion, _ = _expansion(known, stages[0], stages[1]) if len(stages) > 1 else (None, None)
+        if len(stages) > 1 and not report.add(f"{title(stages[1])} 이(가) {title(stages[0])} 에서 이어진다 ({'기준 정보로 저절로 만들어짐' if expansion and not first_limit else '수량 한도'})",
                           first_limit is not None or expansion is not None, '두 화면을 잇는 한도(limits)도, 등록하면 저절로 만들어지는 길(expand)도 없습니다'):
             return report
         root = known[stages[0]]
@@ -152,7 +198,7 @@ def simulate(flow, framework):
         elif first_limit:
             holder = body['lines'][0] if root.get('lines') and first_limit['entityField'] in body['lines'][0] else body
             holder[first_limit['entityField']] = QUANTITY
-        else:
+        elif expansion:
             # the master data it draws on, valid on any day: one record (one pair of a BOM, or a master with two lines)
             master = known[expansion['from']]
             if expansion.get('quantityTimes'):
@@ -177,13 +223,13 @@ def simulate(flow, framework):
             expected[stages[1]] = sum(per) * (QUANTITY if expansion.get('quantityTimes') else 1)
             expected['_count'] = len(per)
         code, record = framework.call('POST', f'/api/data/{stages[0]}', body)
-        if not report.add(f"시작: {title(stages[0])} 한 건({QUANTITY})을 등록한다", code == 201, f'{code} {record}'):
+        if not report.add(f"시작: {title(stages[0])} 한 건" + (f"({QUANTITY})" if (first_limit and first_limit.get('field')) or expansion else '') + "을 등록한다", code == 201, f'{code} {record}'):
             return report
         made.append((stages[0], record['id']))
         # what each stage holds once the starting record stands (what was made to set it up - the work order behind a requirement - is not
         # the flow's doing): anything newer that is not on the path came from a second way
         before = {key: newest(key) for key in stages}
-        current, previous = [record], stages[0]
+        current, previous = walk(stages[0], [record]), stages[0]
         moved = {}
         for later in stages[1:]:
             limit, pointer = _link(known, previous, later)
@@ -261,7 +307,7 @@ def simulate(flow, framework):
                     report.add(f"{title(later)}: 수량이 한 번만 {'늘어난다' if sign > 0 else '줄어든다'} ({want:g})", abs(net - sign * want) < 1e-9, f'움직인 수량 {net:g}')
                 elif part['direction'] == 'move':
                     report.add(f"{title(later)}: 위치 이동은 수량 합계를 바꾸지 않는다", abs(net) < 1e-9, f'움직인 수량 합 {net:g}')
-            current, previous = existing, later
+            current, previous = walk(later, existing), later
         # records the run made that are not on the path: a second way that does not point back (a shipment made by itself, unlinked)
         on_path = {(key, record) for key, record in made}
         for key in stages:
@@ -284,7 +330,7 @@ def simulate(flow, framework):
         # the root instruction finished early (closed, cancelled ...): nothing that came of it goes on further down the flow
         root_status = root.get('status') or {}
         takes_in = {(one['take']['from'], one['take']['entity']): key for key, one in known.items() if one.get('take')}
-        for ending in [one for one in root_status.get('actions', []) if one['to'] in (root_status.get('closed') or []) and root_status.get('initial') in one['from']]:
+        for ending in [one for one in root_status.get('actions', []) if len(stages) > 1 and one['to'] in (root_status.get('closed') or []) and root_status.get('initial') in one['from']]:
             code, again = framework.call('POST', f'/api/data/{stages[0]}', dict(body))
             if code != 201:
                 report.add(f"{title(stages[0])} 을(를) {ending['label']} 해 보려고 한 건 더 등록한다", False, f'{code} {again}')
