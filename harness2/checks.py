@@ -1520,9 +1520,13 @@ def take_screen_criteria(definition):
     items = [('화면 틀이 있다', {'op': 'visible', 'selector': '[data-ui="business-workspace"]'}),
              ('조회 조건 영역이 있다', {'op': 'visible', 'selector': 'form[data-ui="query-panel"]'}),
              ('남은 것 목록이 있다', {'op': 'visible', 'selector': '[data-ui="take"] [data-ui="record-grid"]'}),
-             ('목록에 남은 수량 열이 있다', {'op': 'text', 'selector': '[data-ui="record-grid"]', 'contains': '남은 수량'}),
-             ('목록에 이번에 넘길 수량 열이 있다', {'op': 'text', 'selector': '[data-ui="record-grid"]', 'contains': '이번'}),
              ('줄을 고르는 체크 칸이 있다', {'op': 'visible', 'selector': '[data-ui="record-grid"][data-selection="checkbox-multiple"]'})]
+    import framework as _fw
+    defined = {item['key']: item['definition'] for item in _fw.Framework().definitions()}
+    limit = next((one for one in (defined.get(definition['take']['entity']) or {}).get('limits') or [] if one['entity'] == definition['take']['from']), {})
+    if limit.get('field'):         # rows counted one record each (no quantities) show no quantity columns
+        items[3:3] = [('목록에 남은 수량 열이 있다', {'op': 'text', 'selector': '[data-ui="record-grid"]', 'contains': '남은 수량'}),
+                      ('목록에 이번에 넘길 수량 열이 있다', {'op': 'text', 'selector': '[data-ui="record-grid"]', 'contains': '이번'})]
     known = {}
     if (definition['take'].get('ask') or (definition['take'].get('lines') or {}).get('ask')):
         import framework as _fw
