@@ -741,7 +741,7 @@ def closing_checks(report, definition, framework, new_body, post, api):
         report.add(f'{group} 마감: 다시 열면 그 자료를 지울 수 있다', code == 204, f'{code} {answer}')
 
 def _computed(field):
-    return bool(field.get('formula') or field.get('sum') or field.get('type') == 'serial')
+    return bool(field.get('formula') or field.get('sum') or field.get('type') in ('serial', 'user'))
 
 
 LEFTOVER = []
@@ -1526,6 +1526,11 @@ def over_checks(key, definition, framework):
         code, rows = framework.call('GET', api)
         if not report.add('목록이 조회된다', code == 200, f'{code} {rows}'):
             return report
+        who = next((field['name'] for field in base['fields'] if field.get('type') == 'user'), None)
+        if who:
+            report.add('등록한 사람 칸에 로그인한 계정이 저절로 들어간다', bool(row.get(who)), f'{row.get(who)}')
+        if part.get('mine') and who:
+            report.add('본인이 등록한 자료만 보인다', all(item.get(who) == row.get(who) for item in rows), f"{sorted({str(item.get(who)) for item in rows})}")
         if part.get('statuses'):
             shown = ', '.join(names.get(item, item) for item in part['statuses'])
             report.add(f'정한 상태({shown})의 건만 보인다', all(item.get('status') in part['statuses'] for item in rows), f"{sorted({item.get('status') for item in rows})}")
@@ -2082,7 +2087,7 @@ def document_screen_criteria(definition):
     if definition.get('follows'):         # made from the earlier stage only: its own screen offers no 신규
         items.append(('앞 단계에서 이어받아 만드는 자료라 신규 버튼이 없다', {'op': 'absent', 'selector': f'{toolbar} >> role=button[name="신규"]'}))
     for field in definition['fields']:
-        if field.get('formula') or field.get('sum') or field['type'] == 'serial':
+        if field.get('formula') or field.get('sum') or field['type'] in ('serial', 'user'):
             items.append((f"입력 영역에 {field['label']} 이(가) 보인다", {'op': 'text', 'selector': editor, 'contains': field['label']}))
         elif field.get('showWhen') and not _holds(field['showWhen'], {}):
             pass                                  # there only under another field's value: an empty form does not show it
