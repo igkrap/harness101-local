@@ -35,8 +35,8 @@ class Framework:
         self.csrf = {}
         self._sign_in()
 
-    def _raw(self, method, path, body=None, form=None):
-        headers = dict(self.csrf)
+    def _raw(self, method, path, body=None, form=None, extra=None):
+        headers = dict(self.csrf, **(extra or {}))
         data = None
         if form is not None:
             data = urllib.parse.urlencode(form).encode(); headers['Content-Type'] = 'application/x-www-form-urlencoded'
@@ -66,16 +66,16 @@ class Framework:
         _, session = self._raw('GET', '/api/auth/session')
         self.csrf = {session['csrf']['headerName']: session['csrf']['token']}
 
-    def call(self, method, path, body=None):
+    def call(self, method, path, body=None, headers=None):
         """(status, json). Never raises for 4xx: a refusal is an answer the caller wants to look at."""
         own = path.endswith('#own')
         path = path[:-4] if own else path
-        status, data = self._raw(method, path, body)
+        status, data = self._raw(method, path, body, extra=headers)
         if status == 401 or (status == 403 and 'CSRF' in str(data)):
             # One live session per account: the browser check signs in with the same account and ends this one;
             # a server started again (a deploy) forgets the session's token
             self._sign_in()
-            status, data = self._raw(method, path, body)
+            status, data = self._raw(method, path, body, extra=headers)
         if status == 403 and method == 'POST' and not own:
             # An action kept for a work screen is taken there, as a person would (a check that wants the refusal asks with #own)
             done = self._on_work_screen(path, body)

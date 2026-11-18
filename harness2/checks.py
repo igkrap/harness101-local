@@ -1130,6 +1130,12 @@ def record_checks(key, definition, framework):
         kept = [field['label'] for field in plain if field.get('type', 'text') in ('text', 'number', 'date', 'time', 'yesno', 'memo') and code == 200 and updated.get(field['name']) != changed[field['name']]
                 and changed[field['name']] is not None and not _holds(field.get('lockWhen'), changed)]
         report.add('수정: 고쳐 저장하면 고친 값이 남는다' + (' (번호는 그대로)' if any(f.get('type') == 'serial' for f in fields) else ''), code == 200 and same_number and not kept, f'{code} {kept or updated}')
+        if code == 200 and row.get('updatedAt') and updated.get('updatedAt') != row.get('updatedAt'):
+            # what a screen showed before someone else changed it: saving it again on that is refused, and the same with the newest is kept
+            stale, stale_answer = framework.call('PUT', f"{api}/{row['id']}", new_body(), headers={'X-Seen': str(row['updatedAt'])})
+            report.add('수정: 조회한 뒤 다른 사람이 바꾼 자료를 그대로 저장하면 거절되고 다시 조회하라고 나온다', stale == 409 and '다시 조회' in str((stale_answer or {}).get('detail', '')), f'{stale} {stale_answer}')
+            fresh_code, fresh_answer = framework.call('PUT', f"{api}/{row['id']}", new_body(), headers={'X-Seen': str(updated['updatedAt'])})
+            report.add('수정: 지금 모습으로 조회한 자료는 저장된다', fresh_code == 200, f'{fresh_code} {fresh_answer}')
         if code == 200:
             log_code, log = framework.call('GET', f"/api/data/{key}/{row['id']}/history")
             whats = [entry.get('what') for entry in log] if log_code == 200 and isinstance(log, list) else []
@@ -1418,6 +1424,8 @@ def take_checks(key, definition, framework):
             report.add(f"남은 수량({first['remaining']:g})보다 많이 넘기면 거절된다", code == 400, f'{code} {answer}')
         code, answer = framework.call('POST', api, supplied({'values': values, 'rows': []}))
         report.add('고른 줄이 없으면 거절된다', code == 400, f'{code} {answer}')
+        code, answer = framework.call('POST', api, supplied({'values': values, 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': 1, 'seen': '2000-01-01T00:00:00'}]}))
+        report.add('조회한 뒤 앞 단계 자료가 바뀌었으면 넘기기가 거절되고 다시 조회하라고 나온다', code == 409 and '다시 조회' in str((answer or {}).get('detail', '')), f'{code} {answer}')
         typed = {field['name']: sample(field, framework, made) for field in shape.get('askLines') or [] if field.get('required')}     # what the row asks for and cannot do without
         code, answer = framework.call('POST', api, supplied({'values': values, 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': part_quantity, 'values': typed}]}))
         ok = code in (200, 201) and isinstance(answer, dict) and answer.get('count') == 1
@@ -1543,6 +1551,8 @@ def take_screen_criteria(definition):
         import framework as _fw
         target = next((item['definition'] for item in _fw.Framework().definitions() if item['key'] == definition['take']['entity']), None)
         known = {field['name']: field['label'] for field in (((target or {}).get('lines') or {}).get('fields', []) or (target or {}).get('fields', []))}
+        if definition.get('from'):          # a from-screen asks its own fields
+            known.update({field['name']: field['label'] for field in definition.get('fields') or []})
     for name in definition['take'].get('ask') or (definition['take'].get('lines') or {}).get('ask') or []:
         items.append((f"목록에 줄마다 적는 {known.get(name, name)} 열이 있다", {'op': 'text', 'selector': '[data-ui="record-grid"]', 'contains': known.get(name, name)}))
     for label in ('조회', '저장'):
@@ -2159,6 +2169,8 @@ def screen_checks(title, definition, record_to, app):
         criteria = ledger_view_criteria(definition)
     elif definition.get('take'):
         criteria = take_screen_criteria(definition)
+    elif definition.get('from'):          # made from an earlier list: its screen is the take-over grid of the earlier records still open
+        criteria = take_screen_criteria(dict(definition, take=take_of(definition, definition.get('key') or '')))
     elif definition.get('calendar') or definition.get('tree'):
         criteria = view_screen_criteria(definition)
     elif definition.get('over'):
