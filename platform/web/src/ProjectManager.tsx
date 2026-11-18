@@ -62,8 +62,38 @@ function EnvironmentCheck({token}:{token:string}){
   </VStack></Card>;
 }
 
+type ProjectEnv={id:string;title:string;root:string;ports:{api_port:number;preview_port:number;ops_port:number};db:string;api_container:string;running:{api:boolean;preview:boolean};
+  items:EnvItem[];git:{branch:string;last:string;unrecorded:number};free:{api:number[];preview:number[];ops:number[]}};
+/** One project's development environment: its ports (moved to other free ones here), database and server, whether its servers run,
+ *  its screen packages, where its records stand. */
+function ProjectEnvironment({id,token}:{id:string;token:string}){
+  const [env,setEnv]=useState<ProjectEnv|null>(null),[ports,setPorts]=useState<Record<string,string>>({}),[busy,setBusy]=useState(''),[said,setSaid]=useState('');
+  const load=()=>apiFetch(`/api/projects/environment?id=${encodeURIComponent(id)}`).then(r=>r.json()).then(d=>{if(d.ports){setEnv(d);setPorts(Object.fromEntries(Object.entries(d.ports).map(([k,v])=>[k,String(v)])));}else setSaid(d.error||'');}).catch(e=>setSaid(String(e)));
+  useEffect(()=>{void load();},[id]);
+  async function post(path:string,body:object,label:string,done:string){setBusy(label);setSaid('');try{
+    const response=await apiFetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Platform-Token':token},body:JSON.stringify(body)});
+    const result=await response.json();if(!response.ok)throw Error(result.error);if(result.ports)setEnv(result);else void load();setSaid(result.said||done);
+  }catch(e){setSaid(String(e instanceof Error?e.message:e));}finally{setBusy('');}}
+  if(!env)return <Text color="secondary">{said||'읽는 중…'}</Text>;
+  const changed=Object.entries(env.ports).some(([k,v])=>String(v)!==ports[k]);
+  const pick=(label:string,key:'api_port'|'preview_port'|'ops_port',list:number[])=><div style={{flex:'1 1 150px'}}>
+    <Selector label={label} value={ports[key]||''} isDisabled={!!busy} options={[...new Set([env.ports[key],...list])].map(port=>({value:String(port),label:String(port)+(port===env.ports[key]?' (지금)':'')}))} onChange={v=>setPorts(previous=>({...previous,[key]:v}))}/></div>;
+  return <VStack gap={3} style={{marginTop:12}}>
+    <HStack gap={3} vAlign="end" style={{flexWrap:'wrap'}}>
+      {pick('백엔드(API) 포트','api_port',env.free.api)}{pick('화면(미리보기) 포트','preview_port',env.free.preview)}{pick('운영 확인 포트','ops_port',env.free.ops)}
+      <Button label={busy==='ports'?'바꾸는 중… (서버를 다시 띄움)':'포트 바꾸기'} variant="primary" isDisabled={!!busy||!token||!changed} onClick={()=>void post('/api/projects/change-ports',{id,...ports},'ports','포트를 바꿨습니다.')}/>
+    </HStack>
+    <Text color="secondary">DB {env.db} · 서버 {env.api_container} {env.running.api?'켜짐':'꺼짐'} · 미리보기 {env.running.preview?'켜짐':'꺼짐'}</Text>
+    <Text color="secondary">형상관리: 작업 공간 {env.git.branch||'-'} · 마지막 기록 {env.git.last||'-'} · 기록 안 된 변경 {env.git.unrecorded}개</Text>
+    {env.items.map(item=><HStack key={item.id} gap={2} vAlign="center"><Text>{item.state==='ok'?'✓':'✗'} {item.label} - {item.detail}</Text>
+      {item.fix&&<Button label={busy===item.id?'설치하는 중…':item.fix.label} variant="secondary" isDisabled={!!busy||!token} onClick={()=>void post('/api/environment/fix',{id:item.id},item.id,'설치했습니다.')}/>}</HStack>)}
+    {said&&<Text role="status">{said}</Text>}
+  </VStack>;
+}
+
 export default function ProjectManager({token}:{token:string}){
   const [projects,setProjects]=useState<Project[]>([]),[modelUrl,setModelUrl]=useState('http://127.0.0.1:8099/v1'),[db,setDb]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
+  const [envOpen,setEnvOpen]=useState<string|null>(null);
   const [kinds,setKinds]=useState<Kind[]>([]),[kind,setKind]=useState('business'),[title,setTitle]=useState(''),[slug,setSlug]=useState(''),[making,setMaking]=useState(false),[makeError,setMakeError]=useState('');
   useEffect(()=>{const c=new AbortController();apiFetch('/api/projects',{signal:c.signal}).then(r=>r.json()).then(d=>{if(!c.signal.aborted){setProjects(d.projects||[]);setKinds(d.kinds||[]);}}).catch(e=>{if(!c.signal.aborted)setError(String(e));});return()=>c.abort();},[]);
   async function add(){setBusy(true);setError('');try{
@@ -127,7 +157,8 @@ export default function ProjectManager({token}:{token:string}){
       <Text color="secondary">기본 프레임워크(공통 화면, 권한·메뉴, 화면 정의 엔진)를 그대로 담은 새 프로젝트를 만들고, 전용 개발 DB·서버·미리보기를 준비합니다. 화면은 0개에서 시작하며 셋업 팩도 이 이름으로 만들어집니다.</Text>
       {makeError&&<Text role="alert">{makeError}</Text>}
     </VStack></Card>
-    {projects.map(p=><Card key={p.id} padding={4}><HStack hAlign="between" gap={3}><VStack gap={2}><Text weight="bold">{shown(p)}{p.id===projectId?' · 현재 프로젝트':''}</Text><Text color="secondary" style={{overflowWrap:'anywhere'}}>{p.root}</Text>{p.active&&<Text>실행 중</Text>}{!p.available&&<Text>프로젝트 폴더를 찾을 수 없습니다.</Text>}</VStack><HStack gap={2}><Button label={`${p.name} 이름 바꾸기`} variant="ghost" isDisabled={busy||making} onClick={()=>{setRenaming(p);setRemoving(null);setNewTitle(titleOf(p));setNewSlug(p.name);setError('');}}/>{p.site&&!p.site.first&&<Button label={`${p.name} 지우기`} variant="ghost" isDisabled={busy||making} onClick={()=>{setRemoving(p);setRenaming(null);setTypedName('');setError('');}}/>}<Button label={`${p.name} 열기`} isDisabled={!p.available||p.id===projectId} onClick={()=>switchProject(p.id)}/></HStack></HStack>
+    {projects.map(p=><Card key={p.id} padding={4}><HStack hAlign="between" gap={3}><VStack gap={2}><Text weight="bold">{shown(p)}{p.id===projectId?' · 현재 프로젝트':''}</Text><Text color="secondary" style={{overflowWrap:'anywhere'}}>{p.root}</Text>{p.active&&<Text>실행 중</Text>}{!p.available&&<Text>프로젝트 폴더를 찾을 수 없습니다.</Text>}</VStack><HStack gap={2}>{p.site&&<Button label={envOpen===p.id?'개발 환경 닫기':'개발 환경'} variant="ghost" onClick={()=>setEnvOpen(envOpen===p.id?null:p.id)}/>}<Button label={`${p.name} 이름 바꾸기`} variant="ghost" isDisabled={busy||making} onClick={()=>{setRenaming(p);setRemoving(null);setNewTitle(titleOf(p));setNewSlug(p.name);setError('');}}/>{p.site&&!p.site.first&&<Button label={`${p.name} 지우기`} variant="ghost" isDisabled={busy||making} onClick={()=>{setRemoving(p);setRenaming(null);setTypedName('');setError('');}}/>}<Button label={`${p.name} 열기`} isDisabled={!p.available||p.id===projectId} onClick={()=>switchProject(p.id)}/></HStack></HStack>
+      {envOpen===p.id&&<ProjectEnvironment id={p.id} token={token}/>}
       {renaming?.id===p.id&&<VStack gap={2} style={{marginTop:12}}>
         <HStack gap={2} vAlign="end" style={{flexWrap:'wrap'}}>
           <div style={{flex:'1 1 260px'}}><TextInput label="프로젝트 이름 (보이는 이름)" value={newTitle} onChange={setNewTitle}/></div>

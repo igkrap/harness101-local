@@ -204,6 +204,71 @@ def remove(hub, project_id, confirm):
     return {'removed': slug, 'packs_kept': str(sites.SHARE / 'packs' / slug) if (sites.SHARE / 'packs' / slug).is_dir() else None}
 
 
+def _git(root, *args):
+    done = subprocess.run(['git', *args], cwd=root, capture_output=True, text=True, timeout=30)
+    return done.stdout.strip() if done.returncode == 0 else ''
+
+
+def environment(hub, project_id):
+    """One project's development environment as it stands: its ports, database and server, whether its servers run, its screen packages,
+    and where its records (git) stand."""
+    import environment as computer
+    with hub.lock:
+        record = next((item for item in hub.records if item['id'] == project_id), None)
+    if record is None:
+        raise ValueError('등록된 프로젝트가 아닙니다.')
+    own = record.get('site') or {}
+    root = Path(record['root'])
+    api_running = subprocess.run(['docker', 'inspect', '-f', '{{.State.Running}}', own.get('api_container', '')], capture_output=True, text=True).stdout.strip() == 'true'
+    preview_running = bool(own.get('preview_port')) and not _bindable(int(own['preview_port']))
+    return {'id': record['id'], 'title': own.get('title') or record.get('title') or record['name'], 'root': str(root),
+            'ports': {key: own.get(key) for key in PORT_KEYS.values()}, 'db': own.get('db'), 'api_container': own.get('api_container'),
+            'running': {'api': api_running, 'preview': preview_running}, 'items': computer.project(record),
+            'git': {'branch': _git(root, 'rev-parse', '--abbrev-ref', 'HEAD'), 'last': _git(root, 'log', '-1', '--format=%h %ad %s', '--date=format:%m-%d %H:%M'),
+                    'unrecorded': len([line for line in _git(root, 'status', '--porcelain').splitlines() if line.strip()])},
+            'free': free_ports(hub, but=project_id)}
+
+
+def change_ports(hub, project_id, body, log=None):
+    """Move a project's services to other free ports: its server is started again on the new one, its preview opens there next time."""
+    note = log or (lambda *_: None)
+    with hub.lock:
+        record = next((item for item in hub.records if item['id'] == project_id), None)
+        if record is None or not record.get('site'):
+            raise ValueError('포트를 바꿀 수 있는 프로젝트가 아닙니다.')
+        app = hub.apps.get(project_id)
+        if app is not None and (any(process.poll() is None for process in app.processes.values()) or (getattr(app, 'queues', None) and app.queues.active())):
+            raise RuntimeError('이 프로젝트에서 진행 중인 작업이 있습니다. 끝난 뒤 바꾸세요.')
+    own = record['site']
+    asked = {key: body.get(key) if body.get(key) not in (None, '') else own.get(key) for key in PORT_KEYS.values()}
+    unchanged = {key: value for key, value in asked.items() if str(value) == str(own.get(key))}
+    ports = chosen_ports(hub, {key: (None if key in unchanged else value) for key, value in asked.items()}, but=project_id)
+    ports.update({key: int(value) for key, value in unchanged.items()})       # (its own current ports are free for it)
+    if all(int(ports[key]) == int(own.get(key) or 0) for key in PORT_KEYS.values()):
+        return environment(hub, project_id)
+    root = Path(record['root'])
+    import os, signal
+    item = hub.previews.items.pop(project_id, None)
+    process = (item or {}).get('process')
+    if process is not None and process.poll() is None:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    api_moved = int(ports['api_port']) != int(own['api_port'])
+    with hub.lock:
+        own.update({key: int(value) for key, value in ports.items()})
+        record['preview_url'] = f"http://127.0.0.1:{own['preview_port']}"
+        hub.persist()
+    if api_moved:
+        note('서버를 새 포트로 다시 띄움')
+        subprocess.run(['docker', 'rm', '-f', own['api_container']], capture_output=True)
+        first = bool(own.get('first'))
+        state = hub.state if first else hub.state / 'projects' / record['id'] / 'runs'
+        Setup(sites.ROOT, api_port=own['api_port'], state=state, log=note, project=root, database=own['db'], api=own['api_container'], slug=own['slug']).run()
+    return environment(hub, project_id)
+
+
 def rename(hub, project_id, title=None, slug=None, allow_queue=False):
     """Give a project another name. title: the name people see (on the platform, on the project's own screens when it still
     carried the old one, on the setup packs made from now on). slug: the English name - the folder, the development

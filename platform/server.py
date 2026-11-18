@@ -584,6 +584,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(self.server.platform.catalog());return
             if parsed.path=='/api/environment' and hasattr(self.server.platform,'catalog'):
                 import environment;self.send_json({'items':environment.check(self.server.platform)});return
+            if parsed.path=='/api/projects/environment' and hasattr(self.server.platform,'catalog'):
+                import projects as _projects;self.send_json(_projects.environment(self.server.platform,(query.get('id') or [''])[0]));return
             if parsed.path=='/api/projects/ports' and hasattr(self.server.platform,'catalog'):
                 import projects as _projects;self.send_json(_projects.free_ports(self.server.platform,but=(query.get('but') or [None])[0]));return
             app=self.context(query)
@@ -720,6 +722,8 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path=='/api/projects/rename' and hasattr(hub,'rename'):self.send_json(hub.rename(body));return
             if parsed.path=='/api/projects/remove' and hasattr(hub,'remove'):self.send_json(hub.remove(body));return
             if parsed.path=='/api/projects/create' and hasattr(hub,'create'):self.send_json(hub.create(body),201);return
+            if parsed.path=='/api/projects/change-ports' and hasattr(hub,'catalog'):
+                import projects as _projects;self.send_json(_projects.change_ports(hub,str(body.get('id') or ''),body));return
             if parsed.path=='/api/environment/fix' and hasattr(hub,'catalog'):
                 import environment;self.send_json(environment.fix(hub,str(body.get('id') or ''),bool(body.get('sure')),body.get('way')));return
             if parsed.path=='/api/environment/find' and hasattr(hub,'catalog'):
