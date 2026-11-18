@@ -148,7 +148,13 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
             asked = request if not feedback else request + ('\n\n(앞선 시도는 ' + feedback
                                                             + ' - 이것을 감안해 끝까지 맞게 다시 정한다. 요청에 없는 것은 덧붙이지 않는다.)')
             (folder / 'request.txt').write_text(asked, encoding='utf-8')
-            proposal = define.write(asked, framework, folder / '1-define', TRIAL, allow_steps=part_of is None)
+            try:
+                proposal = define.write(asked, framework, folder / '1-define', TRIAL, allow_steps=part_of is None)
+            except define.Unmet as unmet:          # what the request said is still not in it: not applied; told once more by run()
+                live.step('요청대로 안 돼서 적용하지 않음', str(unmet))
+                live.end_step('refused')
+                result.update(status='failed', flows=[f'요청대로 되지 않았다: {unmet}'], unmet=str(unmet))
+                return result
         if proposal['action'] == 'split':          # (only ever inside a step: the plan it belongs to takes its parts in its place)
             result.update(status='split', parts=proposal['steps'])
             return result
@@ -178,6 +184,13 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
                 if not passed:
                     undo({'planned': proposal['steps'], 'steps': done, '_inner': True})
                     result.update(planned=proposal['steps'], steps=done, status='failed', flows=said, failed=[item for item in flowed if not item['passed']])
+                    return result
+                live.step('요청 전체를 사용자의 말과 다시 맞춰 봄')
+                missing = define.unmet(request, [item['key'] for item in done if item.get('key')], framework, folder / '1-define')
+                if missing:                       # every step passed, but the request as the person said it is not all there
+                    live.end_step('refused', missing)
+                    undo({'planned': proposal['steps'], 'steps': done, '_inner': True})
+                    result.update(planned=proposal['steps'], steps=done, status='failed', flows=[f'요청대로 되지 않았다: {missing}'], unmet=missing)
                     return result
                 result['status'] = 'applied'
                 commit(result, request)
@@ -471,7 +484,9 @@ def say(result):
     if result.get('planned'):
         steps, planned = result.get('steps', []), result['planned']
         applied = [item for item in steps if item.get('status') in ('applied', 'checked')]
-        lines = [f"{len(planned)}단계로 나눠 처리했습니다." if result['status'] in ('applied', 'checked') else f"{len(planned)}단계 중 {len(applied)}단계까지 됐고, {len(applied) + 1}단계에서 멈췄습니다."]
+        lines = [f"{len(planned)}단계로 나눠 처리했습니다." if result['status'] in ('applied', 'checked')
+                 else f"{len(planned)}단계를 모두 마쳤지만 요청대로 되지 않아 적용하지 않았습니다: {result['unmet']}" if result.get('unmet')
+                 else f"{len(planned)}단계 중 {len(applied)}단계까지 됐고, {len(applied) + 1}단계에서 멈췄습니다."]
         for index, text in enumerate(planned, 1):
             item = next((one for one in steps if one['step'] == index), None)
             mark = '하지 않음' if item is None else {'applied': '적용', 'checked': '검사 통과', 'unchanged': '이미 그렇게 되어 있음'}.get(item.get('status'), '멈춤')
@@ -559,6 +574,8 @@ def say(result):
     elif status == 'needs_decision':
         lines.append('적용하지 않았습니다. 먼저 정해야 할 것:')
         lines += ['  - ' + item for item in result['needs_decision']]
+    elif status == 'failed' and result.get('unmet') and not result.get('failed'):
+        lines.append(f"요청대로 되지 않아 적용하지 않았습니다: {result['unmet']}")
     elif status == 'failed':
         lines.append(f"검사 {result.get('checks', len(result.get('failed', [])))}개 중 {len(result['failed'])}개 실패. 적용하지 않았습니다:")
         lines += [f"  - {item['description']}: {item['detail']}" for item in result['failed']]

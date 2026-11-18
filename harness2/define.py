@@ -417,12 +417,42 @@ def _mismatch(request, key, definition, before, record_to):
 - 요청이 말한 것을 빠뜨렸다.
 - 요청에 없는 조건이나 동작을 덧붙였다.
 어긋남이 아닌 것: 요청이 정해 주지 않은 세부(항목 구성, 이름, 조회 조건, 차트 모양 등)를 알아서 정한 것, 요청과 무관하게 원래 있던 것.
-형식: {"ok": true} 또는 {"ok": false, "problem": "<무엇이 어떻게 다른지 한 줄>"}''')
+형식: {"ok": true} 또는 {"ok": false, "kind": "빠짐" | "바뀜" | "덧붙임", "problem": "<무엇이 어떻게 다른지 한 줄>"}''')
     try:
         verdict = _json(llm.ask([{'role': 'system', 'content': 'JSON only'}, {'role': 'user', 'content': question}], record_to, 'matches-request', max_tokens=200))
     except Exception:
         return ''
-    return '' if verdict.get('ok') is not False else str(verdict.get('problem') or '요청과 다른 점이 있다')[:300]
+    if verdict.get('ok') is not False:
+        return ''
+    problem = str(verdict.get('problem') or '요청과 다른 점이 있다')[:300]
+    return problem if verdict.get('kind') == '덧붙임' else UNMET + problem
+
+
+UNMET = '[요청대로 안 됨] '          # a difference that leaves something the request said undone (left out, or made into something else)
+
+
+class Unmet(Exception):
+    """What the request said is still not done after the model was told twice: the request fails rather than being applied without it."""
+
+
+def unmet(request, keys, framework, record_to):
+    """A request done in several steps, read once more as a whole against the person's own words: what it said and none of the
+    screens does. Returns '' when it is all there."""
+    known = {item['key']: item['definition'] for item in framework.definitions()}
+    made = '\n\n'.join(describe(key, complete(json.loads(json.dumps(known[key])))) for key in dict.fromkeys(keys) if key in known)
+    if not made:
+        return ''
+    question = ('사용자의 요청과, 그 요청으로 만들고 고친 화면들이다. 요청이 말한 것 가운데 어느 화면에도 없는 것이 있는지 본다.\n\n요청: ' + request
+                + '\n\n화면들:\n' + made + '''
+
+없는 것으로 보는 것: 요청이 말한 조건·제한·때·대상·숫자가 어느 화면에도 없거나 다른 것으로 바뀌었다 (예: "자리가 다 찼으면 더 받으면 안 돼" 인데 정원을 넘겨도 받아진다).
+없는 것이 아닌 것: 요청이 정해 주지 않은 세부를 알아서 정한 것, 요청에 없는 것을 덧붙인 것.
+형식: {"ok": true} 또는 {"ok": false, "problem": "<요청의 어느 말이 어떻게 빠졌는지 한 줄>"}''')
+    try:
+        verdict = _json(llm.ask([{'role': 'system', 'content': 'JSON only'}, {'role': 'user', 'content': question}], record_to, 'request-as-a-whole', max_tokens=200))
+    except Exception:
+        return ''
+    return '' if verdict.get('ok') is not False else str(verdict.get('problem') or '요청의 일부가 빠졌다')[:300]
 
 
 def _unasked(request, lost, record_to):
@@ -452,7 +482,7 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
             {'role': 'user', 'content': PROMPT % {'guide': capabilities.get('guide', ''), 'capabilities': json.dumps(shown, ensure_ascii=False, indent=1), 'existing': _existing(framework), 'process': process(framework), 'principles': principles(), 'request': request,
                                                   'code_screens': ', '.join(code_screens()) or '(없음)'}}]
     stored = {item['key']: item['definition'] for item in real(framework, trial_prefix)}
-    messages, error, answer, target, asked_back, compared, doubt = list(base), '', '', None, False, False, ''
+    messages, error, answer, target, asked_back, compared, doubt = list(base), '', '', None, False, 0, ''
     told_done = False      # a step told once that the work it put before itself is there already
     trials = set()       # trial copies saved along the way; only the accepted one is left for the checks
     for attempt in range(1, 5):
@@ -518,13 +548,21 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
             # the doubt instead of stopping - the person is told only when there is something to look at.
             taken = accepted(saved, definition)
             doubt = _mismatch(request, key, taken, stored.get(key) if action == 'change' else None, record_to)
-            if doubt and not compared:
-                compared = True
-                raise ValueError('요청과 다르다: ' + doubt + '\n요청의 말 그대로 되게 고친다 (요청이 맞고 이 지적이 틀렸다고 보면 그대로 다시 답한다)')
+            undone = doubt.startswith(UNMET)
+            if doubt and (compared < (2 if undone and allow_steps else 1)):
+                compared += 1
+                raise ValueError('요청과 다르다: ' + doubt.removeprefix(UNMET) + '\n요청의 말 그대로 되게 고친다 (요청이 맞고 이 지적이 틀렸다고 보면 그대로 다시 답한다)')
+            if undone and allow_steps:          # the person's own request (not a step of a plan): applied only with what it said
+                for other in trials:
+                    framework.delete_definition(other, force=True)
+                raise Unmet(doubt.removeprefix(UNMET))
+            doubt = doubt.removeprefix(UNMET)
             for other in trials - {trial_name(key, trial_prefix)}:
                 framework.delete_definition(other, force=True)
             live.end_step('done', '받아들임' + (f' (의문: {doubt[:200]})' if doubt else ''))
             return {'action': action, 'key': key, 'definition': taken, 'doubt': doubt}
+        except Unmet:
+            raise
         except Exception as problem:  # a refusal of any kind goes back to the model once more
             error = str(problem)
             live.step('받아들여지지 않음 → 모델에게 다시', error[:400])
