@@ -62,7 +62,6 @@ def check(hub=None):
     out.append(_item('node', 'Node.js', '화면 미리보기 서버와 화면 빌드, 화면 검사', code == 0, version if code == 0 else '설치돼 있지 않습니다', _brew('node')))
     code, version = _run(['git', '--version'])
     out.append(_item('git', 'Git', '프로젝트의 형상관리 (기록·되돌리기·작업 공간)', code == 0, version if code == 0 else '설치돼 있지 않습니다', _brew('git')))
-    out.append(_item('python', 'Python', '플랫폼 자체', sys.version_info >= (3, 9), sys.version.split()[0]))
     try:
         with urllib.request.urlopen(MODEL_URL, timeout=5) as answer:
             model_ok, model_detail = answer.status == 200, '응답함'

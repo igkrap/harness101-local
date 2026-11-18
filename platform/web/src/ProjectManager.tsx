@@ -21,7 +21,7 @@ export function ProjectPicker(){
 type EnvItem={id:string;label:string;why:string;state:'ok'|'missing'|'off';detail:string;fix:{label:string;command:string;installs:boolean;manual?:boolean}|null};
 /** What this computer needs for the platform and its projects: looked at, and set up from here (a program is put on the computer only when asked twice). */
 function EnvironmentCheck({token}:{token:string}){
-  const [items,setItems]=useState<EnvItem[]|null>(null),[busy,setBusy]=useState(''),[said,setSaid]=useState(''),[asking,setAsking]=useState<{id:string;text:string}|null>(null);
+  const [items,setItems]=useState<EnvItem[]|null>(null),[busy,setBusy]=useState(''),[said,setSaid]=useState(''),[asking,setAsking]=useState<{id:string;text:string}|null>(null),[all,setAll]=useState(false);
   const load=()=>apiFetch('/api/environment').then(r=>r.json()).then(d=>setItems(d.items||[])).catch(e=>setSaid(String(e)));
   useEffect(()=>{void load();},[]);
   async function fix(id:string,sure=false){setBusy(id);setSaid('');setAsking(null);try{
@@ -32,8 +32,9 @@ function EnvironmentCheck({token}:{token:string}){
   const lacking=(items||[]).filter(item=>item.state!=='ok').length;
   return <Card padding={5}><VStack gap={3}>
     <HStack hAlign="between"><Heading level={2}>개발 환경 점검</Heading><Button label="다시 점검" variant="secondary" isDisabled={!!busy} onClick={()=>{setItems(null);void load();}}/></HStack>
-    {items===null?<Text color="secondary">점검하는 중…</Text>:<Text color="secondary">{lacking?`${items.length}개 중 ${lacking}개가 준비되지 않았습니다.`:`${items.length}개 모두 준비돼 있습니다.`}</Text>}
-    {(items||[]).map(item=><HStack key={item.id} hAlign="between" gap={3} style={{flexWrap:'wrap'}}>
+    {items===null?<Text color="secondary">점검하는 중…</Text>:<HStack gap={2} vAlign="center"><Text color="secondary">{lacking?`${items.length}개 중 ${lacking}개가 준비되지 않았습니다.`:`${items.length}개 모두 준비됨`}</Text>
+      <Button label={all?'접기':'자세히'} variant="secondary" onClick={()=>setAll(v=>!v)}/></HStack>}
+    {(items||[]).filter(item=>all||item.state!=='ok').map(item=><HStack key={item.id} hAlign="between" gap={3} style={{flexWrap:'wrap'}}>
       <VStack gap={1}><Text weight="bold">{item.state==='ok'?'✓':item.state==='off'?'!':'✗'} {item.label}</Text><Text color="secondary">{item.detail} · {item.why}</Text></VStack>
       {item.fix&&<HStack gap={2} vAlign="center"><Text color="secondary">{item.fix.command}</Text>
         <Button label={busy===item.id?'하는 중…':item.fix.label} variant={item.fix.installs?'secondary':'primary'} isDisabled={!!busy||!token} onClick={()=>void fix(item.id)}/></HStack>}
