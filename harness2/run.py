@@ -81,6 +81,32 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
     return result
 
 
+def _mend_flow(request, result, force):
+    """A flow the screens do not carry end to end: the model is asked once to mend the screens by what the run found broken (a request of
+    its own - checked, applied and recorded as any other); the flow is run again, and registered if it now goes through, else the mending
+    is taken back."""
+    broken = [item for item in result.get('results') or [] if not item['passed']]
+    found = '; '.join(f"{item['description']} ({str(item.get('detail', ''))[:160]})" for item in broken[:3])
+    asked = (f"{request.split(':', 1)[1].strip()} 순서로 업무가 끝까지 이어지게 지금 화면들을 고쳐줘. "
+             f"끝까지 돌려 보니 여기서 끊긴다: {found}")
+    time.sleep(1.1)                                   # run folders are named by the second
+    mended = run(asked, force=force)
+    result['mend'] = {'request': asked, 'status': mended.get('status'), 'folder': mended.get('folder')}
+    told = ['', '흐름이 끊겨 있어 화면을 고쳐 보았습니다:'] + ['  ' + line for line in say(mended).splitlines()]
+    if mended.get('status') != 'applied':
+        result['lines'] = (result.get('lines') or []) + told + ['고치지 못해 흐름을 등록하지 않았습니다.']
+        return
+    again = flows.handle(request, Framework())
+    if again.get('ok'):
+        result.update(again)
+        result['lines'] = told + [''] + again['lines']
+        return
+    done_back, said_back = undo(mended)
+    commit({}, f"되돌림 (업무 흐름이 이어지지 않아): {asked[:80]}", model=False)
+    result['lines'] = (result.get('lines') or []) + told + ['', '고친 뒤에도 끝까지 이어지지 않아 고친 것을 되돌렸습니다:'] \
+        + ['  ' + line for line in again.get('lines') or [] if line.lstrip().startswith('✗')] + ([] if done_back else ['  되돌리지 못한 것: ' + ' / '.join(said_back)])
+
+
 def _stuck_step(result):
     """A request split into steps that stopped at one of them (the model said it cannot, or the definition was refused): why, in a line."""
     steps = result.get('steps') or []
@@ -106,6 +132,8 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
         if request and not definition_file and re.match(r'\s*업무\s*흐름', request):
             # A business flow, not a screen: registered (after running it end to end), shown or removed.
             result.update(flows.handle(request, framework))
+            if not result.get('ok') and result.get('results') and '등록' in request.split(':', 1)[0] and not dry and part_of is None:
+                _mend_flow(request, result, force)
             if result.get('changed') and not dry and part_of is None:
                 commit(result, request, model=False)
             return result
