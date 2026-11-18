@@ -59,11 +59,47 @@ def resolve(names, framework):
         exact = [key for key, one in keeping.items() if word in (key, one.get('title'), _titled(one))]
         loose = [key for key, one in keeping.items() if word and word in one.get('title', '')]
         found = exact or loose
+        if not found:                      # the graph: a name a little different from the title, or a step of a record (a status it reaches)
+            found = _by_graph(word, keeping, framework)
         if len(found) == 1:
             keys.append(found[0])
         else:
             problems.append(f'"{word}": ' + ('그런 화면이 없습니다' if not found else '여러 화면이 맞습니다 - ' + ', '.join(keeping[key]['title'] for key in found)))
     return keys, problems
+
+
+_VERBS = r'\s*(등록|관리|입력|발급|처리|확인|작성|신청|승인|완료|전달|배포|화면)$'
+
+
+def _by_graph(word, keeping, framework):
+    """A stage named a little differently: the screen whose title holds the name without its verb (영수증 발급 -> 기부 영수증), or a
+    status a record reaches by a step (영수증 전달 -> 기부 영수증, 전달 완료) - given as "state:<entity>:<code>"."""
+    try:
+        graph = framework.ok('GET', '/api/meta/graph?drafts=true')
+    except Exception:
+        return []
+    noun = re.sub(_VERBS, '', word).strip()
+    verb = word[len(noun):].strip() if noun and word.startswith(noun) else ''
+    plain = re.sub(r'\s+', '', word)
+    steps = []
+    for node in graph.get('nodes') or []:
+        for state in node.get('states') or []:
+            if state.get('initial'):
+                continue
+            words = [re.sub(r'\s+', '', label) for label in [state['label']] + [step['label'] for step in node.get('steps') or [] if step['to'] == state['code']]]
+            said = any(label and (label in plain or plain in label or (verb and verb in label)) for label in words)
+            if said and (not noun or noun in node['title']):
+                steps.append(f"state:{node['key']}:{state['code']}")
+    titled = [key for key, one in keeping.items() if noun and noun != word and noun in one.get('title', '')] if noun else []
+    if steps and verb:
+        # a verb the record's own states name (전달 -> 전달 완료): the step, not the screen itself
+        named = [step for step in steps if noun in next((n['title'] for n in graph['nodes'] if n['key'] == step.split(':')[1]), '')]
+        if len(named) == 1:
+            return named
+    if len(titled) == 1 and not steps:
+        return titled
+    named = [step for step in steps if not noun or noun in next((n['title'] for n in graph['nodes'] if n['key'] == step.split(':')[1]), '')]
+    return named if len(named) == 1 else (titled if len(titled) == 1 else named or titled)
 
 
 def _link(known, earlier, later):
@@ -126,7 +162,7 @@ def simulate(flow, framework):
     report, made = Report(), []
     known = {item['key']: item['definition'] for item in framework.definitions()}
     stages = flow['stages']
-    missing = [key for key in stages if key not in known]
+    missing = [key for key in stages if (key.split(':')[1] if key.startswith('state:') else key) not in known]
     if missing:
         report.add(f"흐름의 화면이 모두 있다", False, '없는 화면: ' + ', '.join(missing))
         report.leftover = []
@@ -136,10 +172,10 @@ def simulate(flow, framework):
     # and its records are walked through those screens' actions where the flow names them.
     plan = []
     for key in stages:
-        entity = (known[key].get('over') or {}).get('entity') or key
+        entity = key.split(':')[1] if key.startswith('state:') else (known[key].get('over') or {}).get('entity') or key
         if not plan or plan[-1][0] != entity:
             plan.append((entity, []))
-        if known[key].get('over'):
+        if key.startswith('state:') or known[key].get('over'):
             plan[-1][1].append(key)
     walks = dict(plan)
     stages = [entity for entity, _ in plan]
@@ -155,6 +191,14 @@ def simulate(flow, framework):
         action moves them on."""
         out = list(records)
         for key in walks.get(entity, []):
+            if key.startswith('state:'):         # a status the record reaches: taken there as a person would (its screen, or the work screen with that action)
+                code = key.split(':')[2]
+                status = known[entity].get('status') or {}
+                labels = {value['code']: value['label'] for value in status.get('values', [])}
+                out = [_bring(framework, entity, known[entity], one, [code]) for one in out]
+                report.add(f"{title(entity)}: {labels.get(code, code)} 상태가 된다", all(one.get('status') == code for one in out),
+                           f"지금 상태 {[labels.get(one.get('status'), one.get('status')) for one in out]}")
+                continue
             part = known[key]['over']
             status = known[entity].get('status') or {}
             labels = {value['code']: value['label'] for value in status.get('values', [])}
@@ -392,7 +436,7 @@ def touching(keys, framework, flows=None):
         pairs = set(zip(flow['stages'], flow['stages'][1:]))
         for key in keys:
             take = (known.get(key) or {}).get('take')
-            if key in flow['stages'] or (take and (take['from'], take['entity']) in pairs):
+            if key in flow['stages'] or any(stage.startswith(f'state:{key}:') for stage in flow['stages']) or (take and (take['from'], take['entity']) in pairs):
                 out.append(flow)
                 break
     return out
