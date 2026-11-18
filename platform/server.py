@@ -1,5 +1,6 @@
 """Loopback-only development platform: managed jobs, real evidence, static UI."""
 import argparse
+import environment  # the folders of programs found off the PATH (찾기) apply to everything the platform runs, from the start
 from collections import Counter
 from history import History
 from failure import describe_failure
