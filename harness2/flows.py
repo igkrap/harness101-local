@@ -279,7 +279,23 @@ def simulate(flow, framework):
                         if item and spot and held(framework, item, spot) < row['remaining']:
                             framework.ok('POST', '/api/system/ledger/adjust', {'thingEntity': part['thingEntity'], 'thingId': item, 'placeEntity': part['placeEntity'], 'placeId': spot, 'quantity': row['remaining'], 'unitCost': 100})
                 code, answer = framework.call('POST', f'/api/take/{take}', {'values': values, 'rows': rows})
-                if not report.add(f"{title(previous)} → {title(later)}: 이어받기 화면({known[take]['title']})으로 넘긴다", code == 200 and rows, f'{code} {answer}' if code != 200 else f'넘길 줄 {len(rows)}개'):
+                why = f'{code} {answer}' if code != 200 else f'넘길 줄 {len(rows)}개'
+                if not open_rows:            # say why the earlier records are not listed: that is what a mend needs to know
+                    status = known[previous].get('status') or {}
+                    names = {value['code']: value['label'] for value in status.get('values', [])}
+                    listed_only = checks.take_of(known[take], take).get('statuses') or []
+                    reasons = []
+                    for one in current:
+                        now = framework.ok('GET', f"/api/data/{previous}/{one['id']}").get('status')
+                        if now in (status.get('closed') or []):
+                            reasons.append(f"{title(previous)} 이(가) {names.get(now, now)} 상태인데, {names.get(now, now)} 은(는) {title(previous)} 의 끝난 상태(status.closed)라서 "
+                                           f"이어받기 목록에서 빠진다 - 다음 단계로 이어져야 하는 상태는 끝난 상태에 넣지 않는다")
+                        elif listed_only and now not in listed_only:
+                            reasons.append(f"{title(previous)} 이(가) {names.get(now, now)} 상태인데, 이어받기 목록은 {', '.join(names.get(code, code) for code in listed_only)} 상태만 보인다")
+                        else:
+                            reasons.append(f"{title(previous)} ({names.get(now, now)} 상태) 이(가) 이어받기 목록에 없다 (이미 다 이어졌거나 한도가 0)")
+                    why = '앞 단계 자료가 목록에 없다: ' + '; '.join(dict.fromkeys(reasons))
+                if not report.add(f"{title(previous)} → {title(later)}: 이어받기 화면({known[take]['title']})으로 넘긴다", code == 200 and rows, why):
                     return report
                 existing, route = mine(), '이어받기'
             if not report.add(f"{title(previous)} → {title(later)}: 넘어가는 길이 있다", bool(existing), '자동 처리도 이어받기 화면도 없습니다 - 흐름이 여기서 끊깁니다'):
