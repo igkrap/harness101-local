@@ -18,6 +18,31 @@ export function ProjectPicker(){
     if(list.length&&projectId!=='default'&&!list.some(p=>p.id===projectId)){forgetProject();return;}setProjects(list);}).catch(()=>{});return()=>c.abort();},[]);
   return <Selector label="프로젝트" size="sm" isLabelHidden value={projectId} options={projects.map(p=>({value:p.id,label:titleOf(p),disabled:!p.available}))} onChange={switchProject}/>;
 }
+type EnvItem={id:string;label:string;why:string;state:'ok'|'missing'|'off';detail:string;fix:{label:string;command:string;installs:boolean;manual?:boolean}|null};
+/** What this computer needs for the platform and its projects: looked at, and set up from here (a program is put on the computer only when asked twice). */
+function EnvironmentCheck({token}:{token:string}){
+  const [items,setItems]=useState<EnvItem[]|null>(null),[busy,setBusy]=useState(''),[said,setSaid]=useState(''),[asking,setAsking]=useState<{id:string;text:string}|null>(null);
+  const load=()=>apiFetch('/api/environment').then(r=>r.json()).then(d=>setItems(d.items||[])).catch(e=>setSaid(String(e)));
+  useEffect(()=>{void load();},[]);
+  async function fix(id:string,sure=false){setBusy(id);setSaid('');setAsking(null);try{
+    const response=await apiFetch('/api/environment/fix',{method:'POST',headers:{'Content-Type':'application/json','X-Platform-Token':token},body:JSON.stringify({id,sure})});
+    const result=await response.json();if(!response.ok)throw Error(result.error);if(result.items)setItems(result.items);
+    if(result.ask)setAsking({id,text:result.ask});else setSaid(result.said||'');
+  }catch(e){setSaid(String(e instanceof Error?e.message:e));}finally{setBusy('');}}
+  const lacking=(items||[]).filter(item=>item.state!=='ok').length;
+  return <Card padding={5}><VStack gap={3}>
+    <HStack hAlign="between"><Heading level={2}>개발 환경 점검</Heading><Button label="다시 점검" variant="secondary" isDisabled={!!busy} onClick={()=>{setItems(null);void load();}}/></HStack>
+    {items===null?<Text color="secondary">점검하는 중…</Text>:<Text color="secondary">{lacking?`${items.length}개 중 ${lacking}개가 준비되지 않았습니다.`:`${items.length}개 모두 준비돼 있습니다.`}</Text>}
+    {(items||[]).map(item=><HStack key={item.id} hAlign="between" gap={3} style={{flexWrap:'wrap'}}>
+      <VStack gap={1}><Text weight="bold">{item.state==='ok'?'✓':item.state==='off'?'!':'✗'} {item.label}</Text><Text color="secondary">{item.detail} · {item.why}</Text></VStack>
+      {item.fix&&<HStack gap={2} vAlign="center"><Text color="secondary">{item.fix.command}</Text>
+        <Button label={busy===item.id?'하는 중…':item.fix.label} variant={item.fix.installs?'secondary':'primary'} isDisabled={!!busy||!token} onClick={()=>void fix(item.id)}/></HStack>}
+    </HStack>)}
+    {asking&&<HStack gap={2} vAlign="center"><Text>{asking.text}</Text><Button label="설치" variant="primary" isDisabled={!!busy} onClick={()=>void fix(asking.id,true)}/><Button label="그만두기" variant="secondary" onClick={()=>setAsking(null)}/></HStack>}
+    {said&&<Text role="status">{said}</Text>}
+  </VStack></Card>;
+}
+
 export default function ProjectManager({token}:{token:string}){
   const [projects,setProjects]=useState<Project[]>([]),[modelUrl,setModelUrl]=useState('http://127.0.0.1:8099/v1'),[db,setDb]=useState(''),[error,setError]=useState(''),[busy,setBusy]=useState(false);
   const [kinds,setKinds]=useState<Kind[]>([]),[kind,setKind]=useState('business'),[title,setTitle]=useState(''),[slug,setSlug]=useState(''),[making,setMaking]=useState(false),[makeError,setMakeError]=useState('');
@@ -61,6 +86,7 @@ export default function ProjectManager({token}:{token:string}){
     const result=await response.json();if(!response.ok)throw Error(result.error||'프로젝트를 만들지 못했습니다.');switchProject(result.id);
   }catch(e){setMakeError(String(e instanceof Error?e.message:e));}finally{setMaking(false);}}
   return <VStack gap={5}>
+    <EnvironmentCheck token={token}/>
     <Card padding={5}><VStack gap={4}>
       <Heading level={2}>새 프로젝트 만들기</Heading>
       <div className="project-kinds" role="radiogroup" aria-label="사이트 종류">{kinds.map(k=>

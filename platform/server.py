@@ -581,6 +581,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if parsed.path=='/api/projects' and hasattr(self.server.platform,'catalog'):
                 self.send_json(self.server.platform.catalog());return
+            if parsed.path=='/api/environment' and hasattr(self.server.platform,'catalog'):
+                import environment;self.send_json({'items':environment.check(self.server.platform)});return
             if parsed.path=='/api/projects/ports' and hasattr(self.server.platform,'catalog'):
                 import projects as _projects;self.send_json(_projects.free_ports(self.server.platform,but=(query.get('but') or [None])[0]));return
             app=self.context(query)
@@ -717,6 +719,8 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path=='/api/projects/rename' and hasattr(hub,'rename'):self.send_json(hub.rename(body));return
             if parsed.path=='/api/projects/remove' and hasattr(hub,'remove'):self.send_json(hub.remove(body));return
             if parsed.path=='/api/projects/create' and hasattr(hub,'create'):self.send_json(hub.create(body),201);return
+            if parsed.path=='/api/environment/fix' and hasattr(hub,'catalog'):
+                import environment;self.send_json(environment.fix(hub,str(body.get('id') or ''),bool(body.get('sure'))));return
             if parsed.path=='/api/projects' and hasattr(hub,'add'):self.send_json(hub.add(body),201);return
             if parsed.path=='/api/preview' and hasattr(hub,'previews'):self.send_json(hub.previews.ensure(app.metadata),202);return
             if parsed.path=='/api/chat':self.send_json(chat_answer(hub,app,body));return
