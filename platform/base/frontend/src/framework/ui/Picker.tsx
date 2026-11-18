@@ -132,7 +132,7 @@ export function Picker({ label, hideLabel, isRequired, isDisabled, mode = 'dropd
     {mode === 'popup' && <Dialog isOpen={windowOpen} onClose={() => setWindowOpen(false)} title={title ?? `${label} 찾기`} className="fw-dialog fw-pick-window" style={{ width: Math.min(960, 260 + windowColumns.length * 140) }}>
       <DialogBody>
         <div onKeyDown={windowKeys}>
-          <InputGroup inputRef={filterInput} fill size="small" leftIcon="search" aria-label="검색어" placeholder="검색어 (모든 열에서 찾습니다)" value={filter} onValueChange={setFilter} />
+          <InputGroup inputRef={filterInput} fill size="small" leftIcon="search" aria-label="검색어" placeholder="검색어" value={filter} onValueChange={setFilter} />
           <div className="fw-pick-list" role="grid" aria-label={`${label} 목록`}>
             <table className="bp6-html-table bp6-compact bp6-interactive bp6-html-table-striped">
               <thead><tr>{windowColumns.map(column => <th key={column.key}>{column.label}</th>)}</tr></thead>

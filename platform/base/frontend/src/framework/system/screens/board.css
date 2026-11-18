@@ -28,7 +28,7 @@
 .board-count { flex: none; font-size: 12px; font-weight: 700; color: #d9534f; }
 .board-new { flex: none; display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 3px; font-size: 9px; font-weight: 800; color: #fff; background: #e8590c; transform: translateY(-1px); }
 .board-hidden, .board-muted { color: var(--fw-muted); }
-.board-empty { padding: 48px 0 !important; }
+.board-empty { padding: 48px 20px !important; }
 .board-foot { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; flex: none; }
 .board-foot > :last-child { justify-self: end; }
 .board-pages { display: inline-flex; gap: 2px; }

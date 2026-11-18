@@ -7,7 +7,7 @@ import { AsyncFeedback } from '../AsyncFeedback';
 import { apiFetch } from '../auth/sessionClient';
 import { alignOf, formatDateTime, readNumber, showAmount, showNumber } from '../format';
 import { Button, DateInput, NumberInput, Picker, Select, TextInput, TimeInput, YesNoInput } from '../ui';
-import { definitionOf, pickOf, printOf, refText, shownField, statusTone, storedField, takingScreens, typedField, type DefinedField, type EntityDefinition } from './definitions';
+import { definitionOf, pickOf, printOf, refText, shownField, statusTone, storedField, typedField, type DefinedField, type EntityDefinition } from './definitions';
 import { currentBranding } from '../system/branding';
 import { printRecord } from './printRecord';
 import { ImportDialog } from './ImportDialog';
@@ -403,8 +403,8 @@ export function DocumentScreen({ entity, over }: { entity: EntityDefinition; ove
   const actions = selected && status ? status.actions.filter(action => action.from.includes(selected.status) && (over ? over.actions.includes(action.name) : !action.separate)) : [];
   const form = <div className="doc" data-ui="document-editor">
     <div className="doc-head">
-      <strong>{over ? (selected ? '내용' : over.create ? '신규' : '목록에서 고르세요') : selected ? '수정' : ownOnly ? `목록에서 고르세요${takingScreens(key).length ? ` (등록은 ${takingScreens(key).map(name => `「${name}」`).join(', ')}에서)` : ''}` : '신규'}</strong>
-      {fields.filter(field => field.type === 'serial').map(field => <span key={field.name} className="doc-serial" aria-label={field.label}>{header[field.name] || `${field.label}: 저장하면 매겨집니다`}</span>)}
+      <strong>{over ? (selected ? '내용' : over.create ? '신규' : '목록에서 고르세요') : selected ? '수정' : ownOnly ? '목록에서 고르세요' : '신규'}</strong>
+      {fields.filter(field => field.type === 'serial' && header[field.name]).map(field => <span key={field.name} className="doc-serial" aria-label={field.label}>{header[field.name]}</span>)}
       {selected && status && <span className={`fw-status is-${statusTone(status, selected.status)}`} aria-label="상태">{status.values.find(value => value.code === selected.status)?.label ?? selected.status}</span>}
       <span style={{ flex: 1 }} />
       {actions.map(action => <Button key={action.name} label={action.label} outlined variant={action.to === status?.initial ? undefined : 'primary'} onClick={() => void act(action.name, action.label)} />)}
