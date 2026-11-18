@@ -62,31 +62,83 @@ export function EnvironmentCheck({token}:{token:string}){
   </VStack></Card>;
 }
 
+type Backup={name:string;size:number;at:string;by_hand:boolean};
+type FrameworkState={version?:string;state?:string;said?:string;problems?:string[];at?:string;current?:boolean};
 type ProjectEnv={id:string;title:string;root:string;ports:{api_port:number;preview_port:number};db:string;api_container:string;running:{api:boolean;preview:boolean};
-  items:EnvItem[];git:{branch:string;last:string;unrecorded:number};free:{api:number[];preview:number[]}};
-/** One project's development environment: its ports (moved to other free ones here), database and server, whether its servers run,
- *  its screen packages, where its records stand. */
+  items:EnvItem[];git:{branch:string;last:string;unrecorded:number};free:{api:number[];preview:number[]};backups:Backup[];remote:string;framework:FrameworkState|null;said?:string};
+type Pack={stamp:string;started_at:string;files:Record<string,{name:string;size:number}>};
+const FRAMEWORK_WORDS:Record<string,string>={ok:'최신',waiting:'요청이 끝나면 맞춤',held:'새 판으로 서버를 못 만들어 이전 판으로 둠',broken:'새 판으로 바꿨으나 점검에서 문제',unknown:'확인 전',missing:'폴더 없음'};
+const mb=(size:number)=>size>=1048576?`${(size/1048576).toFixed(1)}MB`:`${Math.max(1,Math.round(size/1024))}KB`;
+/** One project's development environment, in sections top to bottom (no tabs): its servers (ports, start again, stop, what they wrote),
+ *  its development database (copies, putting one back), its records (summary; the list and taking back are on 변경 이력),
+ *  its operating setup packs, the framework it runs on (the platform's, moved together), and what the computer gives it. */
 function ProjectEnvironment({id,token}:{id:string;token:string}){
   const [env,setEnv]=useState<ProjectEnv|null>(null),[ports,setPorts]=useState<Record<string,string>>({}),[busy,setBusy]=useState(''),[said,setSaid]=useState('');
-  const load=()=>apiFetch(`/api/projects/environment?id=${encodeURIComponent(id)}`).then(r=>r.json()).then(d=>{if(d.ports){setEnv(d);setPorts(Object.fromEntries(Object.entries(d.ports).map(([k,v])=>[k,String(v)])));}else setSaid(d.error||'');}).catch(e=>setSaid(String(e)));
-  useEffect(()=>{void load();},[id]);
+  const [log,setLog]=useState<string[]|null>(null),[pack,setPack]=useState<{packs:Pack[];current:boolean}|null>(null),[restoring,setRestoring]=useState(''),[typed,setTyped]=useState('');
+  const q=`project=${encodeURIComponent(id)}`;
+  const load=()=>apiFetch(`/api/projects/environment?id=${encodeURIComponent(id)}`).then(r=>r.json()).then(d=>{if(d.ports){setEnv({...d,backups:d.backups||[],remote:d.remote||'',framework:d.framework||null});setPorts(Object.fromEntries(Object.entries(d.ports).map(([k,v])=>[k,String(v)])));}else setSaid(d.error||'');}).catch(e=>setSaid(String(e)));
+  const loadPack=()=>apiFetch(`/api/release?${q}`).then(r=>r.json()).then(d=>setPack(d.status?{packs:d.status.packs||[],current:!!d.status.current}:null)).catch(()=>{});
+  useEffect(()=>{void load();void loadPack();},[id]);
   async function post(path:string,body:object,label:string,done:string){setBusy(label);setSaid('');try{
     const response=await apiFetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Platform-Token':token},body:JSON.stringify(body)});
-    const result=await response.json();if(!response.ok)throw Error(result.error);if(result.ports)setEnv(result);else void load();setSaid(result.said||done);
-  }catch(e){setSaid(String(e instanceof Error?e.message:e));}finally{setBusy('');}}
+    const result=await response.json();if(!response.ok)throw Error(result.error);if(result.ports)setEnv(result);else void load();setSaid(result.said||(Array.isArray(result.lines)&&result.lines.length?result.lines.join(' '):done));return true;
+  }catch(e){setSaid(String(e instanceof Error?e.message:e));return false;}finally{setBusy('');}}
+  async function readLog(){if(log){setLog(null);return;}setBusy('log');try{const r=await apiFetch(`/api/tools/log?lines=200&${q}`);const d=await r.json();setLog(d.lines||[d.error||'기록이 없습니다.']);}finally{setBusy('');}}
   if(!env)return <Text color="secondary">{said||'읽는 중…'}</Text>;
   const changed=Object.entries(env.ports).some(([k,v])=>String(v)!==ports[k]);
   const pick=(label:string,key:'api_port'|'preview_port',list:number[])=><div style={{flex:'1 1 150px'}}>
     <Selector label={label} value={ports[key]||''} isDisabled={!!busy} options={[...new Set([env.ports[key],...list])].map(port=>({value:String(port),label:String(port)+(port===env.ports[key]?' (지금)':'')}))} onChange={v=>setPorts(previous=>({...previous,[key]:v}))}/></div>;
+  const section=(title:string,body:React.ReactNode)=><div style={{border:'1px solid var(--color-border)',borderRadius:6,padding:10}}><VStack gap={2}><Text style={{fontWeight:600}}>{title}</Text>{body}</VStack></div>;
+  const dot=(on:boolean)=><Text style={{color:on?'var(--color-text-success)':'var(--color-text-warning)'}}>● {on?'켜짐':'꺼짐'}</Text>;
+  const serve=(part:'api'|'preview',on:boolean)=><>
+    <Button label={busy===part+'restart'?'다시 띄우는 중…':'다시 띄우기'} size="sm" variant="secondary" isDisabled={!!busy||!token} onClick={()=>void post('/api/projects/server',{id,part,action:'restart'},part+'restart','다시 띄웠습니다.')}/>
+    <Button label={on?'끄기':'켜기'} size="sm" variant="ghost" isDisabled={!!busy||!token} onClick={()=>void post('/api/projects/server',{id,part,action:on?'stop':'start'},part,on?'껐습니다.':'켰습니다.')}/></>;
+  const newest=pack?.packs[0];const fw=env.framework;
   return <VStack gap={3} style={{marginTop:12}}>
-    <HStack gap={3} vAlign="end" style={{flexWrap:'wrap'}}>
-      {pick('백엔드(API) 포트','api_port',env.free.api)}{pick('화면(미리보기) 포트','preview_port',env.free.preview)}
-      <Button label={busy==='ports'?'바꾸는 중… (서버를 다시 띄움)':'포트 바꾸기'} variant="primary" isDisabled={!!busy||!token||!changed} onClick={()=>void post('/api/projects/change-ports',{id,...ports},'ports','포트를 바꿨습니다.')}/>
-    </HStack>
-    <Text color="secondary">DB {env.db} · 서버 {env.api_container} {env.running.api?'켜짐':'꺼짐'} · 미리보기 {env.running.preview?'켜짐':'꺼짐'}</Text>
-    <Text color="secondary">형상관리: 작업 공간 {env.git.branch||'-'} · 마지막 기록 {env.git.last||'-'} · 기록 안 된 변경 {env.git.unrecorded}개</Text>
-    {env.items.map(item=><HStack key={item.id} gap={2} vAlign="center"><Text>{item.state==='ok'?'✓':'✗'} {item.label} - {item.detail}</Text>
-      {item.fix&&<Button label={busy===item.id?'설치하는 중…':item.fix.label} variant="secondary" isDisabled={!!busy||!token} onClick={()=>void post('/api/environment/fix',{id:item.id},item.id,'설치했습니다.')}/>}</HStack>)}
+    {section('서버',<>
+      <HStack gap={3} vAlign="end" style={{flexWrap:'wrap'}}>
+        {pick('백엔드(API) 포트','api_port',env.free.api)}{pick('화면(미리보기) 포트','preview_port',env.free.preview)}
+        <Button label={busy==='ports'?'바꾸는 중… (서버를 다시 띄움)':'포트 바꾸기'} variant="primary" isDisabled={!!busy||!token||!changed} onClick={()=>void post('/api/projects/change-ports',{id,...ports},'ports','포트를 바꿨습니다.')}/>
+      </HStack>
+      <HStack gap={2} vAlign="center" style={{flexWrap:'wrap'}}><Text>앱 서버 ({env.api_container})</Text>{dot(env.running.api)}{serve('api',env.running.api)}
+        <Text>· 미리보기</Text>{dot(env.running.preview)}{serve('preview',env.running.preview)}
+        <Button label={log?'서버 기록 닫기':'서버 기록 보기'} size="sm" variant="ghost" isDisabled={busy==='log'} onClick={()=>void readLog()}/></HStack>
+      {log&&<pre style={{maxHeight:260,overflow:'auto',fontSize:11,margin:0,padding:8,background:'var(--color-background-muted, rgba(127,127,127,.08))',borderRadius:4,whiteSpace:'pre-wrap'}}>{log.join('\n')}</pre>}
+    </>)}
+    {section('개발 DB',<>
+      <HStack gap={2} vAlign="center" style={{flexWrap:'wrap'}}><Text>{env.db}</Text><Text color="secondary">· 마지막 백업 {env.backups[0]?.at||'없음'}</Text>
+        <Button label={busy==='backup'?'백업하는 중…':'지금 백업'} size="sm" variant="secondary" isDisabled={!!busy||!token} onClick={()=>void post('/api/projects/backup',{id},'backup','백업했습니다.')}/></HStack>
+      {!!env.backups.length&&<HStack gap={2} vAlign="end" style={{flexWrap:'wrap'}}>
+        <div style={{flex:'1 1 280px'}}><Selector label="백업에서 되돌리기" value={restoring} isDisabled={!!busy} options={[{value:'',label:'고르세요'},...env.backups.map(b=>({value:b.name,label:`${b.at} · ${b.by_hand?'직접 백업':'서버 다시 만들기 전'} · ${mb(b.size)}`}))]} onChange={v=>{setRestoring(v);setTyped('');}}/></div></HStack>}
+      {restoring&&<VStack gap={2}><Text>되돌리면 그 백업 뒤에 입력한 개발 자료가 사라집니다. 확인하려면 프로젝트의 영문 이름을 적으세요.</Text>
+        <HStack gap={2} vAlign="end"><div style={{flex:1}}><TextInput label="영문 이름" value={typed} onChange={setTyped}/></div>
+          <Button label={busy==='restore'?'되돌리는 중…':'되돌리기'} variant="primary" isDisabled={!!busy||!token||!typed} onClick={()=>void post('/api/projects/restore',{id,name:restoring,confirm:typed},'restore','되돌렸습니다.').then(ok=>{if(ok){setRestoring('');setTyped('');}})}/>
+          <Button label="그만두기" variant="secondary" onClick={()=>setRestoring('')}/></HStack></VStack>}
+    </>)}
+    {section('형상관리',<>
+      <Text color="secondary">작업 공간 {env.git.branch||'-'} · 마지막 기록 {env.git.last||'-'} · 기록 안 된 변경 {env.git.unrecorded}개</Text>
+      <HStack gap={2} vAlign="center" style={{flexWrap:'wrap'}}><Text color="secondary">원격 저장소 {env.remote||'연결 안 됨'}</Text>
+        {env.remote&&<Button label={busy==='push'?'올리는 중…':'원격에 올리기'} size="sm" variant="secondary" isDisabled={!!busy||!token} onClick={()=>void apiFetch(`/api/history/push?${q}`,{method:'POST',headers:{'Content-Type':'application/json','X-Platform-Token':token},body:'{}'}).then(async r=>{const d=await r.json();setSaid(r.ok?(d.lines||[]).join(' ')||'올렸습니다.':d.error);})}/>}
+        <Text color="secondary">(기록 목록·되돌리기·작업 공간 바꾸기·원격 연결은 「변경 이력」에서)</Text></HStack>
+    </>)}
+    {section('운영 셋업 팩',<>
+      <HStack gap={2} vAlign="center" style={{flexWrap:'wrap'}}>
+        <Text color="secondary">{newest?`현재 셋업 팩 ${newest.started_at.replace('T',' ').replace(/-/g,'/')}`:'아직 만든 셋업 팩이 없습니다'}{newest?(pack?.current?' · 지금 상태와 같음':' · 지금 상태와 다름'):''}</Text>
+        <Button label={busy==='pack'?'요청하는 중…':'셋업 팩 만들기'} size="sm" variant="primary" isDisabled={!!busy||!token} onClick={()=>void apiFetch(`/api/queues?${q}`,{method:'POST',headers:{'Content-Type':'application/json','X-Platform-Token':token},body:JSON.stringify({goal:'운영 셋업 팩 만들어줘'})}).then(async r=>{const d=await r.json();setSaid(r.ok?'셋업 팩 만들기를 시작했습니다. 만들기 화면에서 진행을 볼 수 있습니다.':d.error);void loadPack();})}/>
+        {newest?.files.install&&<a href={`/api/release/packs/${newest.files.install.name}?${q}`}>설치용 받기 ({mb(newest.files.install.size)})</a>}
+        {newest?.files.update&&<a href={`/api/release/packs/${newest.files.update.name}?${q}`}>업데이트용 받기 ({mb(newest.files.update.size)})</a>}</HStack>
+    </>)}
+    {section('프레임워크',<>
+      <HStack gap={2} vAlign="center" style={{flexWrap:'wrap'}}><Text color="secondary">플랫폼의 프레임워크 {fw?.version||'-'} · {FRAMEWORK_WORDS[fw?.state||'unknown']||fw?.state}{fw?.at?` · ${fw.at}`:''}</Text>
+        {fw&&(!fw.current||fw.state==='held'||fw.state==='broken')&&<Button label={busy==='framework'?'맞추는 중… (서버를 다시 만들 수 있음)':'지금 맞추기'} size="sm" variant="secondary" isDisabled={!!busy||!token} onClick={()=>void post('/api/framework/apply',{id},'framework','맞췄습니다.')}/>}</HStack>
+      {fw?.said&&<Text color="secondary">{fw.said}</Text>}
+      {fw?.problems?.map((line,i)=><Text key={i} style={{color:'var(--color-text-warning)'}}>· {line}</Text>)}
+      <Text color="secondary">프레임워크는 플랫폼에 하나만 있고 모든 프로젝트가 같이 씁니다. 플랫폼이 새 판을 받으면 프로젝트마다 저절로 맞춥니다.</Text>
+    </>)}
+    {section('이 프로젝트에 필요한 것',<>
+      {env.items.map(item=><HStack key={item.id} gap={2} vAlign="center"><Text>{item.state==='ok'?'✓':'✗'} {item.label} - {item.detail}</Text>
+        {item.fix&&<Button label={busy===item.id?'설치하는 중…':item.fix.label} variant="secondary" isDisabled={!!busy||!token} onClick={()=>void post('/api/environment/fix',{id:item.id},item.id,'설치했습니다.')}/>}</HStack>)}
+    </>)}
     {said&&<Text role="status">{said}</Text>}
   </VStack>;
 }

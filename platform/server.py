@@ -612,6 +612,7 @@ class Handler(BaseHTTPRequestHandler):
                 if tool=='records':self.send_json(devtools.records(one('key'),one('limit','50')));return
                 if tool=='log':self.send_json(devtools.server_log(one('lines','300')));return
                 if tool=='process':self.send_json(devtools.process());return
+                if tool=='graph':self.send_json(devtools.graph());return
             if parsed.path=='/api/release/screens':
                 import release
                 self.send_json({'screens':release.screens()});return
@@ -730,6 +731,15 @@ class Handler(BaseHTTPRequestHandler):
                 import environment;self.send_json(environment.fix(hub,str(body.get('id') or ''),bool(body.get('sure')),body.get('way')));return
             if parsed.path=='/api/environment/find' and hasattr(hub,'catalog'):
                 import environment;self.send_json(environment.find(hub,str(body.get('id') or ''),body.get('path')));return
+            if parsed.path in ('/api/projects/server','/api/projects/backup','/api/projects/restore') and hasattr(hub,'catalog'):
+                import projects as _projects;pid=str(body.get('id') or '')
+                if parsed.path.endswith('/server'):self.send_json(_projects.server_control(hub,pid,body.get('part'),body.get('action')));return
+                if parsed.path.endswith('/backup'):self.send_json(_projects.backup_now(hub,pid));return
+                self.send_json(_projects.restore(hub,pid,body.get('name'),body.get('confirm')));return
+            if parsed.path=='/api/framework/apply' and hasattr(hub,'catalog'):
+                import framework_update;record=next((r for r in hub.records if r['id']==str(body.get('id') or '')),None)
+                if record is None:raise ValueError('등록된 프로젝트가 아닙니다.')
+                framework_update.apply(hub,record,force=True);import projects as _projects;self.send_json(_projects.environment(hub,record['id']));return
             if parsed.path=='/api/framework/update' and hasattr(hub,'catalog'):
                 import framework_update;framework_update.update_all(hub);self.send_json(framework_update.status(hub));return
             if parsed.path=='/api/environment/setup-all' and hasattr(hub,'catalog'):

@@ -212,7 +212,93 @@ def environment(hub, project_id):
             'running': {'api': api_running, 'preview': preview_running}, 'items': computer.project(record),
             'git': {'branch': _git(root, 'rev-parse', '--abbrev-ref', 'HEAD'), 'last': _git(root, 'log', '-1', '--format=%h %ad %s', '--date=format:%m-%d %H:%M'),
                     'unrecorded': len([line for line in _git(root, 'status', '--porcelain').splitlines() if line.strip()])},
-            'free': free_ports(hub, but=project_id)}
+            'free': free_ports(hub, but=project_id), 'backups': _backups(record, hub), 'remote': _git(root, 'remote', 'get-url', 'origin'),
+            'framework': _framework(hub, record)}
+
+
+def _record(hub, project_id):
+    with hub.lock:
+        record = next((item for item in hub.records if item['id'] == project_id), None)
+    if record is None or not record.get('site'):
+        raise ValueError('등록된 프로젝트가 아닙니다.')
+    return record
+
+
+def _site(hub, record):
+    return sites.of(record, hub.resolve(record['id']).state)
+
+
+def _framework(hub, record):
+    import framework_update
+    return next((item for item in framework_update.status(hub)['projects'] if item['id'] == record['id']), None)
+
+
+def _backups(record, hub):
+    """The copies of the project's development database: made before each server rebuild, and by hand."""
+    folder = _site(hub, record).backups
+    files = sorted(folder.glob('*.dump'), key=lambda path: path.stat().st_mtime, reverse=True) if folder.is_dir() else []
+    import time as _time
+    return [{'name': path.name, 'size': path.stat().st_size, 'at': _time.strftime('%Y/%m/%d %H:%M:%S', _time.localtime(path.stat().st_mtime)),
+             'by_hand': '-by-hand-' in path.name} for path in files[:30]]
+
+
+def server_control(hub, project_id, part, action):
+    """Start again or stop a project's app server (its container) or its screens (the preview)."""
+    record = _record(hub, project_id)
+    own = record['site']
+    if part == 'api' and action in ('restart', 'stop', 'start'):
+        done = subprocess.run(['docker', action, own['api_container']], capture_output=True, text=True, timeout=180)
+        if done.returncode != 0:
+            raise RuntimeError(f'서버를 {"다시 띄우지" if action == "restart" else "끄지" if action == "stop" else "켜지"} 못했습니다: ' + done.stderr.strip()[-300:])
+    elif part == 'preview' and action in ('restart', 'stop', 'start'):
+        item = hub.previews.items.pop(project_id, None)
+        if item and item.get('process') and item['process'].poll() is None:
+            item['process'].terminate()
+            try:
+                item['process'].wait(10)
+            except subprocess.TimeoutExpired:
+                item['process'].kill()
+        if action != 'stop':
+            hub.previews.ensure(record)
+    else:
+        raise ValueError('알 수 없는 조작입니다.')
+    return environment(hub, project_id)
+
+
+def backup_now(hub, project_id):
+    record = _record(hub, project_id)
+    site = _site(hub, record)
+    import time as _time
+    site.backups.mkdir(parents=True, exist_ok=True)
+    path = site.backups / f"{site.db}-by-hand-{_time.strftime('%Y%m%d%H%M%S')}.dump"
+    with path.open('wb') as out:
+        done = subprocess.run(['docker', 'exec', sites.DB_CONTAINER, 'pg_dump', '-U', sites.DB_USER, '-Fc', site.db], stdout=out, stderr=subprocess.PIPE, timeout=900)
+    if done.returncode != 0 or path.stat().st_size == 0:
+        path.unlink(missing_ok=True)
+        raise RuntimeError('백업하지 못했습니다: ' + done.stderr.decode(errors='replace')[-300:])
+    return {**environment(hub, project_id), 'said': f'백업했습니다: {path.name}'}
+
+
+def restore(hub, project_id, name, confirm):
+    """Put the development database back to one of its copies (what was entered since is gone). The server is stopped meanwhile."""
+    record = _record(hub, project_id)
+    site, own = _site(hub, record), record['site']
+    path = site.backups / str(name or '')
+    if not name or '/' in name or not path.is_file():
+        raise ValueError('그런 백업이 없습니다.')
+    if confirm != own['slug']:
+        raise ValueError(f"되돌리려면 프로젝트의 영문 이름({own['slug']})을 그대로 적어 확인해 주세요.")
+    hub.resolve(project_id).require_idle('DB 되돌리기')
+    subprocess.run(['docker', 'stop', own['api_container']], capture_output=True, timeout=180)
+    try:
+        with path.open('rb') as source:
+            done = subprocess.run(['docker', 'exec', '-i', sites.DB_CONTAINER, 'pg_restore', '-U', sites.DB_USER, '-d', site.db, '--clean', '--if-exists', '--no-owner'],
+                                  stdin=source, capture_output=True, timeout=1800)
+    finally:
+        subprocess.run(['docker', 'start', own['api_container']], capture_output=True, timeout=180)
+    if done.returncode != 0 and b'error' in done.stderr.lower():
+        raise RuntimeError('되돌리는 중 문제가 있었습니다: ' + done.stderr.decode(errors='replace')[-400:])
+    return {**environment(hub, project_id), 'said': f'개발 DB를 {name} 로 되돌렸습니다.'}
 
 
 def change_ports(hub, project_id, body, log=None):

@@ -112,12 +112,14 @@ def _checks(root, frontend_changed, note):
     return problems
 
 
-def apply(hub, record, log=None):
+def apply(hub, record, log=None, force=False):
     """Bring one project to the platform's framework. Returns what happened, in words."""
     note = log or (lambda *_: None)
     app = hub.resolve(record['id'])
     now = version()
-    if (_read(app).get('version') == now and _read(app).get('state') in ('ok', 'broken')) or (_read(app).get('state') == 'held' and _read(app).get('tried') == now):
+    if force and _read(app).get('state') == 'held':
+        pass
+    elif (_read(app).get('version') == now and _read(app).get('state') in ('ok', 'broken')) or (_read(app).get('state') == 'held' and _read(app).get('tried') == now):
         return _read(app)        # done, or tried and put back: tried again when the platform's framework changes again
     if not Path(record['root']).is_dir():
         return {'state': 'missing'}

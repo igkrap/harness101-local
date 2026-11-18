@@ -119,3 +119,10 @@ def process():
     _harness()
     from framework import Framework
     return Framework().ok('GET', '/api/meta/process')
+
+
+def graph():
+    """The screens as one graph (GET /api/meta/graph): entities with their states and steps, and how later ones come of earlier ones."""
+    _harness()
+    from framework import Framework
+    return Framework().ok('GET', '/api/meta/graph')
