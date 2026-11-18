@@ -62,8 +62,8 @@ export function EnvironmentCheck({token}:{token:string}){
   </VStack></Card>;
 }
 
-type ProjectEnv={id:string;title:string;root:string;ports:{api_port:number;preview_port:number;ops_port:number};db:string;api_container:string;running:{api:boolean;preview:boolean};
-  items:EnvItem[];git:{branch:string;last:string;unrecorded:number};free:{api:number[];preview:number[];ops:number[]}};
+type ProjectEnv={id:string;title:string;root:string;ports:{api_port:number;preview_port:number};db:string;api_container:string;running:{api:boolean;preview:boolean};
+  items:EnvItem[];git:{branch:string;last:string;unrecorded:number};free:{api:number[];preview:number[]}};
 /** One project's development environment: its ports (moved to other free ones here), database and server, whether its servers run,
  *  its screen packages, where its records stand. */
 function ProjectEnvironment({id,token}:{id:string;token:string}){
@@ -76,11 +76,11 @@ function ProjectEnvironment({id,token}:{id:string;token:string}){
   }catch(e){setSaid(String(e instanceof Error?e.message:e));}finally{setBusy('');}}
   if(!env)return <Text color="secondary">{said||'읽는 중…'}</Text>;
   const changed=Object.entries(env.ports).some(([k,v])=>String(v)!==ports[k]);
-  const pick=(label:string,key:'api_port'|'preview_port'|'ops_port',list:number[])=><div style={{flex:'1 1 150px'}}>
+  const pick=(label:string,key:'api_port'|'preview_port',list:number[])=><div style={{flex:'1 1 150px'}}>
     <Selector label={label} value={ports[key]||''} isDisabled={!!busy} options={[...new Set([env.ports[key],...list])].map(port=>({value:String(port),label:String(port)+(port===env.ports[key]?' (지금)':'')}))} onChange={v=>setPorts(previous=>({...previous,[key]:v}))}/></div>;
   return <VStack gap={3} style={{marginTop:12}}>
     <HStack gap={3} vAlign="end" style={{flexWrap:'wrap'}}>
-      {pick('백엔드(API) 포트','api_port',env.free.api)}{pick('화면(미리보기) 포트','preview_port',env.free.preview)}{pick('운영 확인 포트','ops_port',env.free.ops)}
+      {pick('백엔드(API) 포트','api_port',env.free.api)}{pick('화면(미리보기) 포트','preview_port',env.free.preview)}
       <Button label={busy==='ports'?'바꾸는 중… (서버를 다시 띄움)':'포트 바꾸기'} variant="primary" isDisabled={!!busy||!token||!changed} onClick={()=>void post('/api/projects/change-ports',{id,...ports},'ports','포트를 바꿨습니다.')}/>
     </HStack>
     <Text color="secondary">DB {env.db} · 서버 {env.api_container} {env.running.api?'켜짐':'꺼짐'} · 미리보기 {env.running.preview?'켜짐':'꺼짐'}</Text>
@@ -124,10 +124,10 @@ export default function ProjectManager({token}:{token:string}){
       if(p.id===projectId)forgetProject();else setProjects(list=>list.filter(item=>item.id!==p.id));
     }catch(e){setError(String(e instanceof Error?e.message:e));}finally{setBusy(false);}}
   // the services of the new project: the first free ports by default, any other free one chosen from the list
-  const [free,setFree]=useState<{api:number[];preview:number[];ops:number[]}>({api:[],preview:[],ops:[]}),[ports,setPorts]=useState({api_port:'',preview_port:'',ops_port:''});
-  const loadPorts=()=>apiFetch('/api/projects/ports').then(r=>r.json()).then(d=>{if(d&&d.api){setFree(d);setPorts({api_port:String(d.api[0]??''),preview_port:String(d.preview[0]??''),ops_port:String(d.ops[0]??'')});}}).catch(()=>{});
+  const [free,setFree]=useState<{api:number[];preview:number[]}>({api:[],preview:[]}),[ports,setPorts]=useState({api_port:'',preview_port:''});
+  const loadPorts=()=>apiFetch('/api/projects/ports').then(r=>r.json()).then(d=>{if(d&&d.api){setFree(d);setPorts({api_port:String(d.api[0]??''),preview_port:String(d.preview[0]??'')});}}).catch(()=>{});
   useEffect(()=>{void loadPorts();},[]);
-  const portField=(label:string,key:'api_port'|'preview_port'|'ops_port',list:number[])=><div style={{flex:'1 1 150px'}}>
+  const portField=(label:string,key:'api_port'|'preview_port',list:number[])=><div style={{flex:'1 1 150px'}}>
     <Selector label={label} value={ports[key]} isDisabled={making} options={[...new Set([...(ports[key]?[Number(ports[key])]:[]),...list])].map(port=>({value:String(port),label:String(port)}))} onChange={v=>setPorts(previous=>({...previous,[key]:v}))}/></div>;
   const slugOk=/^[a-z][a-z0-9-]{1,23}[a-z0-9]$/.test(slug);
   async function make(){setMaking(true);setMakeError('');try{
@@ -148,7 +148,7 @@ export default function ProjectManager({token}:{token:string}){
       </HStack>
       <VStack gap={2}><Text weight="bold">개발 환경</Text>
         <HStack gap={3} vAlign="end" style={{flexWrap:'wrap'}}>
-          {portField('백엔드(API) 포트','api_port',free.api)}{portField('화면(미리보기) 포트','preview_port',free.preview)}{portField('운영 확인 포트','ops_port',free.ops)}
+          {portField('백엔드(API) 포트','api_port',free.api)}{portField('화면(미리보기) 포트','preview_port',free.preview)}
           <div style={{flex:'1 1 200px'}}><Text color="secondary">DB 이름: {slug?'mdi_'+slug.replace(/-/g,'_'):'(영문 이름으로 정해짐)'}</Text></div>
           <Button label="빈 포트 다시 찾기" variant="secondary" isDisabled={making} onClick={()=>void loadPorts()}/>
         </HStack>

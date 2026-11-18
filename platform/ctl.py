@@ -7,8 +7,8 @@ project's git, database or containers on its own. Answers are JSON on standard o
 the thing asked for was done.
 
   ctl.py projects                                   the projects and the kinds a new one can be
-  ctl.py create <slug> "<name>" [--kind business] [--api-port N --preview-port N --ops-port N]   a new project with the base framework (ports: the first free ones unless given)
-  ctl.py ports                                      the free ports for a new project's services (api / preview / ops)
+  ctl.py create <slug> "<name>" [--kind business] [--api-port N --preview-port N]   a new project with the base framework (ports: the first free ones unless given)
+  ctl.py ports                                      the free ports for a new project's services (api / preview)
   ctl.py rename <slug> [--title "<name>"] [--slug <new>]   another name: the one people see, and/or the English one (folder, database, server, packs)
   ctl.py remove <slug> --confirm <slug>             a project away for good (its packs are kept)
   ctl.py status [-p slug]                           git (work space, remote, unrecorded changes), packs, what the newest pack lacks
@@ -101,7 +101,6 @@ def main():
     parser.add_argument('--kind', default='business')
     parser.add_argument('--api-port', dest='api_port', default=None)
     parser.add_argument('--preview-port', dest='preview_port', default=None)
-    parser.add_argument('--ops-port', dest='ops_port', default=None)
     parser.add_argument('--confirm')
     parser.add_argument('--title')
     parser.add_argument('--slug')
@@ -120,7 +119,7 @@ def main():
         if args.command == 'create':
             need(2, 'create <slug> "<name>"')
             made = platform.call('POST', '/api/projects/create', {'slug': args.values[0], 'title': args.values[1], 'kind': args.kind,
-                                                                   'api_port': args.api_port, 'preview_port': args.preview_port, 'ops_port': args.ops_port})
+                                                                   'api_port': args.api_port, 'preview_port': args.preview_port})
             print(json.dumps({'ok': True, 'project': made}, ensure_ascii=False, indent=1))
             return 0
         if args.command == 'ports':

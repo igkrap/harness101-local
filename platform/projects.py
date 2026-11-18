@@ -38,8 +38,8 @@ def _free(start, taken):
         port += 1
 
 
-PORT_STARTS = {'api': 8084, 'preview': 5310, 'ops': 5301}
-PORT_KEYS = {'api': 'api_port', 'preview': 'preview_port', 'ops': 'ops_port'}
+PORT_STARTS = {'api': 8084, 'preview': 5310}
+PORT_KEYS = {'api': 'api_port', 'preview': 'preview_port'}
 
 
 def _bindable(port):
@@ -59,7 +59,7 @@ def taken_ports(hub, but=None):
 
 
 def free_ports(hub, count=8, but=None):
-    """For each service of a project (api: the app's server, preview: its screens, ops: the operating check) the first ports nobody holds."""
+    """For each service of a project (api: the app's server, preview: its screens) the first ports nobody holds."""
     taken, out = taken_ports(hub, but), {}
     for kind, start in PORT_STARTS.items():
         found, port = [], start
@@ -72,7 +72,7 @@ def free_ports(hub, count=8, but=None):
 
 
 def chosen_ports(hub, body, but=None):
-    """The ports asked for (body api_port / preview_port / ops_port), each checked to be free; the first free one where none is asked."""
+    """The ports asked for (body api_port / preview_port), each checked to be free; the first free one where none is asked."""
     taken, out = taken_ports(hub, but), {}
     for kind, key in PORT_KEYS.items():
         asked = body.get(key)
@@ -122,7 +122,7 @@ def create(hub, body, log=None):
         raise ValueError(f'{root} 폴더가 이미 있습니다.')
     source = Path(hub.records[0]['root'])        # the reference project: the first one, wherever it is and whatever it is called
     ports = chosen_ports(hub, body)              # as asked, or the first free ones
-    api_port, preview_port, ops_port = ports['api_port'], ports['preview_port'], ports['ops_port']
+    api_port, preview_port = ports['api_port'], ports['preview_port']
     try:
         note('기본 프레임워크 복사')
         root.mkdir(parents=True)
@@ -130,7 +130,7 @@ def create(hub, body, log=None):
         (root / 'harness').symlink_to(sites.ROOT / 'erp-harness')
         vcs.ensure_repo(root)
         default = hub.records[0]
-        own = {'slug': slug, 'title': title, 'kind': kind_id, 'db': database, 'api_container': f'mdi-{slug}-api', 'api_port': api_port, 'preview_port': preview_port, 'ops_port': ops_port,
+        own = {'slug': slug, 'title': title, 'kind': kind_id, 'db': database, 'api_container': f'mdi-{slug}-api', 'api_port': api_port, 'preview_port': preview_port,
                'template': Path(hub.records[0]['root']).name, 'template_commit': commit}
         record = {'id': hashlib.sha256(str(root.resolve()).encode()).hexdigest()[:16], 'name': slug, 'root': str(root.resolve()), 'preview_url': f'http://127.0.0.1:{preview_port}',
                   'model_url': default.get('model_url', 'http://127.0.0.1:8099/v1'), 'default_model': default.get('default_model', ''), 'test_db_url': f'jdbc:postgresql://{sites.DB_CONTAINER}:5432/{database}_test',

@@ -39,7 +39,6 @@ class Site:
     api_container: str
     api_port: int
     preview_url: str          # where the app's screens are served while they are being made
-    ops_port: int             # this machine's own operating copy
     first: bool = False       # the project the platform started with: it keeps the platform's own state folder and is the reference new projects are copied from
 
     @property
@@ -67,14 +66,6 @@ class Site:
         return SHARE / 'prod' / self.slug
 
     @property
-    def ops_project(self):       # the compose project of this machine's operating copy
-        return self.slug + '-ops'
-
-    @property
-    def ops_url(self):
-        return f'http://127.0.0.1:{self.ops_port}'
-
-    @property
     def credentials(self):       # the platform's own account for checking this project's screens
         return self.state / 'auth/verifier-login.json'
 
@@ -84,8 +75,8 @@ class Site:
 
 
 # The names the first project had before projects carried their own (used only until its record says otherwise).
-DEFAULT = Site('local-only', 'local-only', 'business', ROOT / 'local-only', ROOT / 'platform/state', 'mdi_local', 'mdi-local-api', 8083, 'http://127.0.0.1:5292', 5300, True)
-FIRST_OWN = {'slug': 'local-only', 'kind': 'business', 'db': 'mdi_local', 'api_container': 'mdi-local-api', 'api_port': 8083, 'preview_port': 5292, 'ops_port': 5300, 'first': True}
+DEFAULT = Site('local-only', 'local-only', 'business', ROOT / 'local-only', ROOT / 'platform/state', 'mdi_local', 'mdi-local-api', 8083, 'http://127.0.0.1:5292', True)
+FIRST_OWN = {'slug': 'local-only', 'kind': 'business', 'db': 'mdi_local', 'api_container': 'mdi-local-api', 'api_port': 8083, 'preview_port': 5292, 'first': True}
 _current = contextvars.ContextVar('site', default=None)
 _first = {'stamp': None, 'site': DEFAULT}
 
@@ -123,7 +114,7 @@ def of(record, state):
         import dataclasses
         return dataclasses.replace(DEFAULT, title=record['title']) if (record or {}).get('title') else DEFAULT
     return Site(own['slug'], own.get('title') or own['slug'], own.get('kind', 'business'), Path(record['root']), Path(state), own['db'], own['api_container'],
-                int(own['api_port']), f"http://127.0.0.1:{int(own['preview_port'])}", int(own['ops_port']), bool(own.get('first')))
+                int(own['api_port']), f"http://127.0.0.1:{int(own['preview_port'])}", bool(own.get('first')))
 
 
 def of_app(app):
