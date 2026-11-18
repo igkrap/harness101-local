@@ -81,20 +81,20 @@ def check(hub=None):
             pass
     out.append(_item('browser', '화면 검사 도구 (Playwright 크로미움)', '하네스가 브라우저로 화면을 검사한다', browser_ok, '준비됨' if browser_ok else '없거나 경로가 틀립니다',
                      {'label': '셋업', 'command': 'browser-check 설치', 'installs': False}))
-    for record in (hub.records if hub is not None else []):
-        root = Path(record['root'])
-        if not (root / 'frontend/package.json').is_file():
-            continue
-        title = (record.get('site') or {}).get('title') or record.get('name')
-        ready = (root / 'frontend/node_modules').is_dir()
-        out.append(_item(f"deps:{record['id']}", f'{title} 화면 도구 (node_modules)', '그 프로젝트의 화면 미리보기', ready, '설치됨' if ready else '없음',
-                         {'label': '설치', 'command': 'npm ci', 'installs': False}))
     return out
+
+
+def project(record):
+    """What one project needs inside its own folder (shown on that project's 개발 환경, not with the computer's)."""
+    root = Path(record['root'])
+    ready = (root / 'frontend/node_modules').is_dir()
+    return [_item(f"deps:{record['id']}", '화면 개발 부품 (node_modules)', '이 프로젝트의 화면 미리보기와 빌드', ready, '설치됨' if ready else '없음',
+                  {'label': '설치', 'command': 'npm ci', 'installs': False})]
 
 
 def fix(hub, item_id, sure=False):
     """Set one item up. Putting a program on the computer is done only with sure=True (asked twice)."""
-    items = {item['id']: item for item in check(hub)}
+    items = {item['id']: item for item in check(hub) + [one for record in hub.records for one in project(record)]}
     item = items.get(item_id)
     if item is None:
         raise ValueError(f'그런 점검 항목이 없습니다: {item_id}')
