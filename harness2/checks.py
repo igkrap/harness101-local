@@ -1632,7 +1632,16 @@ def over_checks(key, definition, framework):
             if row.get('status') not in action['from'] or not visible:
                 continue
             target = fresh()
-            if listed:
+            asked = [field for name in (part.get('ask') or {}).get(action['name'], []) for field in base['fields'] if field['name'] == name]
+            if listed and asked:          # taken with its fields: refused without them, kept with them
+                code, answer = framework.call('POST', f"{api}/{target['id']}/actions/{action['name']}", {'values': {}})
+                report.add(f"동작 {action['label']}: {', '.join(field['label'] for field in asked)} 없이 하면 거절되고 적으라고 나온다", code == 400 and '적어야' in str((answer or {}).get('detail', '')), f'{code} {answer}')
+                values = {field['name']: sample(field, framework, made) for field in asked}
+                code, after = framework.call('POST', f"{api}/{target['id']}/actions/{action['name']}", {'values': values})
+                kept = code == 200 and all(str(after.get(name)) == str(value) or (isinstance(value, str) and str(after.get(name, '')).startswith(value)) for name, value in values.items())
+                report.add(f"동작 {action['label']}: {', '.join(field['label'] for field in asked)}을(를) 적어 하면 그 값이 남고 {names.get(action['to'], action['to'])} 상태가 된다",
+                           code == 200 and after.get('status') == action['to'] and kept, f'{code} {after}')
+            elif listed:
                 code, after = framework.call('POST', f"{api}/{target['id']}/actions/{action['name']}")
                 report.add(f"동작 {action['label']}: 이 화면에서 되고 {names.get(action['to'], action['to'])} 상태가 된다", code == 200 and after.get('status') == action['to'], f'{code} {after}')
                 if part.get('statuses') and action['to'] not in part['statuses']:

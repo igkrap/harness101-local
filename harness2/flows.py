@@ -216,7 +216,9 @@ def simulate(flow, framework):
                     report.add(f"{title(key)}: 이 화면에서 {title(entity)} 을(를) 다음으로 넘기는 동작이 있다", False, f"상태 {labels.get(one.get('status'), one.get('status'))} 에서 할 동작이 없습니다")
                     moved.append(one)
                     continue
-                code, answer = framework.call('POST', f"/api/over/{key}/{one['id']}/actions/{step['name']}")
+                asked = [field for name in (part.get('ask') or {}).get(step['name'], []) for field in known[entity]['fields'] if field['name'] == name]
+                code, answer = framework.call('POST', f"/api/over/{key}/{one['id']}/actions/{step['name']}",
+                                              {'values': {field['name']: sample(field, framework, made) for field in asked}} if asked else None)
                 report.add(f"{title(key)}: {step['label']} 하면 {labels.get(step['to'], step['to'])} 상태가 된다", code == 200 and answer.get('status') == step['to'], f'{code} {answer}')
                 moved.append(answer if code == 200 else one)
             out = moved
