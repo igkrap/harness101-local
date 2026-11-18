@@ -2173,9 +2173,6 @@ def screen_checks(title, definition, record_to, app):
         sheet = {'path': '/api/x', 'fields': [{'name': field['name'], 'label': field['label'], 'required': field['required'], 'sample': 'x'} for field in definition['fields']
                                               if not field.get('showWhen') or _holds(field['showWhen'], {})]}
         criteria = standard_contract.screen_criteria(sheet)
-    if definition.get('from'):            # made from an earlier list: its screen has a tab that takes over from it
-        criteria.append({'id': f'C{len(criteria) + 1}', 'requirement_id': 'R1', 'description': '앞 자료에서 가져오는 탭이 있다',
-                         'check': {'op': 'visible', 'selector': 'role=tab[name=/에서 가져오기/]'}})
     if not any(definition.get(part) for part in ('summary', 'dashboard', 'over', 'calendar', 'tree', 'take', 'ledgerView')):
         criteria.append({'id': f'C{len(criteria) + 1}', 'requirement_id': 'R1', 'description': '한 건을 양식으로 뽑는 출력 버튼이 있다',
                          'check': {'op': 'visible', 'selector': '[role="toolbar"][aria-label="업무 버튼"] >> role=button[name="출력"]'}})

@@ -249,7 +249,7 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
             result['view'] = '원장 보기 화면 - ' + {'all': '현재 수량·묶음·들고 난 내역 셋 다 (탭)', 'balance': '현재 수량', 'lots': '묶음', 'moves': '들고 난 내역'}[definition['ledgerView'].get('show') or 'all']
         if definition.get('from'):
             part = definition['from']
-            result['view'] = f"{part['entity']} 에서 이어 만든다 (한 건에 한 번, 자기 화면의 '가져오기' 탭에서 목록으로)" + (f" / 상태 {', '.join(part['statuses'])} 인 건만" if part.get('statuses') else '') \
+            result['view'] = f"{part['entity']} 에서 이어 만든다 (한 건에 한 번)" + (f" / 상태 {', '.join(part['statuses'])} 인 건만" if part.get('statuses') else '') \
                 + (f" / 넘겨받는 값: {', '.join(part.get('carry') or [])}" if part.get('carry') else '') + (f" / 줄에서 적는 값: {', '.join(part.get('ask') or [])}" if part.get('ask') else '')
         if definition.get('take'):
             part = definition['take']
