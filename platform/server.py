@@ -581,6 +581,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if parsed.path=='/api/projects' and hasattr(self.server.platform,'catalog'):
                 self.send_json(self.server.platform.catalog());return
+            if parsed.path=='/api/projects/ports' and hasattr(self.server.platform,'catalog'):
+                import projects as _projects;self.send_json(_projects.free_ports(self.server.platform,but=(query.get('but') or [None])[0]));return
             app=self.context(query)
             import sites;sites._current.set(sites.of_app(app))      # this request is about that project (one thread per request)
             if parsed.path=='/api/chats':self.send_json(chat_store.list_chats(app));return

@@ -49,9 +49,15 @@ export default function ProjectManager({token}:{token:string}){
       setRemoving(null);setTypedName('');
       if(p.id===projectId)forgetProject();else setProjects(list=>list.filter(item=>item.id!==p.id));
     }catch(e){setError(String(e instanceof Error?e.message:e));}finally{setBusy(false);}}
+  // the services of the new project: the first free ports by default, any other free one chosen from the list
+  const [free,setFree]=useState<{api:number[];preview:number[];ops:number[]}>({api:[],preview:[],ops:[]}),[ports,setPorts]=useState({api_port:'',preview_port:'',ops_port:''});
+  const loadPorts=()=>apiFetch('/api/projects/ports').then(r=>r.json()).then(d=>{if(d&&d.api){setFree(d);setPorts({api_port:String(d.api[0]??''),preview_port:String(d.preview[0]??''),ops_port:String(d.ops[0]??'')});}}).catch(()=>{});
+  useEffect(()=>{void loadPorts();},[]);
+  const portField=(label:string,key:'api_port'|'preview_port'|'ops_port',list:number[])=><div style={{flex:'1 1 150px'}}>
+    <Selector label={label} value={ports[key]} isDisabled={making} options={[...new Set([...(ports[key]?[Number(ports[key])]:[]),...list])].map(port=>({value:String(port),label:String(port)}))} onChange={v=>setPorts(previous=>({...previous,[key]:v}))}/></div>;
   const slugOk=/^[a-z][a-z0-9-]{1,23}[a-z0-9]$/.test(slug);
   async function make(){setMaking(true);setMakeError('');try{
-    const response=await apiFetch('/api/projects/create',{method:'POST',headers:{'Content-Type':'application/json','X-Platform-Token':token},body:JSON.stringify({title:title.trim(),slug,kind})});
+    const response=await apiFetch('/api/projects/create',{method:'POST',headers:{'Content-Type':'application/json','X-Platform-Token':token},body:JSON.stringify({title:title.trim(),slug,kind,...ports})});
     const result=await response.json();if(!response.ok)throw Error(result.error||'프로젝트를 만들지 못했습니다.');switchProject(result.id);
   }catch(e){setMakeError(String(e instanceof Error?e.message:e));}finally{setMaking(false);}}
   return <VStack gap={5}>
@@ -66,6 +72,13 @@ export default function ProjectManager({token}:{token:string}){
         <div style={{flex:'1 1 220px'}}><TextInput label="영문 이름 (폴더·DB·팩 파일 이름)" value={slug} onChange={v=>setSlug(v.toLowerCase().replace(/[^a-z0-9-]/g,''))} placeholder="예: acme-erp" isDisabled={making}/></div>
         <Button label={making?'만드는 중… (1~3분)':'만들기'} variant="primary" isDisabled={making||!token||!title.trim()||!slugOk} onClick={make}/>
       </HStack>
+      <VStack gap={2}><Text weight="bold">개발 환경</Text>
+        <HStack gap={3} vAlign="end" style={{flexWrap:'wrap'}}>
+          {portField('백엔드(API) 포트','api_port',free.api)}{portField('화면(미리보기) 포트','preview_port',free.preview)}{portField('운영 확인 포트','ops_port',free.ops)}
+          <div style={{flex:'1 1 200px'}}><Text color="secondary">DB 이름: {slug?'mdi_'+slug.replace(/-/g,'_'):'(영문 이름으로 정해짐)'}</Text></div>
+          <Button label="빈 포트 다시 찾기" variant="secondary" isDisabled={making} onClick={()=>void loadPorts()}/>
+        </HStack>
+        <Text color="secondary">처음에는 비어 있는 첫 포트가 들어가 있습니다. 목록에는 다른 프로젝트나 이 컴퓨터가 쓰지 않는 포트만 나옵니다.</Text></VStack>
       <Text color="secondary">기본 프레임워크(공통 화면, 권한·메뉴, 화면 정의 엔진)를 그대로 담은 새 프로젝트를 만들고, 전용 개발 DB·서버·미리보기를 준비합니다. 화면은 0개에서 시작하며 셋업 팩도 이 이름으로 만들어집니다.</Text>
       {makeError&&<Text role="alert">{makeError}</Text>}
     </VStack></Card>

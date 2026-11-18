@@ -38,6 +38,60 @@ def _free(start, taken):
         port += 1
 
 
+PORT_STARTS = {'api': 8084, 'preview': 5310, 'ops': 5301}
+PORT_KEYS = {'api': 'api_port', 'preview': 'preview_port', 'ops': 'ops_port'}
+
+
+def _bindable(port):
+    with socket.socket() as probe:
+        try:
+            probe.bind(('127.0.0.1', port))
+            return True
+        except OSError:
+            return False
+
+
+def taken_ports(hub, but=None):
+    """Ports the platform and its projects hold (one project left out: the one being changed)."""
+    with hub.lock:
+        owned = [record.get('site') or {} for record in hub.records if record.get('id') != but]
+    return {5293, 5390, 8099, 5433} | {int(own[key]) for own in owned for key in PORT_KEYS.values() if own.get(key)}
+
+
+def free_ports(hub, count=8, but=None):
+    """For each service of a project (api: the app's server, preview: its screens, ops: the operating check) the first ports nobody holds."""
+    taken, out = taken_ports(hub, but), {}
+    for kind, start in PORT_STARTS.items():
+        found, port = [], start
+        while len(found) < count and port < start + 400:
+            if port not in taken and _bindable(port):
+                found.append(port)
+            port += 1
+        out[kind] = found
+    return out
+
+
+def chosen_ports(hub, body, but=None):
+    """The ports asked for (body api_port / preview_port / ops_port), each checked to be free; the first free one where none is asked."""
+    taken, out = taken_ports(hub, but), {}
+    for kind, key in PORT_KEYS.items():
+        asked = body.get(key)
+        if asked in (None, ''):
+            port = _free(PORT_STARTS[kind], taken)
+        else:
+            try:
+                port = int(asked)
+            except (TypeError, ValueError):
+                raise ValueError(f'{key} 는 숫자 포트입니다: {asked}')
+            if not 1024 < port < 65536:
+                raise ValueError(f'포트 {port} 은(는) 쓸 수 없습니다 (1025~65535).')
+            if port in taken or port in out.values() or not _bindable(port):
+                raise ValueError(f'포트 {port} 은(는) 다른 곳에서 쓰고 있습니다. 빈 포트 목록에서 고르세요.')
+        out[key] = port
+        taken = taken | {port}
+    return out
+
+
 def _template(source, target):
     """The committed files of the reference project, without its own screens."""
     raw = subprocess.run(['git', 'archive', '--format=tar', 'HEAD'], cwd=source, capture_output=True, timeout=300)
@@ -64,14 +118,11 @@ def create(hub, body, log=None):
     with hub.lock:
         if any((record.get('site') or {}).get('slug') == slug or Path(record['root']).name == slug for record in hub.records) or (sites.ROOT / slug).exists():
             raise ValueError(f'{slug} 은(는) 이미 있는 프로젝트 이름입니다.')
-        owned = [record.get('site') or {} for record in hub.records]
-        taken = {5293, 5390} | {int(own[key]) for own in owned for key in ('api_port', 'preview_port', 'ops_port') if own.get(key)}
     if root.exists():
         raise ValueError(f'{root} 폴더가 이미 있습니다.')
     source = Path(hub.records[0]['root'])        # the reference project: the first one, wherever it is and whatever it is called
-    api_port = _free(8084, taken)
-    preview_port = _free(5310, taken | {api_port})
-    ops_port = _free(5301, taken | {api_port, preview_port})
+    ports = chosen_ports(hub, body)              # as asked, or the first free ones
+    api_port, preview_port, ops_port = ports['api_port'], ports['preview_port'], ports['ops_port']
     try:
         note('기본 프레임워크 복사')
         root.mkdir(parents=True)
