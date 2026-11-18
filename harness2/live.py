@@ -53,13 +53,15 @@ def model_start(name, model):
         run = _run()
         if run:
             run['calls'] += 1
-            run['model'] = {'name': name, 'model': model, 'title': title, 'started': time.time(), 'ended': None, 'text': '', 'thinking': '', 'tokens': 0, 'chunks': 0}
+            run['model'] = {'name': name, 'model': model, 'title': title, 'started': time.time(), 'ended': None, 'first': None, 'text': '', 'thinking': '', 'tokens': 0, 'chunks': 0}
 
 
 def model_chunk(text='', thinking=''):
     with _lock:
         run = _run()
         if run and run['model']:
+            if not run['model']['chunks']:
+                run['model']['first'] = time.time()        # before this the model was reading its input
             run['model']['text'] += text
             run['model']['thinking'] += thinking
             run['model']['chunks'] += 1

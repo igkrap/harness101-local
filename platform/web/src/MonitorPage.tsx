@@ -7,7 +7,7 @@ type Check = { description: string; passed: boolean; detail: string; at: number;
 type Live = {
   goal: string; started: number; ended: number | null; ok: boolean | null; said: string; calls: number; tokens: number; now: number;
   steps: Step[]; checks: { total: number; passed: number; recent: Check[]; failed: Check[] };
-  model?: { name: string; model: string; title: string; started: number; ended: number | null; text: string; thinking: string; tokens: number; chunks: number; chars: number };
+  model?: { name: string; model: string; title: string; started: number; ended: number | null; first?: number | null; text: string; thinking: string; tokens: number; chunks: number; chars: number };
 };
 
 const clock = (seconds: number) => { const s = Math.max(0, Math.round(seconds)); return s >= 3600 ? `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
@@ -49,8 +49,9 @@ export default function MonitorPage() {
   const state = running ? "run" : live.ok ? "ok" : "fail";
   const elapsed = (live.ended ?? now) - live.started;
   const modelSeconds = model ? (model.ended ?? now) - model.started : 0;
-  if (model && model.chunks > 0 && first.current?.call !== model.started) first.current = { call: model.started, at: now };
-  const firstAt = model && first.current?.call === model.started ? first.current.at : null;
+  if (model && model.chunks === 0) first.current = { call: model.started, at: 0 };                 // seen reading: the first word's time is known here
+  else if (model && first.current?.call === model.started && !first.current.at) first.current.at = now;
+  const firstAt = model?.first ?? (model && first.current?.call === model.started && first.current.at ? first.current.at : null);
   const reading = !!model && !model.ended && model.chunks === 0;
   const writingSeconds = model && firstAt ? (model.ended ?? now) - firstAt : 0;
   const rate = model && writingSeconds > 1 ? model.chunks / writingSeconds : 0;
