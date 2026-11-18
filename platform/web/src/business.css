@@ -7,7 +7,7 @@ body { font-size: 13px; line-height: 1.45; background: var(--color-background-bo
   --astryx-card-padding: 10px; --astryx-section-padding: 10px; }
 
 /* Side bar: the theme's own colours; only the sizes are tightened */
-.astryx-side-nav { width: 208px !important; min-width: 208px !important; }
+.astryx-side-nav:not(.nav-collapsed) { width: 208px !important; min-width: 208px !important; }
 .astryx-side-nav-heading { padding: 4px 6px !important; }
 .astryx-side-nav-section > div:first-child span { font-size: 11px !important; font-weight: 600 !important; letter-spacing: .02em; }
 .astryx-side-nav-item { height: 28px !important; min-height: 28px !important; font-size: 13px !important; }

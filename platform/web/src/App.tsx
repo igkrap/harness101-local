@@ -550,8 +550,9 @@ export default function App() {
             icon={<Mark kind="brand" />}
           />
         }
-        topContent={<ProjectPicker/>}
-        footer={<Text size="sm" style={{color: data?.model.online ? "var(--color-text-success)" : "var(--color-text-warning)"}}>● AI {data?.model.online ? "준비됨" : "연결 확인 중"}</Text>}
+        className={collapsed ? "nav-collapsed" : undefined}
+        topContent={collapsed ? undefined : <ProjectPicker/>}
+        footer={<span title={`AI ${data?.model.online ? "준비됨" : "연결 확인 중"}`}><Text size="sm" style={{color: data?.model.online ? "var(--color-text-success)" : "var(--color-text-warning)"}}>●{collapsed ? "" : ` AI ${data?.model.online ? "준비됨" : "연결 확인 중"}`}</Text></span>}
         collapsible={{
           isCollapsed: collapsed,
           onCollapsedChange: setCollapsed,
