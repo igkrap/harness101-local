@@ -1134,7 +1134,7 @@ def record_checks(key, definition, framework):
             # what a screen showed before someone else changed it: saving it again on that is refused, and the same with the newest is kept
             stale, stale_answer = framework.call('PUT', f"{api}/{row['id']}", new_body(), headers={'X-Seen': str(row['updatedAt'])})
             report.add('수정: 조회한 뒤 다른 사람이 바꾼 자료를 그대로 저장하면 거절되고 다시 조회하라고 나온다', stale == 409 and '다시 조회' in str((stale_answer or {}).get('detail', '')), f'{stale} {stale_answer}')
-            fresh_code, fresh_answer = framework.call('PUT', f"{api}/{row['id']}", new_body(), headers={'X-Seen': str(updated['updatedAt'])})
+            fresh_code, fresh_answer = framework.call('PUT', f"{api}/{row['id']}", changed, headers={'X-Seen': str(updated['updatedAt'])})     # (the same content: what it points at stays)
             report.add('수정: 지금 모습으로 조회한 자료는 저장된다', fresh_code == 200, f'{fresh_code} {fresh_answer}')
         if code == 200:
             log_code, log = framework.call('GET', f"/api/data/{key}/{row['id']}/history")
@@ -2185,7 +2185,7 @@ def screen_checks(title, definition, record_to, app):
         sheet = {'path': '/api/x', 'fields': [{'name': field['name'], 'label': field['label'], 'required': field['required'], 'sample': 'x'} for field in definition['fields']
                                               if not field.get('showWhen') or _holds(field['showWhen'], {})]}
         criteria = standard_contract.screen_criteria(sheet)
-    if not any(definition.get(part) for part in ('summary', 'dashboard', 'over', 'calendar', 'tree', 'take', 'ledgerView')):
+    if not any(definition.get(part) for part in ('summary', 'dashboard', 'over', 'calendar', 'tree', 'take', 'ledgerView', 'from')):
         criteria.append({'id': f'C{len(criteria) + 1}', 'requirement_id': 'R1', 'description': '한 건을 양식으로 뽑는 출력 버튼이 있다',
                          'check': {'op': 'visible', 'selector': '[role="toolbar"][aria-label="업무 버튼"] >> role=button[name="출력"]'}})
     out = Path(record_to) / 'browser'
