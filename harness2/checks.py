@@ -1412,7 +1412,17 @@ def take_checks(key, definition, framework):
         if not report.add('남은 것 목록이 조회된다', code == 200 and isinstance(rows, list), f'{code} {str(rows)[:200]}'):
             return report
         open_rows = mine(rows)
-        report.add('방금 만든 앞 단계 자료가 남은 수량 그대로 목록에 있다', bool(open_rows) and all(row['remaining'] == row['ordered'] and row['done'] == 0 for row in open_rows), f'{open_rows}')
+        why = f'{open_rows}'
+        if not open_rows:              # say why it is missing: that is what the model needs to mend it
+            status = earlier.get('status') or {}
+            names = {value['code']: value['label'] for value in status.get('values', [])}
+            now = framework.ok('GET', f"/api/data/{part['from']}/{source['id']}").get('status')
+            if now in (status.get('closed') or []):
+                why = (f"앞 단계 자료가 {names.get(now, now)} 상태인데, {names.get(now, now)} 은(는) {earlier.get('title')} 의 끝난 상태(status.closed)라서 이어받기 목록에서 빠진다 "
+                       f"- 다음 단계로 이어져야 하는 상태는 끝난 상태에 넣지 않는다 ({earlier.get('title')} 의 status.closed 에서 빼야 한다)")
+            elif part.get('statuses') and now not in part['statuses']:
+                why = f"앞 단계 자료가 {names.get(now, now)} 상태인데, 이 목록은 {', '.join(names.get(code, code) for code in part['statuses'])} 상태만 보이고 그 상태로 가는 동작이 없다"
+        report.add('방금 만든 앞 단계 자료가 남은 수량 그대로 목록에 있다', bool(open_rows) and all(row['remaining'] == row['ordered'] and row['done'] == 0 for row in open_rows), why)
         if not open_rows:
             return report
         values = {field['name']: sample(field, framework, made) for field in target['fields'] if field['name'] in shape.get('ask', []) and not _computed(field)}
