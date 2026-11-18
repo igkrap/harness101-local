@@ -36,7 +36,13 @@ export default function FlowMapPage() {
     // the flow of work: how a later record comes of an earlier one (pointing alone is a dependency, drawn apart from the flow)
     const links = graph.edges.filter(e => !isMaster(e.from) && !isMaster(e.to) && e.how !== "choose");
     // dependencies: every field pointing at another screen, from the graph's dependsOn (the one source the framework keeps)
-    const deps = graph.nodes.flatMap(n => (n.dependsOn || []).map(d => ({ from: d.key, to: n.key, how: "choose", label: d.lines ? `${d.lines} · ${d.label}` : d.label } as GEdge)));
+    // one arrow per pair of screens, however many fields point the same way (출발 창고 · 도착 창고)
+    const byPair = new Map<string, GEdge>();
+    graph.nodes.forEach(n => (n.dependsOn || []).forEach(d => {
+      const name = d.lines ? `${d.lines} · ${d.label}` : d.label, pair = `${d.key}>${n.key}`, seen = byPair.get(pair);
+      if (seen) seen.label = `${seen.label} · ${name}`; else byPair.set(pair, { from: d.key, to: n.key, how: "choose", label: name });
+    }));
+    const deps = [...byPair.values()];
     // pieces of work: nodes joined by links; a node's column is the longest way to it from where the piece starts
     const touch = new Map<string, string[]>();
     links.forEach(e => { touch.set(e.from, [...(touch.get(e.from) || []), e.to]); touch.set(e.to, [...(touch.get(e.to) || []), e.from]); });
