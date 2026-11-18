@@ -264,13 +264,13 @@ class QueueManager:
                 if hub is not None:
                     hub.queue_planning = False
                 return
-            if plan and not sites.site().first:
-                # Requests a definition cannot answer are written as code by the older route, which knows only the first project's servers.
+            if plan and getattr(self.app, 'definition_route', False):
+                # A request no screen definition can answer is not written as code (no project is): it is said why.
                 if hub is not None:
                     hub.queue_planning = False
                 queue = self.get(queue_id)
                 reason = queue.get('route_reason') or queue.get('route_error') or ''
-                return self._finish(queue_id, 'failed', '이 요청은 화면 정의로 할 수 있는 일이 아니어서 처리하지 못했습니다' + (f' ({reason})' if reason else '') + '. 새로 만든 프로젝트에서는 화면 정의로 되는 요청만 받습니다.')
+                return self._finish(queue_id, 'failed', '이 요청은 화면 정의로 할 수 있는 일이 아니어서 처리하지 못했습니다' + (f' ({reason})' if reason else '') + '.')
             if plan:
                 try:
                     items = self._plan(queue_id)

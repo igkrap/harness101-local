@@ -34,18 +34,16 @@ class Workspaces:
         self.testing_model = False
         self.chat_active = False
         self.token = secrets.token_urlsafe(32)
-        self.runtime = str(Path(project).resolve() / 'harness')
-        if self.path.exists():
-            self.records = json.loads(self.path.read_text())
-        else:
-            self.records = [{'id': 'default', 'name': 'Local Inventory', 'root': str(Path(project).resolve()), 'preview_url': 'http://127.0.0.1:5292', 'model_url': 'http://127.0.0.1:8099/v1', 'default_model': 'mlx-community/Qwen3.8-27B-4bit', 'test_db_url': 'jdbc:postgresql://mdi-db:5432/mdi_local_test'}]
-            self.persist()
-        # The first project carries its names like every other (it had them fixed in the code before), so it can be renamed too.
         import sites
-        if not self.records[0].get('site'):
+        self.runtime = str(sites.ROOT / 'erp-harness')        # the harness belongs to the platform, not to any project
+        self.records = json.loads(self.path.read_text()) if self.path.exists() else []      # a new platform starts with no project
+        if not self.path.exists():
+            self.persist()
+        # A record from before projects carried their names gets them (as the project it was, which can be renamed like any other).
+        if self.records and not self.records[0].get('site'):
             self.records[0]['site'] = {**sites.FIRST_OWN, 'slug': Path(self.records[0]['root']).name, 'title': self.records[0].pop('title', None) or Path(self.records[0]['root']).name}
             self.persist()
-        self.runtime = str(Path(self.records[0]['root']) / 'harness')
+        self._own_state()
         renamed=False
         for record in self.records:
             name=Path(record['root']).name
@@ -56,8 +54,26 @@ class Workspaces:
         self.apps = {}
         from model_registry import ModelRegistry
         self.models = ModelRegistry(self.state, self.records)
-        self.resolve()
-        self.previews.ensure(self.records[0])        # the first project's screens are up whenever the platform is
+
+    # What a project kept in the platform's own state folder (the first project did, before no project was special): moved to the
+    # project's own folder like every other project's, once.
+    PROJECT_OWN = ('auth', 'chats', 'control.lock', 'deploys', 'framework.json', 'history.sqlite3', 'history.sqlite3-shm', 'history.sqlite3-wal',
+                   'queues', 'releases', 'candidates', 'candidates-archive', 'spec-validations', 'item-trial.lock')
+
+    def _own_state(self):
+        import re as _re, shutil
+        for record in self.records:
+            own = record.get('site') or {}
+            if not own.get('first'):
+                continue
+            target = self.state / 'projects' / record['id'] / 'runs'
+            target.mkdir(parents=True, exist_ok=True)
+            for item in list(self.state.iterdir()):
+                if item.name in self.PROJECT_OWN or (item.is_dir() and _re.fullmatch(r'[0-9a-f]{32}', item.name)):
+                    if not (target / item.name).exists():
+                        shutil.move(str(item), str(target / item.name))
+            own.pop('first', None)
+            self.persist()
 
     def configure_model(self, body, app):
         with self.lock:
@@ -91,12 +107,14 @@ class Workspaces:
     def resolve(self, project_id=None):
         from server import Platform
         with self.lock:
+            if not self.records:
+                raise LookupError('프로젝트가 없습니다. 먼저 프로젝트를 만드세요.')
             record = next((r for r in self.records if r['id'] == (project_id or self.records[0]['id'])), None)
             if record is None:
                 raise ValueError('등록된 프로젝트가 아닙니다.')
             key = record['id']
             if key not in self.apps:
-                state = self.state if key == self.records[0]['id'] else self.state / 'projects' / key / 'runs'
+                state = self.state / 'projects' / key / 'runs'
                 app = Platform(record['root'], state, self.port)
                 app.metadata, app.coordinator = record, self
                 app.token, app.lock = self.token, self.lock

@@ -91,6 +91,7 @@ type Gate = {
   evidence: Evidence | null;
 };
 type Snapshot = {
+  no_projects?: boolean;
   time: string;
   maintenance?: boolean;
   token: string;
@@ -400,14 +401,15 @@ export default function App() {
     [history, setHistory] = useState<{ id: string; events: Event[] }>({ id: "", events: [] }),
     [output, setOutput] = useState(""),
     [sourceOpened,setSourceOpened]=useState(false),
-    [chatOpened,setChatOpened]=useState(false);
+    [chatOpened,setChatOpened]=useState(false),
+    [firstRun,setFirstRun]=useState<string|null>(null);      // no project yet: the platform's token, for making the first one
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
     const controller = new AbortController();
     async function poll() {
       try {
         const next = await read<Snapshot>("/api/state", controller.signal);
-        setData(next);
+        if (next.no_projects) setFirstRun(next.token); else { setFirstRun(null); setData(next); }
         setOffline("");
       } catch (e) {
         if (!controller.signal.aborted) setOffline(String(e));
@@ -538,6 +540,12 @@ export default function App() {
     ? "외부 작업 실행 중"
     : labels[data?.phase || "idle"];
   const recent = events[events.length - 1];
+  if (firstRun !== null)        // a new platform: nothing to work on until a project is made (the computer's tools first)
+    return <div style={{ maxWidth: 1100, margin: "0 auto", padding: 24, display: "flex", flexDirection: "column", gap: 16, textAlign: "left" }}>
+      <div><Heading level={2}>Local Workshop</Heading><Text color="secondary">아직 프로젝트가 없습니다. 이 컴퓨터의 개발 환경을 확인한 뒤 첫 프로젝트를 만드세요.</Text></div>
+      <EnvironmentCheck token={firstRun} />
+      <ProjectManager token={firstRun} />
+    </div>;
   return (
     <HStack
       height="100dvh"

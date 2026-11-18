@@ -115,7 +115,7 @@ def create(hub, body, log=None):
         commit = framework_update.copy_into(root)        # the platform's framework, not any project's copy
         (root / 'harness').symlink_to(sites.ROOT / 'erp-harness')
         vcs.ensure_repo(root)
-        default = hub.records[0]
+        default = hub.records[0] if hub.records else {}          # model settings as the projects so far have them
         own = {'slug': slug, 'title': title, 'kind': kind_id, 'db': database, 'api_container': f'mdi-{slug}-api', 'api_port': api_port, 'preview_port': preview_port,
                'framework': commit}
         record = {'id': hashlib.sha256(str(root.resolve()).encode()).hexdigest()[:16], 'name': slug, 'root': str(root.resolve()), 'preview_url': f'http://127.0.0.1:{preview_port}',
@@ -151,15 +151,15 @@ def create(hub, body, log=None):
 
 def remove(hub, project_id, confirm):
     """Take a project away for good: its folder, development database, server and run records. Its setup packs already made
-    are kept (they may be installed somewhere). The first project cannot be removed, and the project's English name must be
+    are kept (they may be installed somewhere). The project's English name must be
     given again as confirmation - this cannot be undone."""
     with hub.lock:
         record = next((item for item in hub.records if item['id'] == project_id), None)
         if record is None:
             raise ValueError('등록된 프로젝트가 아닙니다.')
         own = record.get('site')
-        if not own or record is hub.records[0]:
-            raise ValueError('이 프로젝트는 플랫폼에서 지울 수 없습니다 (처음부터 있던 프로젝트이거나, 플랫폼이 만든 프로젝트가 아닙니다).')
+        if not own:
+            raise ValueError('이 프로젝트는 플랫폼에서 지울 수 없습니다 (플랫폼이 이름을 모르는 예전 기록입니다).')
         if confirm != own['slug']:
             raise ValueError(f"지우려면 프로젝트의 영문 이름({own['slug']})을 그대로 적어 확인해 주세요.")
         app = hub.apps.get(project_id)
@@ -335,8 +335,7 @@ def change_ports(hub, project_id, body, log=None):
     if api_moved:
         note('서버를 새 포트로 다시 띄움')
         subprocess.run(['docker', 'rm', '-f', own['api_container']], capture_output=True)
-        first = bool(own.get('first'))
-        state = hub.state if first else hub.state / 'projects' / record['id'] / 'runs'
+        state = hub.state / 'projects' / record['id'] / 'runs'
         Setup(sites.ROOT, api_port=own['api_port'], state=state, log=note, project=root, database=own['db'], api=own['api_container'], slug=own['slug']).run()
     return environment(hub, project_id)
 
@@ -383,11 +382,10 @@ def rename(hub, project_id, title=None, slug=None, allow_queue=False):
     if slug is None:
         return record
 
-    first = bool(own.get('first'))
     old, root, database = own['slug'], Path(record['root']), own['db']
-    # The first project stays where it is, beside the platform, and keeps the platform's own state folder; the others live under projects/.
-    new_root, new_database, new_api = (root.parent if first else HOME) / slug, 'mdi_' + slug.replace('-', '_'), f'mdi-{slug}-api'
-    state = hub.state if first else hub.state / 'projects' / record['id'] / 'runs'
+    # A project is renamed where it is (its folder keeps its place); its runs follow it under the platform's state.
+    new_root, new_database, new_api = root.parent / slug, 'mdi_' + slug.replace('-', '_'), f'mdi-{slug}-api'
+    state = hub.state / 'projects' / record['id'] / 'runs'
     item = hub.previews.items.pop(project_id, None)
     process = (item or {}).get('process')
     import os, signal
@@ -418,17 +416,15 @@ def rename(hub, project_id, title=None, slug=None, allow_queue=False):
             moved.append(lambda was=was, now=now: sql(f'ALTER DATABASE "{now}" RENAME TO "{was}";'))
         root.rename(new_root)
         moved.append(lambda: new_root.rename(root))
-        if first:
-            new_id, new_state = record['id'], None
-            ignore = sites.ROOT / '.gitignore'        # the platform's own git does not take a project in (each keeps its own history)
+        if new_root.parent == sites.ROOT:
+            ignore = sites.ROOT / '.gitignore'        # a project beside the platform stays out of the platform's own git (each keeps its own history)
             if ignore.is_file():        # the folder's line follows the name (the old name's line is not left behind)
                 lines = [line for line in ignore.read_text(encoding='utf-8').splitlines() if line.strip() not in (f'{old}/', f'{slug}/')]
                 ignore.write_text('\n'.join(lines).rstrip('\n') + f'\n{slug}/\n', encoding='utf-8')
-        else:
-            new_id = hashlib.sha256(str(new_root.resolve()).encode()).hexdigest()[:16]
-            new_state = hub.state / 'projects' / new_id
-            (hub.state / 'projects' / record['id']).rename(new_state)
-            moved.append(lambda: new_state.rename(hub.state / 'projects' / record['id']))
+        new_id = hashlib.sha256(str(new_root.resolve()).encode()).hexdigest()[:16]
+        new_state = hub.state / 'projects' / new_id
+        (hub.state / 'projects' / record['id']).rename(new_state)
+        moved.append(lambda: new_state.rename(hub.state / 'projects' / record['id']))
         for part in ('artifacts', 'backups', 'prod', 'packs'):
             source = sites.SHARE / part / old
             if source.is_dir() and not (sites.SHARE / part / slug).exists():
@@ -447,9 +443,7 @@ def rename(hub, project_id, title=None, slug=None, allow_queue=False):
         hub.apps.pop(project_id, None)
         own.update(slug=slug, db=new_database, api_container=new_api)
         record.update(id=new_id, name=slug, root=str(new_root.resolve()), test_db_url=f'jdbc:postgresql://{sites.DB_CONTAINER}:5432/{new_database}_test')
-        if first:
-            hub.runtime = str(new_root.resolve() / 'harness')
         hub.persist()
-    Setup(sites.ROOT, api_port=own['api_port'], state=hub.state if first else new_state / 'runs', project=new_root, database=new_database, api=new_api, slug=slug).run()
+    Setup(sites.ROOT, api_port=own['api_port'], state=new_state / 'runs', project=new_root, database=new_database, api=new_api, slug=slug).run()
     hub.previews.ensure(record)
     return record

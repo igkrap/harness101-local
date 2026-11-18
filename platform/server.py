@@ -575,7 +575,9 @@ class Handler(BaseHTTPRequestHandler):
         return not origin or origin in (f'http://127.0.0.1:{self.server.platform.port}',f'http://localhost:{self.server.platform.port}','http://127.0.0.1:5295','http://localhost:5295')
     def context(self, query):
         hub = self.server.platform
+        if hasattr(hub,'records') and not hub.records:return None        # no project yet: only the platform's own pages work
         return hub.resolve(query.get('project',[None])[0]) if hasattr(hub,'resolve') else hub
+    PLATFORM_PATHS=('/api/projects','/api/environment','/api/framework')
     def do_GET(self):
         if not self.allowed():self.send_json({'error':'허용되지 않은 접근입니다.'},403);return
         parsed=urlsplit(self.path);query=parse_qs(parsed.query)
@@ -591,6 +593,9 @@ class Handler(BaseHTTPRequestHandler):
             if parsed.path=='/api/projects/ports' and hasattr(self.server.platform,'catalog'):
                 import projects as _projects;self.send_json(_projects.free_ports(self.server.platform,but=(query.get('but') or [None])[0]));return
             app=self.context(query)
+            if app is None:
+                if parsed.path=='/api/state':self.send_json({'no_projects':True,'token':self.server.platform.token});return
+                if parsed.path.startswith('/api/'):self.send_json({'error':'프로젝트가 없습니다. 먼저 프로젝트를 만드세요.'},409);return
             import sites;sites._current.set(sites.of_app(app))      # this request is about that project (one thread per request)
             if parsed.path=='/api/chats':self.send_json(chat_store.list_chats(app));return
             if parsed.path=='/api/queues':self.send_json({'queues':app.queues.list()});return
@@ -714,6 +719,7 @@ class Handler(BaseHTTPRequestHandler):
             if not 0<length<=(4500000 if parsed.path.startswith('/api/chat') else 100000):raise ValueError('요청 크기가 올바르지 않습니다.')
             if self.headers.get('Content-Type','').split(';')[0]!='application/json':raise ValueError('JSON 요청이 필요합니다.')
             body=json.loads(self.rfile.read(length))
+            if app is None and not parsed.path.startswith(self.PLATFORM_PATHS):self.send_json({'error':'프로젝트가 없습니다. 먼저 프로젝트를 만드세요.'},409);return
             if not isinstance(body,dict):raise ValueError('JSON 객체가 필요합니다.')
             if parsed.path=='/api/model-configs' and hasattr(hub,'configure_model'):
                 self.send_json(hub.configure_model(body,app));return
