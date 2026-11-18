@@ -16,7 +16,7 @@ export function ProjectPicker(){
   const [projects,setProjects]=useState<Project[]>([]);
   useEffect(()=>{const c=new AbortController();apiFetch('/api/projects',{signal:c.signal}).then(async r=>{if(r.ok)return r.json();if(projectId!=='default')forgetProject();return {};}).then(d=>{if(c.signal.aborted)return;const list:Project[]=d.projects||[];
     if(list.length&&projectId!=='default'&&!list.some(p=>p.id===projectId)){forgetProject();return;}setProjects(list);}).catch(()=>{});return()=>c.abort();},[]);
-  return <Selector label="프로젝트" size="sm" isLabelHidden value={projectId} options={projects.map(p=>({value:p.id,label:titleOf(p),disabled:!p.available}))} onChange={switchProject}/>;
+  return <Selector label="프로젝트" size="sm" isLabelHidden placement="below" value={projectId} options={projects.map(p=>({value:p.id,label:titleOf(p),disabled:!p.available}))} onChange={switchProject}/>;
 }
 type EnvWay={way:string;label:string;command:string};
 type EnvItem={id:string;label:string;why:string;state:'ok'|'missing'|'off';detail:string;find:boolean;fix:{label:string;command:string;installs:boolean;manual?:boolean;note?:string;ways?:EnvWay[]}|null};
@@ -87,7 +87,7 @@ function ProjectEnvironment({id,token}:{id:string;token:string}){
   if(!env)return <Text color="secondary">{said||'읽는 중…'}</Text>;
   const changed=Object.entries(env.ports).some(([k,v])=>String(v)!==ports[k]);
   const pick=(label:string,key:'api_port'|'preview_port',list:number[])=><div style={{flex:'1 1 150px'}}>
-    <Selector label={label} value={ports[key]||''} isDisabled={!!busy} options={[...new Set([env.ports[key],...list])].map(port=>({value:String(port),label:String(port)+(port===env.ports[key]?' (지금)':'')}))} onChange={v=>setPorts(previous=>({...previous,[key]:v}))}/></div>;
+    <Selector placement="below" label={label} value={ports[key]||''} isDisabled={!!busy} options={[...new Set([env.ports[key],...list])].map(port=>({value:String(port),label:String(port)+(port===env.ports[key]?' (지금)':'')}))} onChange={v=>setPorts(previous=>({...previous,[key]:v}))}/></div>;
   const section=(title:string,body:React.ReactNode)=><div style={{border:'1px solid var(--color-border)',borderRadius:6,padding:10}}><VStack gap={2}><Text style={{fontWeight:600}}>{title}</Text>{body}</VStack></div>;
   const dot=(on:boolean)=><Text style={{color:on?'var(--color-text-success)':'var(--color-text-warning)'}}>● {on?'켜짐':'꺼짐'}</Text>;
   const serve=(part:'api'|'preview',on:boolean)=><>
@@ -109,7 +109,7 @@ function ProjectEnvironment({id,token}:{id:string;token:string}){
       <HStack gap={2} vAlign="center" style={{flexWrap:'wrap'}}><Text>{env.db}</Text><Text color="secondary">· 마지막 백업 {env.backups[0]?.at||'없음'}</Text>
         <Button label={busy==='backup'?'백업하는 중…':'지금 백업'} size="sm" variant="secondary" isDisabled={!!busy||!token} onClick={()=>void post('/api/projects/backup',{id},'backup','백업했습니다.')}/></HStack>
       {!!env.backups.length&&<HStack gap={2} vAlign="end" style={{flexWrap:'wrap'}}>
-        <div style={{flex:'1 1 280px'}}><Selector label="백업에서 되돌리기" value={restoring} isDisabled={!!busy} options={[{value:'',label:'고르세요'},...env.backups.map(b=>({value:b.name,label:`${b.at} · ${b.by_hand?'직접 백업':'서버 다시 만들기 전'} · ${mb(b.size)}`}))]} onChange={v=>{setRestoring(v);setTyped('');}}/></div></HStack>}
+        <div style={{flex:'1 1 280px'}}><Selector placement="below" label="백업에서 되돌리기" value={restoring} isDisabled={!!busy} options={[{value:'',label:'고르세요'},...env.backups.map(b=>({value:b.name,label:`${b.at} · ${b.by_hand?'직접 백업':'서버 다시 만들기 전'} · ${mb(b.size)}`}))]} onChange={v=>{setRestoring(v);setTyped('');}}/></div></HStack>}
       {restoring&&<VStack gap={2}><Text>되돌리면 그 백업 뒤에 입력한 개발 자료가 사라집니다. 확인하려면 프로젝트의 영문 이름을 적으세요.</Text>
         <HStack gap={2} vAlign="end"><div style={{flex:1}}><TextInput label="영문 이름" value={typed} onChange={setTyped}/></div>
           <Button label={busy==='restore'?'되돌리는 중…':'되돌리기'} variant="primary" isDisabled={!!busy||!token||!typed} onClick={()=>void post('/api/projects/restore',{id,name:restoring,confirm:typed},'restore','되돌렸습니다.').then(ok=>{if(ok){setRestoring('');setTyped('');}})}/>
@@ -180,7 +180,7 @@ export default function ProjectManager({token}:{token:string}){
   const loadPorts=()=>apiFetch('/api/projects/ports').then(r=>r.json()).then(d=>{if(d&&d.api){setFree(d);setPorts({api_port:String(d.api[0]??''),preview_port:String(d.preview[0]??'')});}}).catch(()=>{});
   useEffect(()=>{void loadPorts();},[]);
   const portField=(label:string,key:'api_port'|'preview_port',list:number[])=><div style={{flex:'1 1 150px'}}>
-    <Selector label={label} value={ports[key]} isDisabled={making} options={[...new Set([...(ports[key]?[Number(ports[key])]:[]),...list])].map(port=>({value:String(port),label:String(port)}))} onChange={v=>setPorts(previous=>({...previous,[key]:v}))}/></div>;
+    <Selector placement="below" label={label} value={ports[key]} isDisabled={making} options={[...new Set([...(ports[key]?[Number(ports[key])]:[]),...list])].map(port=>({value:String(port),label:String(port)}))} onChange={v=>setPorts(previous=>({...previous,[key]:v}))}/></div>;
   const slugOk=/^[a-z][a-z0-9-]{1,23}[a-z0-9]$/.test(slug);
   async function make(){setMaking(true);setMakeError('');try{
     const response=await apiFetch('/api/projects/create',{method:'POST',headers:{'Content-Type':'application/json','X-Platform-Token':token},body:JSON.stringify({title:title.trim(),slug,kind,...ports})});
