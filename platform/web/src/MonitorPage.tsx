@@ -22,6 +22,7 @@ export default function MonitorPage() {
   const [offset, setOffset] = useState(0);          // server clock minus this browser's, so elapsed times tick between reads
   const [tick, setTick] = useState(0);
   const out = useRef<HTMLPreElement>(null), follow = useRef(true);
+  const first = useRef<{ call: number; at: number } | null>(null);      // when the model's first word was seen (before it: reading its input)
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>, stop = false;
     const read = async () => {
@@ -48,7 +49,11 @@ export default function MonitorPage() {
   const state = running ? "run" : live.ok ? "ok" : "fail";
   const elapsed = (live.ended ?? now) - live.started;
   const modelSeconds = model ? (model.ended ?? now) - model.started : 0;
-  const rate = model && modelSeconds > 0.5 ? (model.ended ? model.tokens : model.chunks) / modelSeconds : 0;
+  if (model && model.chunks > 0 && first.current?.call !== model.started) first.current = { call: model.started, at: now };
+  const firstAt = model && first.current?.call === model.started ? first.current.at : null;
+  const reading = !!model && !model.ended && model.chunks === 0;
+  const writingSeconds = model && firstAt ? (model.ended ?? now) - firstAt : 0;
+  const rate = model && writingSeconds > 1 ? model.chunks / writingSeconds : 0;
   const pct = live.checks.total ? Math.round(live.checks.passed / live.checks.total * 100) : 0;
   const shown = thinking && model?.thinking ? model.thinking : model?.text ?? "";
 
@@ -65,7 +70,7 @@ export default function MonitorPage() {
       <div className="mon-stat"><span>경과</span><b>{clock(elapsed)}</b></div>
       <div className="mon-stat"><span>모델 호출</span><b>{live.calls}<small>회</small></b></div>
       <div className="mon-stat"><span>생성 토큰</span><b>{(live.tokens + (writing ? model!.chunks : 0)).toLocaleString()}</b></div>
-      <div className="mon-stat"><span>속도</span><b>{writing ? rate.toFixed(1) : model ? rate.toFixed(1) : "-"}<small>토큰/초</small></b></div>
+      <div className="mon-stat"><span>{reading ? "모델이 입력을 읽는 중" : "쓰는 속도"}</span><b>{reading ? clock(modelSeconds) : rate ? rate.toFixed(1) : "-"}<small>{reading ? "" : "토큰/초"}</small></b></div>
       <div className="mon-stat"><span>점검</span><b className={live.checks.failed.length ? "is-bad" : ""}>{live.checks.passed}<small>/{live.checks.total}</small></b>
         <div className="mon-bar"><i style={{ width: `${pct}%` }} className={live.checks.failed.length ? "is-bad" : ""} /></div></div>
     </section>
@@ -88,7 +93,7 @@ export default function MonitorPage() {
             {!!model?.thinking && <button type="button" className={thinking ? "on" : ""} onClick={() => setThinking(v => !v)}>생각 보기</button>}</div>
         </div>
         <pre ref={out} className="mon-terminal" onScroll={e => { const el = e.currentTarget; follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40; }}>
-          {shown || (model ? "" : "모델 호출을 기다리는 중…")}{writing && <span className="mon-caret" />}
+          {shown || (reading ? `요청과 업무 안내서, 부품 설명을 읽는 중… (${clock(modelSeconds)})` : model ? "" : "모델 호출을 기다리는 중…")}{writing && <span className="mon-caret" />}
         </pre>
       </section>
     </div>
