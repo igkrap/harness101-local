@@ -548,6 +548,8 @@ export default function App() {
             icon={<Mark kind="brand" />}
           />
         }
+        topContent={<ProjectPicker/>}
+        footer={<Text size="sm" style={{color: data?.model.online ? "var(--color-text-success)" : "var(--color-text-warning)"}}>● AI {data?.model.online ? "준비됨" : "연결 확인 중"}</Text>}
         collapsible={{
           isCollapsed: collapsed,
           onCollapsedChange: setCollapsed,
@@ -563,34 +565,6 @@ export default function App() {
         ))}
       </SideNav>
       <VStack gap={0} style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
-        <HStack
-          paddingInline={6}
-          paddingBlock={1}
-          className="workspace-toolbar"
-          hAlign="between"
-          vAlign="center"
-          gap={3}
-          style={{
-            minHeight:40,flexShrink:0,
-            borderBottom: "1px solid var(--color-border)",
-            flexWrap: "wrap",
-          }}
-        >
-          <ProjectPicker/>
-          <HStack gap={4} vAlign="center">
-            <Text
-              style={{
-                color: data?.model.online
-                  ? "var(--color-text-success)"
-                  : "var(--color-text-warning)",
-              }}
-            >
-              ● AI {data?.model.online ? "준비됨" : "연결 확인 중"}
-            </Text>
-            {data?.active&&<Button label="실행 중지" variant="ghost" size="sm" isDisabled={busy||data.active.status==="stopping"} onClick={stop}/>}
-            {page !== "home" && <Button label="새 요청" onClick={() => { navigate("home"); setFocusKey(n => n + 1); }} size="sm" />}
-          </HStack>
-        </HStack>
         <VStack
           className="workspace-content"
           padding={4}
