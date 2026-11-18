@@ -10,6 +10,8 @@ import re
 import live
 import llm
 
+FIXED_END = '\n=== 여기까지는 늘 같다. 아래는 이 프로젝트의 지금 상태와 요청이다 ===\n\n'      # what is above becomes the system message (the model server keeps it)
+
 PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰지 않는다. 아래 요청을 읽고 답을 JSON 하나로만 하라(설명, 코드 블록 표시 없이).
 
 답의 형식: {"action": "create" 또는 "change", "key": "<자료 이름: 영문 소문자·밑줄, 30자 이내, 예 customer, sales_order, order_balance_summary>", "definition": <정의>}
@@ -18,15 +20,6 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 %(guide)s
 프레임워크가 지원하는 목록:
 %(capabilities)s
-
-이미 있는 자료(정의):
-%(existing)s
-
-업무 흐름과 기준 정보 (지금 시스템의 화면 정의에서 프레임워크가 읽어 낸 것 - 사람이 보는 업무 안내서와 같은 내용):
-%(process)s
-
-이 프로젝트의 업무 원칙 (사용자가 정해 둔 것 - 있으면 따른다. 없으면 요청과 그 업무의 상식으로 정한다):
-%(principles)s
 
 규칙:
 - 요청이 이미 있는 자료를 고치는 것이면 {"action": "change", "key": "<그 자료의 key>"} 까지만 답한다(그러면 그 자료의 정의 전체를 받아서 고치게 된다).
@@ -45,7 +38,7 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 - 번호(serial), 상태(status)는 그 업무에 실제로 필요할 때만 붙인다. 줄 표(lines)는 하나의 마스터에 디테일이 여러 개 딸린 기준 정보에만 붙인다 (품목의 공정 순서, 점검표의 점검 항목). BOM 은 상위 품목·하위 자재·소요량 한 쌍을 한 건으로 등록한다 (줄 표 없이, noCycle 은 상위 품목과 하위 자재 항목에, 겹치면 안 되는 조합은 상위·하위 쌍). 이런 기준 정보는 업무보다 먼저 등록해 두는 것이다. 조합 기준 정보에는 uniqueBy(품목당 하나 등), 줄 항목 unique(같은 자재 두 줄 금지), noCycle(상위·하위가 같은 자료를 가리킬 때 순환 금지)을 요청에 맞게 적는다. 업무 흐름의 자료(작업지시, 생산실적 ...)에는 줄 표를 붙이지 않고, 자재나 공정이 필요하면 그 기준 정보를 가리킨다. 요청이 개수나 범위를 말하면("하나만", "0~100") 그대로 적는다.
 - required 는 그 값 없이는 자료가 성립하지 않는 항목에만 true.
 - search 는 조회 조건으로 쓸 항목(1~3개, 줄 항목 제외)에 true.
-- 다른 자료에서 고르는 항목(거래처, 품목, 장비, 사원, 부서 ...)은 글자로 받지 말고 ref 로 한다. 이미 있는 자료만 가리킬 수 있고, ref.label 과 fill 의 값은 그 자료에 실제로 있는 항목 name 이어야 한다(위 '이미 있는 자료' 참고).
+- 다른 자료에서 고르는 항목(거래처, 품목, 장비, 사원, 부서 ...)은 글자로 받지 말고 ref 로 한다. 이미 있는 자료만 가리킬 수 있고, ref.label 과 fill 의 값은 그 자료에 실제로 있는 항목 name 이어야 한다(아래 '이미 있는 자료' 참고).
 - 정해진 값 중에서 고르는 항목은 code 로 한다. 맞는 공통 코드 그룹이 있으면 그것을 쓰고, 없으면 그 정의의 codeGroups 에 그룹과 값을 선언한다 (단위, 거래처 구분, 점검 결과 ...). 값이 정해져 있지 않은 것만 글자(text)로 둔다.
 - 단가·요율·표준 시간처럼 대상과 날짜에 따라 정해지는 값은 그 값을 담은 기준 정보(예: 품목 단가 - 거래처·품목별, 적용 기간, effective by [거래처, 품목])를 두고, 쓰는 자료에 lookups 로 찾아 채운다 (거래처 단가 → 없으면 품목 기본 단가처럼 여러 개를 순서대로).
 - "~하면 ~못 하게" 같은 요청은 rules 로 적는다. 규칙이 가리키는 자료와 항목은 이미 있어야 한다.
@@ -56,6 +49,18 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 - 이미 있는 자료의 건마다 그 뒤에 일어난 일을 남기는 화면(요청이 "~에서 생성한 데이터 기반으로", "~한 것 중", "~한 사람 중", "~한 건을", "~에 대해"처럼 앞의 자료를 가리킬 때)은 따로 적는 자료로 만들지 않고 "from": {"entity": "<앞 자료 key>"} 를 적는다 - 앞 자료를 가리키는 항목, 한 건에 한 번만, 같은 이름 항목 넘겨받기, 를 프레임워크가 갖춘다. 화면 하나로 끝나므로 steps 로 나누지 않는다. 앞 자료와 같은 이름·같은 종류의 항목을 두면 그 값이 넘어온다.
 - 요청이 업무 흐름 속 화면을 만들거나 고치는 것이면 그 흐름 전체를 보고 정한다: 앞뒤 단계를 잇는 길(이어받기 화면, 자동 처리, 한도)이 끊기지 않게, 같은 수량이 두 길로 두 번 처리되지 않게 한다. '판정하는 흐름'은 적용 전에 하네스가 끝까지 돌려 본다.
 - 정의로 할 수 없는 요청이면 {"action": "other", "reason": "<이유 한 줄>"} 로만 답한다. 해당하는 경우: 아래 '코드로 만든 화면'을 고치는 요청, 로그인·메뉴·권한·디자인 같은 시스템 요청, 프레임워크 안내에 없는 동작.
+
+%(fixed_end)s이 프로젝트의 공통 코드 그룹 (codeGroups - 있으면 쓴다):
+%(code_groups)s
+
+이미 있는 자료(정의):
+%(existing)s
+
+업무 흐름과 기준 정보 (지금 시스템의 화면 정의에서 프레임워크가 읽어 낸 것 - 사람이 보는 업무 안내서와 같은 내용):
+%(process)s
+
+이 프로젝트의 업무 원칙 (사용자가 정해 둔 것 - 있으면 따른다. 없으면 요청과 그 업무의 상식으로 정한다):
+%(principles)s
 
 코드로 만든 화면(정의가 아니라서 여기서 고칠 수 없음): %(code_screens)s
 
@@ -486,10 +491,15 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
     entity the request is about, then gets that definition whole. Whatever went missing without being asked
     for goes back to the model once, so a rule or a formula is never dropped silently."""
     capabilities = framework.capabilities()
-    shown = {key: capabilities[key] for key in ('parts', 'fieldTypes', 'builtInRules', 'ruleTypes', 'codeGroups') if key in capabilities}
-    base = [{'role': 'system', 'content': 'JSON only'},
-            {'role': 'user', 'content': PROMPT % {'guide': capabilities.get('guide', ''), 'capabilities': json.dumps(shown, ensure_ascii=False, indent=1), 'existing': _existing(framework), 'process': process(framework), 'principles': principles(), 'request': request,
-                                                  'code_screens': ', '.join(code_screens()) or '(없음)'}}]
+    shown = {key: capabilities[key] for key in ('parts', 'fieldTypes', 'builtInRules', 'ruleTypes') if key in capabilities}      # the same for every project and request
+    groups = json.dumps(capabilities.get('codeGroups') or [], ensure_ascii=False, indent=1)      # this project's common codes: they change
+    whole = PROMPT % {'guide': capabilities.get('guide', ''), 'capabilities': json.dumps(shown, ensure_ascii=False, indent=1), 'existing': _existing(framework), 'process': process(framework), 'principles': principles(), 'request': request, 'fixed_end': FIXED_END, 'code_groups': groups,
+                      'code_screens': ', '.join(code_screens()) or '(없음)'}
+    # What is the same for every request (the guide, the parts, the rules) is the system message: the model server keeps a copy of
+    # it at the message's end and every later request starts from there, reading only the project's state and the request.
+    fixed, _, varying = whole.partition(FIXED_END)
+    base = [{'role': 'system', 'content': 'JSON only\n\n' + fixed},
+            {'role': 'user', 'content': varying}]
     stored = {item['key']: item['definition'] for item in real(framework, trial_prefix)}
     messages, error, answer, target, asked_back, compared, doubt = list(base), '', '', None, False, 0, ''
     told_done = False      # a step told once that the work it put before itself is there already

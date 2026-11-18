@@ -41,6 +41,9 @@ def stop(slug=None):
         response = run.get('_response')
     if response is not None:
         try:
+            import socket
+            if getattr(response, 'sock', None) is not None:
+                response.sock.shutdown(socket.SHUT_RDWR)      # wakes a read that is waiting for the model at once
             response.close()
         except Exception:
             pass

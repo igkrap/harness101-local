@@ -1,6 +1,8 @@
 """One way to ask the local model, with everything it was given and everything it answered written down."""
 import json
 import time
+import http.client
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -20,29 +22,34 @@ def ask(messages, record_to, name='model', max_tokens=3000, temperature=0.2):
                'presence_penalty': 1.5, 'repetition_penalty': 1.0, 'chat_template_kwargs': {'enable_thinking': False}}
     started = time.time()
     payload = dict(payload, stream=True, stream_options={'include_usage': True})       # written as it comes, so the platform's monitor can show it
-    request = urllib.request.Request(URL + '/chat/completions', data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'})
     live.model_start(name, payload['model'], messages)
     parts, usage = [], None
+    where = urllib.parse.urlsplit(URL)
+    connection = http.client.HTTPConnection(where.hostname, where.port or 80, timeout=900)
     try:
-        with urllib.request.urlopen(request, timeout=900) as response:
-            live.attach(response)                         # the stop button closes it, even while the model is still reading
-            for raw in response:
-                live.stopping()
-                line = raw.decode('utf-8', 'replace').strip()
-                if not line.startswith('data:'):
-                    continue
-                data = line[5:].strip()
-                if data == '[DONE]':
-                    break
-                try:
-                    chunk = json.loads(data)
-                except ValueError:
-                    continue
-                usage = chunk.get('usage') or usage
-                delta = ((chunk.get('choices') or [{}])[0] or {}).get('delta') or {}
-                if delta.get('content') or delta.get('reasoning_content') or delta.get('reasoning'):
-                    parts.append(delta.get('content') or '')
-                    live.model_chunk(delta.get('content') or '', delta.get('reasoning_content') or delta.get('reasoning') or '')
+        live.attach(connection)                           # the stop button closes it - also while the model is still reading (no answer yet)
+        live.stopping()
+        connection.request('POST', where.path + '/chat/completions', body=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'})
+        response = connection.getresponse()
+        if response.status != 200:
+            raise RuntimeError(f'모델 서버가 거절했습니다 ({response.status}): ' + response.read().decode('utf-8', 'replace')[:300])
+        for raw in response:
+            live.stopping()
+            line = raw.decode('utf-8', 'replace').strip()
+            if not line.startswith('data:'):
+                continue
+            data = line[5:].strip()
+            if data == '[DONE]':
+                break
+            try:
+                chunk = json.loads(data)
+            except ValueError:
+                continue
+            usage = chunk.get('usage') or usage
+            delta = ((chunk.get('choices') or [{}])[0] or {}).get('delta') or {}
+            if delta.get('content') or delta.get('reasoning_content') or delta.get('reasoning'):
+                parts.append(delta.get('content') or '')
+                live.model_chunk(delta.get('content') or '', delta.get('reasoning_content') or delta.get('reasoning') or '')
     except live.Stopped:
         raise
     except Exception:
@@ -50,6 +57,7 @@ def ask(messages, record_to, name='model', max_tokens=3000, temperature=0.2):
         raise
     finally:
         live.attach(None)
+        connection.close()
         live.model_end(usage)
     text = ''.join(parts)
     payload = {key: value for key, value in payload.items() if key not in ('stream', 'stream_options')}
