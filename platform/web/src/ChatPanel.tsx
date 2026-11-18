@@ -316,8 +316,8 @@ export default function ChatPanel({ token, model, online, modelBusy }: { token: 
   const status = !online ? "모델 연결 대기 중" : modelBusy && !pending ? "에이전트 작업이 모델 사용 중" : pending ? phase : "준비됨";
   const lastAssistant = [...turns].reverse().find(t => t.role === "assistant");
   const suggestions = mode === "project"
-    ? ["이 프로젝트의 전체 구조를 설명해줘", "품목 등록 화면의 저장 흐름을 분석해줘", "로그인 인증은 어떻게 동작해?"]
-    : ["React에서 상태 관리 방법들을 비교해줘", "이 SQL 쿼리를 최적화하는 방법은?", "Spring Boot 트랜잭션 전파를 설명해줘"];
+    ? ["이 프로젝트의 전체 구조를 설명해줘", "업무 흐름을 순서대로 알려줘", "기준 정보는 어떤 것들이 있어?"]
+    : ["거래처에 보낼 안내 문장을 다듬어줘", "재고 관리에서 흔히 쓰는 용어를 알려줘", "회의 내용을 요약해줘"];
 
   return <section className={`chatx ${sidebarOpen ? "" : "chatx-collapsed"}`} aria-label="로컬 모델 채팅">
     <aside className="chatx-side" aria-label="대화 목록">
@@ -354,9 +354,9 @@ export default function ChatPanel({ token, model, online, modelBusy }: { token: 
         <div className="chatx-title">{active?.title || "새 대화"}</div>
         {!active && <div className="chatx-seg" role="group" aria-label="대화 모드">
           <button type="button" className={newMode === "chat" ? "on" : ""} onClick={() => setNewMode("chat")}>일반</button>
-          <button type="button" className={newMode === "project" ? "on" : ""} onClick={() => setNewMode("project")}>프로젝트 분석</button>
+          <button type="button" className={newMode === "project" ? "on" : ""} onClick={() => setNewMode("project")}>프로젝트 질문</button>
         </div>}
-        {active && <span className="chatx-tag">{mode === "project" ? "프로젝트 분석 (읽기 전용)" : "일반"}</span>}
+        {active && <span className="chatx-tag">{mode === "project" ? "프로젝트 질문 (읽기 전용)" : "일반"}</span>}
         <span className={`chatx-status ${online && !(modelBusy && !pending) ? "ok" : ""}`}>{status}</span>
         <button type="button" className="chatx-icon" title="설정" aria-label="설정" aria-expanded={showSettings} onClick={() => setShowSettings(v => !v)}>⚙</button>
       </header>
@@ -380,7 +380,7 @@ export default function ChatPanel({ token, model, online, modelBusy }: { token: 
         <div className="chatx-column">
           {!turns.length && <div className="chatx-empty">
             <h2>{mode === "project" ? "프로젝트에 대해 물어보세요" : "무엇을 도와드릴까요?"}</h2>
-            <p className="chatx-muted">{mode === "project" ? "관련 소스를 읽기 전용으로 찾아 근거와 함께 답합니다." : "로컬 모델과 대화합니다. 파일을 수정하거나 작업을 실행하지 않습니다."}</p>
+            <p className="chatx-muted">{mode === "project" ? "업무 안내서(업무 흐름, 기준 정보, 화면별 항목과 규칙)를 근거로 답합니다. 아무것도 바꾸지 않습니다." : "로컬 모델과 대화합니다. 파일을 수정하거나 작업을 실행하지 않습니다."}</p>
             <div className="chatx-suggest">{suggestions.map(s => <button type="button" key={s} disabled={!canSend} onClick={() => send(s)}>{s}</button>)}</div>
           </div>}
           {turns.map(turn => <article key={turn.id} className={`chatx-msg chatx-${turn.role}`}>
@@ -400,8 +400,8 @@ export default function ChatPanel({ token, model, online, modelBusy }: { token: 
                   {turn.id === streamingId && turn.content && <span className="chatx-cursor" />}
                   {turn.stopped && <div className="chatx-note">사용자가 중단함</div>}
                   {turn.error && <div className="chatx-err" role="alert">{turn.error}</div>}
-                  {!!turn.sources?.length && <details className="chatx-sources"><summary>참고한 소스 {turn.sources.length}개</summary>
-                    <ul>{turn.sources.map(p => <li key={p}><code>{p}</code></li>)}</ul></details>}
+                  {!!turn.sources?.length && <details className="chatx-sources"><summary>참고한 자료 {turn.sources.length}개</summary>
+                    <ul>{turn.sources.map(p => <li key={p}>{p}</li>)}</ul></details>}
                 </div>}
             {turn.id !== streamingId && editing?.id !== turn.id && <div className="chatx-actions">
               <button type="button" onClick={() => void copyText(turn.content)} title="복사">복사</button>
@@ -424,7 +424,7 @@ export default function ChatPanel({ token, model, online, modelBusy }: { token: 
         {error && <div className="chatx-err" role="alert">{error}</div>}
         <form className="chatx-composer" onSubmit={e => { e.preventDefault(); send(); }}>
           <textarea ref={input} value={draft} rows={1} maxLength={32000} aria-label="메시지"
-            placeholder={!online ? "모델 연결 대기 중…" : modelBusy && !pending ? "에이전트 작업이 끝나면 보낼 수 있습니다" : mode === "project" ? "프로젝트 구조나 코드 동작을 물어보세요" : "메시지를 입력하세요 (Shift+Enter 줄바꿈)"}
+            placeholder={!online ? "모델 연결 대기 중…" : modelBusy && !pending ? "에이전트 작업이 끝나면 보낼 수 있습니다" : mode === "project" ? "업무 흐름이나 화면에 대해 물어보세요" : "메시지를 입력하세요 (Shift+Enter 줄바꿈)"}
             onChange={e => setDraft(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }} />
           {pending
