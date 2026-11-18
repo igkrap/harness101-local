@@ -18,28 +18,46 @@ export function ProjectPicker(){
     if(list.length&&projectId!=='default'&&!list.some(p=>p.id===projectId)){forgetProject();return;}setProjects(list);}).catch(()=>{});return()=>c.abort();},[]);
   return <Selector label="프로젝트" size="sm" isLabelHidden value={projectId} options={projects.map(p=>({value:p.id,label:titleOf(p),disabled:!p.available}))} onChange={switchProject}/>;
 }
-type EnvItem={id:string;label:string;why:string;state:'ok'|'missing'|'off';detail:string;fix:{label:string;command:string;installs:boolean;manual?:boolean}|null};
-/** What this computer needs for the platform and its projects: looked at, and set up from here (a program is put on the computer only when asked twice). */
+type EnvWay={way:string;label:string;command:string};
+type EnvItem={id:string;label:string;why:string;state:'ok'|'missing'|'off';detail:string;find:boolean;fix:{label:string;command:string;installs:boolean;manual?:boolean;note?:string;ways?:EnvWay[]}|null};
+/** What this computer needs for the platform and its projects: looked at, found where it is installed, and set up from here -
+ *  by several ways (official builds, or Homebrew / winget when there); a program is put on the computer only when asked once more. */
 function EnvironmentCheck({token}:{token:string}){
-  const [items,setItems]=useState<EnvItem[]|null>(null),[busy,setBusy]=useState(''),[said,setSaid]=useState(''),[asking,setAsking]=useState<{id:string;text:string}|null>(null),[all,setAll]=useState(false);
+  const [items,setItems]=useState<EnvItem[]|null>(null),[busy,setBusy]=useState(''),[said,setSaid]=useState(''),[all,setAll]=useState(false);
+  const [asking,setAsking]=useState<{id:string;way?:string;text:string;every?:boolean}|null>(null),[typing,setTyping]=useState<{id:string;path:string}|null>(null);
   const load=()=>apiFetch('/api/environment').then(r=>r.json()).then(d=>setItems(d.items||[])).catch(e=>setSaid(String(e)));
   useEffect(()=>{void load();},[]);
-  async function fix(id:string,sure=false){setBusy(id);setSaid('');setAsking(null);try{
-    const response=await apiFetch('/api/environment/fix',{method:'POST',headers:{'Content-Type':'application/json','X-Platform-Token':token},body:JSON.stringify({id,sure})});
-    const result=await response.json();if(!response.ok)throw Error(result.error);if(result.items)setItems(result.items);
-    if(result.ask)setAsking({id,text:result.ask});else setSaid(result.said||'');
-  }catch(e){setSaid(String(e instanceof Error?e.message:e));}finally{setBusy('');}}
+  async function call(path:string,body:object,label:string){setBusy(label);setSaid('');setAsking(null);try{
+    const response=await apiFetch(path,{method:'POST',headers:{'Content-Type':'application/json','X-Platform-Token':token},body:JSON.stringify(body)});
+    const result=await response.json();if(!response.ok)throw Error(result.error);if(result.items)setItems(result.items);return result;
+  }catch(e){setSaid(String(e instanceof Error?e.message:e));return null;}finally{setBusy('');}}
+  async function fix(id:string,way?:string,sure=false){const result=await call('/api/environment/fix',{id,way,sure},id);if(!result)return;
+    if(result.ask)setAsking({id,way:result.way,text:result.ask});else setSaid([result.said,result.command].filter(Boolean).join(' '));}
+  async function everything(sure=false){const result=await call('/api/environment/setup-all',{sure},'all');if(!result)return;
+    if(result.ask)setAsking({id:'all',text:result.ask+' (나머지도 이어서 셋업합니다)',every:true});else setSaid([result.said,result.command].filter(Boolean).join(' '));}
+  async function find(id:string,path?:string){const result=await call('/api/environment/find',{id,path},id);if(result){setSaid(result.said||'');if(result.done)setTyping(null);}}
   const lacking=(items||[]).filter(item=>item.state!=='ok').length;
   return <Card padding={5}><VStack gap={3}>
-    <HStack hAlign="between"><Heading level={2}>개발 환경 점검</Heading><Button label="다시 점검" variant="secondary" isDisabled={!!busy} onClick={()=>{setItems(null);void load();}}/></HStack>
+    <HStack hAlign="between"><Heading level={2}>개발 환경 점검</Heading><HStack gap={2}>
+      {lacking>0&&<Button label={busy==='all'?'셋업하는 중…':'모두 셋업'} variant="primary" isDisabled={!!busy||!token} onClick={()=>void everything()}/>}
+      <Button label="다시 점검" variant="secondary" isDisabled={!!busy} onClick={()=>{setItems(null);void load();}}/></HStack></HStack>
     {items===null?<Text color="secondary">점검하는 중…</Text>:<HStack gap={2} vAlign="center"><Text color="secondary">{lacking?`${items.length}개 중 ${lacking}개가 준비되지 않았습니다.`:`${items.length}개 모두 준비됨`}</Text>
       <Button label={all?'접기':'자세히'} variant="secondary" onClick={()=>setAll(v=>!v)}/></HStack>}
-    {(items||[]).filter(item=>all||item.state!=='ok').map(item=><HStack key={item.id} hAlign="between" gap={3} style={{flexWrap:'wrap'}}>
-      <VStack gap={1}><Text weight="bold">{item.state==='ok'?'✓':item.state==='off'?'!':'✗'} {item.label}</Text><Text color="secondary">{item.detail} · {item.why}</Text></VStack>
-      {item.fix&&<HStack gap={2} vAlign="center"><Text color="secondary">{item.fix.command}</Text>
-        <Button label={busy===item.id?'하는 중…':item.fix.label} variant={item.fix.installs?'secondary':'primary'} isDisabled={!!busy||!token} onClick={()=>void fix(item.id)}/></HStack>}
-    </HStack>)}
-    {asking&&<HStack gap={2} vAlign="center"><Text>{asking.text}</Text><Button label="설치" variant="primary" isDisabled={!!busy} onClick={()=>void fix(asking.id,true)}/><Button label="그만두기" variant="secondary" onClick={()=>setAsking(null)}/></HStack>}
+    {(items||[]).filter(item=>all||item.state!=='ok').map(item=><VStack key={item.id} gap={2}>
+      <HStack hAlign="between" gap={3} style={{flexWrap:'wrap'}}>
+        <VStack gap={1}><Text weight="bold">{item.state==='ok'?'✓':item.state==='off'?'!':'✗'} {item.label}</Text><Text color="secondary">{item.detail} · {item.why}</Text></VStack>
+        <HStack gap={2} vAlign="center" style={{flexWrap:'wrap'}}>
+          {item.find&&<Button label={busy===item.id?'찾는 중…':'찾기'} variant="secondary" isDisabled={!!busy||!token} onClick={()=>void find(item.id)}/>}
+          {item.find&&<Button label="경로 지정" variant="secondary" isDisabled={!!busy} onClick={()=>setTyping({id:item.id,path:''})}/>}
+          {item.fix?.ways?item.fix.ways.map(way=><Button key={way.way} label={way.label} variant="secondary" isDisabled={!!busy||!token} onClick={()=>void fix(item.id,way.way)}/>)
+            :item.fix&&<Button label={busy===item.id?'하는 중…':item.fix.label} variant="primary" isDisabled={!!busy||!token} onClick={()=>void fix(item.id)}/>}
+        </HStack></HStack>
+      {item.fix?.ways&&<Text color="secondary">{item.fix.ways.map(way=>`${way.label}: ${way.command}`).join(' · ')}</Text>}
+      {typing?.id===item.id&&<HStack gap={2} vAlign="end"><div style={{flex:'1 1 360px'}}><TextInput label={`${item.label} 이(가) 있는 곳 (프로그램 파일 또는 폴더)`} value={typing.path} onChange={v=>setTyping({id:item.id,path:v})} placeholder="예: /Applications/Docker.app/Contents/Resources/bin/docker"/></div>
+        <Button label="이 경로 쓰기" variant="primary" isDisabled={!!busy||!typing.path.trim()} onClick={()=>void find(item.id,typing.path)}/><Button label="그만두기" variant="secondary" onClick={()=>setTyping(null)}/></HStack>}
+    </VStack>)}
+    {asking&&<HStack gap={2} vAlign="center" style={{flexWrap:'wrap'}}><Text>{asking.text}</Text>
+      <Button label="설치" variant="primary" isDisabled={!!busy} onClick={()=>void (asking.every?everything(true):fix(asking.id,asking.way,true))}/><Button label="그만두기" variant="secondary" onClick={()=>setAsking(null)}/></HStack>}
     {said&&<Text role="status">{said}</Text>}
   </VStack></Card>;
 }
