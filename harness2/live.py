@@ -21,13 +21,52 @@ def _run():
     return _runs.get(_slug())
 
 
-def begin(goal):
+def begin(goal, queue=None):
     with _lock:
-        _runs[_slug()] = {'goal': goal, 'started': time.time(), 'ended': None, 'ok': None, 'said': '', 'steps': [], 'model': None, 'checks': [], 'calls': 0, 'tokens': 0}
+        _runs[_slug()] = {'goal': goal, 'queue': queue, 'started': time.time(), 'ended': None, 'ok': None, 'said': '', 'steps': [], 'model': None, 'checks': [], 'calls': 0, 'tokens': 0}
+
+
+class Stopped(Exception):
+    """The person pressed stop: the run ends where it is (what it applied is taken back like any failure)."""
+
+
+def stop(slug=None):
+    """Asked from the platform's stop button: the next step, check or piece of the model's answer ends the run - and a model answer
+    being read or written is cut off at once (its connection closed)."""
+    with _lock:
+        run = _runs.get(slug or _slug())
+        if not run or run['ended']:
+            return False
+        run['_stop'] = True
+        response = run.get('_response')
+    if response is not None:
+        try:
+            response.close()
+        except Exception:
+            pass
+    return True
+
+
+def stopping():
+    """Raises once where the run is when stop was pressed; after that the run's own clean-up (taking back what it applied) goes on."""
+    with _lock:
+        run = _run()
+        if not run or run.get('_stop') is not True:
+            return
+        run['_stop'] = 'raised'
+    raise Stopped('중지했습니다.')
+
+
+def attach(response):
+    with _lock:
+        run = _run()
+        if run:
+            run['_response'] = response
 
 
 def step(title, detail=''):
     """A new step starts (the one before it ends here, unless it already did)."""
+    stopping()
     with _lock:
         run = _run()
         if not run:
@@ -78,6 +117,7 @@ def model_end(usage=None):
 
 
 def check(description, passed, detail=''):
+    stopping()
     with _lock:
         run = _run()
         if run:
@@ -86,6 +126,10 @@ def check(description, passed, detail=''):
 
 
 def finish(ok, said=''):
+    with _lock:
+        run = _run()
+        if run:
+            run.pop('_response', None)
     end_step()
     with _lock:
         run = _run()
@@ -99,7 +143,8 @@ def snapshot(slug=None, tail=6000):
         run = _runs.get(slug or _slug())
         if not run:
             return None
-        out = {key: value for key, value in run.items() if key not in ('model', 'checks', 'steps')}
+        out = {key: value for key, value in run.items() if key not in ('model', 'checks', 'steps') and not key.startswith('_')}
+        out['stopping'] = bool(run.get('_stop')) and not run['ended']
         out['steps'] = [dict(item) for item in run['steps']]
         out['checks'] = {'total': len(run['checks']), 'passed': sum(1 for item in run['checks'] if item['passed']), 'recent': run['checks'][-40:],
                          'failed': [item for item in run['checks'] if not item['passed']][-20:]}

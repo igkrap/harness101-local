@@ -5,7 +5,7 @@ import "./monitor.css";
 type Step = { title: string; detail: string; state: "running" | "done" | "refused"; started: number; ended: number | null };
 type Check = { description: string; passed: boolean; detail: string; at: number; step: string };
 type Live = {
-  goal: string; started: number; ended: number | null; ok: boolean | null; said: string; calls: number; tokens: number; now: number;
+  goal: string; queue?: string | null; stopping?: boolean; started: number; ended: number | null; ok: boolean | null; said: string; calls: number; tokens: number; now: number;
   steps: Step[]; checks: { total: number; passed: number; recent: Check[]; failed: Check[] };
   model?: { name: string; model: string; title: string; started: number; ended: number | null; first?: number | null; text: string; thinking: string; tokens: number; chunks: number; chars: number };
 };
@@ -17,10 +17,10 @@ const hms = (epoch: number) => { const d = new Date(epoch * 1000); return [d.get
  * 실시간 보기: what the request being made is doing right now - the steps so far, what the local model is writing as it
  * writes it, and each check as it passes or fails. Read from the harness while it runs (GET /api/tools/live); nothing kept.
  */
-export default function MonitorPage() {
+export default function MonitorPage({ token }: { token: string }) {
   const [live, setLive] = useState<Live | null>(null), [error, setError] = useState(""), [thinking, setThinking] = useState(false);
   const [offset, setOffset] = useState(0);          // server clock minus this browser's, so elapsed times tick between reads
-  const [tick, setTick] = useState(0);
+  const [tick, setTick] = useState(0), [asked, setAsked] = useState(false);
   const out = useRef<HTMLPreElement>(null), follow = useRef(true);
   const first = useRef<{ call: number; at: number } | null>(null);      // when the model's first word was seen (before it: reading its input)
   useEffect(() => {
@@ -65,6 +65,9 @@ export default function MonitorPage() {
         <h2 title={live.goal}>{live.goal}</h2>
         {!running && live.said && <p className="mon-said">{live.said.split("\n")[0]}</p>}
       </div>
+      {running && live.queue && <button type="button" className="mon-stop" disabled={asked || live.stopping || !token}
+        onClick={() => { setAsked(true); void apiFetch(`/api/queues/${live.queue}/stop`, { method: "POST", headers: { "Content-Type": "application/json", "X-Platform-Token": token }, body: "{}" }); }}>
+        {asked || live.stopping ? "중지하는 중…" : "중지"}</button>}
     </header>
 
     <section className="mon-stats">

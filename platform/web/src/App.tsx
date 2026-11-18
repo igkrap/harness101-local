@@ -680,7 +680,7 @@ export default function App() {
           {page === "preview" && <Preview token={data?.token||""}/>}
           {page === "guide" && <GuidePage/>}
           {page === "flowmap" && <FlowMapPage/>}
-          {page === "monitor" && <MonitorPage/>}
+          {page === "monitor" && <MonitorPage token={data?.token||""}/>}
           {page === "history" && <HistoryPage token={data?.token||""} busy={runningNow} onOpenJob={id => { setSelected(id); setSelectedRecord(null); setRunTab("logs"); navigate("run"); }}/>}
         </VStack>
       </VStack>

@@ -220,6 +220,16 @@ class QueueManager:
                 self.app.stop(running['job_id'])
             except ValueError:
                 pass
+        if queue.get('route') == 'definition':       # runs in this process: told to stop where it is, the model's answer cut off at once
+            try:
+                import sys, sites
+                folder = str(Path(__file__).resolve().parents[1] / 'harness2')
+                if folder not in sys.path:
+                    sys.path.insert(0, folder)
+                import live
+                live.stop(sites.of_app(self.app).slug)
+            except Exception:
+                pass
         return queue
 
     def _spawn(self, queue_id, plan):
@@ -373,7 +383,7 @@ class QueueManager:
                          status='running', route='definition')
             given = self.get(queue_id).get('order') or {}
             import live
-            live.begin(goal)
+            live.begin(goal, queue_id)
             result = definition_run.run(goal, definition_file=given['file']) if given.get('kind') == 'replay' else definition_run.run(goal)
         except Exception as error:
             try:
@@ -400,7 +410,8 @@ class QueueManager:
         else:
             items = [{'domain': 'definition', 'title': result.get('title') or '화면 정의', 'checks': ['definition'], 'status': 'succeeded' if ok else 'failed', 'job_id': job_id, 'attempts': 1}]
         self._update(queue_id, items=items, definition_result=result)
-        self._finish(queue_id, 'succeeded' if ok else 'failed', said)
+        stopped = result.get('status') == 'error' and str(result.get('error', '')).startswith('중지했습니다')
+        self._finish(queue_id, 'stopped' if stopped else 'succeeded' if ok else 'failed', '사용자가 중지했습니다. 적용한 것은 없습니다.' if stopped else said)
         return True
 
     def _record_definition_run(self, queue_id, result, ok, said, finished=None):

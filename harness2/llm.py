@@ -25,7 +25,9 @@ def ask(messages, record_to, name='model', max_tokens=3000, temperature=0.2):
     parts, usage = [], None
     try:
         with urllib.request.urlopen(request, timeout=900) as response:
+            live.attach(response)                         # the stop button closes it, even while the model is still reading
             for raw in response:
+                live.stopping()
                 line = raw.decode('utf-8', 'replace').strip()
                 if not line.startswith('data:'):
                     continue
@@ -41,7 +43,13 @@ def ask(messages, record_to, name='model', max_tokens=3000, temperature=0.2):
                 if delta.get('content') or delta.get('reasoning_content') or delta.get('reasoning'):
                     parts.append(delta.get('content') or '')
                     live.model_chunk(delta.get('content') or '', delta.get('reasoning_content') or delta.get('reasoning') or '')
+    except live.Stopped:
+        raise
+    except Exception:
+        live.stopping()                                   # a connection closed by the stop button is a stop, not a model failure
+        raise
     finally:
+        live.attach(None)
         live.model_end(usage)
     text = ''.join(parts)
     payload = {key: value for key, value in payload.items() if key not in ('stream', 'stream_options')}
