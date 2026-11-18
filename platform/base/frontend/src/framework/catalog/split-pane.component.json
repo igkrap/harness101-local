@@ -1,0 +1,23 @@
+{
+  "id": "split-pane",
+  "kind": "primitive",
+  "version": "1",
+  "source": "frontend/src/framework/SplitPane.tsx",
+  "export": "SplitPane",
+  "props_type": "SplitPaneProps",
+  "summary": "가로 세로 배치를 중첩하는 분할. 드래그와 키보드로 크기를 조절합니다.",
+  "intents": [
+    "상하 스플릿 그리드 두 개",
+    "좌우 분할 목록 상세",
+    "세 영역으로 나누기"
+  ],
+  "capabilities": [
+    "horizontal",
+    "vertical",
+    "nested",
+    "resize",
+    "keyboard"
+  ],
+  "uses": [],
+  "example": "<SplitPane direction=\"vertical\" primary={topGrid} secondary={bottomGrid}/>"
+}

@@ -1,0 +1,29 @@
+/* Document editor: header form, lines table, status actions. Compact like the rest. */
+.doc { display: flex; flex-direction: column; gap: 8px; }
+.doc-head { display: flex; align-items: center; gap: 10px; min-height: 24px; }
+.doc-serial { font-variant-numeric: tabular-nums; color: var(--fw-muted); }
+.doc-fields { border: 0; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px 12px; align-items: end; }
+.doc-computed { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--fw-muted); }
+.doc-computed strong { font-size: 15px; color: var(--fw-text); font-variant-numeric: tabular-nums; }
+.doc-lines { width: 100%; border-collapse: collapse; font-size: 13px; }
+.doc-lines th { background: var(--fw-header); color: var(--fw-header-text); font-weight: 700; padding: 4px 6px; border: 1px solid var(--fw-border); text-align: center; }
+.doc-lines td { padding: 2px 4px; border: 1px solid var(--fw-border); }
+.doc-lines td.is-number { text-align: right; font-variant-numeric: tabular-nums; }
+.doc-lines td.is-number input { text-align: right; }
+.doc-lines td.is-center { text-align: center; font-variant-numeric: tabular-nums; }
+.doc-lines td.is-center input, .doc-lines td.is-center select { text-align: center; text-align-last: center; }
+.doc-no { width: 34px; text-align: center; color: var(--fw-muted); } .doc-remove { width: 30px; text-align: center; }
+.doc-foot { display: flex; align-items: center; gap: 12px; }
+.doc-message { font-size: 13px; color: #1c6e42; } .doc-message.is-bad { color: #b42318; }
+
+.doc-limit { margin-left: 8px; font-size: 12px; color: #5f6b7c; }
+.doc-lines td .bp6-popover-target { display: block; }
+
+/* Several tables of lines under one record: each with its name above. A cell whose field is not there under the line's values is greyed. */
+.doc-set { display: flex; flex-direction: column; gap: 4px; }
+.doc-set-title { font-size: 13px; }
+.doc-lines td:has(> .doc-off) { background: var(--fw-header); }
+.doc-off { display: block; min-height: 22px; }
+
+/* A lot number with the button that opens the lots held. */
+.doc-lot { display: flex; align-items: center; gap: 2px; } .doc-lot > :first-child { flex: 1; min-width: 0; }

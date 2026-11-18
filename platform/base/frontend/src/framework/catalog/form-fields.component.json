@@ -1,0 +1,23 @@
+{
+  "id": "form-fields",
+  "kind": "primitive",
+  "version": "1",
+  "source": "frontend/src/framework/fields.tsx",
+  "export": "Fields",
+  "summary": "필드 정의에 따라 입력 컨트롤을 조합합니다. 필수 입력과 숫자 범위 검증, 사용자 정의 입력 컨트롤을 지원합니다. codeGroup(공통 코드 선택), wide(한 줄 전체), group(편집 탭) 지원.",
+  "intents": [
+    "필드 이름과 레이블로 폼 입력 만들기",
+    "숫자 범위와 필수값 검사",
+    "커스텀 셀렉트 입력",
+    "공통 코드 선택 상자 필드",
+    "단위 구분 상태 드롭다운"
+  ],
+  "capabilities": [
+    "field-definitions",
+    "numeric-validation",
+    "custom-control"
+  ],
+  "uses": [],
+  "example": "<Fields fields={fields} values={values} setValue={setValue} errors={errors} />",
+  "props_type": "FieldDefinition"
+}

@@ -1,0 +1,20 @@
+{
+  "id": "async-feedback",
+  "kind": "primitive",
+  "version": "1",
+  "source": "frontend/src/framework/AsyncFeedback.tsx",
+  "export": "AsyncFeedback",
+  "props_type": "AsyncFeedbackProps",
+  "summary": "비동기 작업의 오류와 성공 결과를 접근 가능한 메시지로 표시합니다.",
+  "intents": [
+    "저장 오류 표시",
+    "작업 성공 안내"
+  ],
+  "capabilities": [
+    "error",
+    "success",
+    "accessible-status"
+  ],
+  "uses": [],
+  "example": "<AsyncFeedback error={error} succeeded={succeeded} successText=\"완료되었습니다.\"/>"
+}

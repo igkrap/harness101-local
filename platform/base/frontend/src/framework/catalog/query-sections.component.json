@@ -1,0 +1,17 @@
+{
+  "id": "query-sections",
+  "kind": "primitive",
+  "version": "1",
+  "source": "frontend/src/framework/QuerySections.tsx",
+  "export": "QuerySections",
+  "props_type": "QuerySectionsProps",
+  "summary": "기본 조회조건은 항상 보이고 상세조건은 접고 펼치는 영역입니다. 접어도 입력값과 컴포넌트 상태를 유지합니다.",
+  "intents": [
+    "기본 필수 조회조건 상세 옵션조건 접기 펼치기"
+  ],
+  "capabilities": [
+    "query-sections"
+  ],
+  "uses": [],
+  "example": "<QuerySections primary={basicConditions} advanced={advancedConditions}/>"
+}

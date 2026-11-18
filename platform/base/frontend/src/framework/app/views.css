@@ -1,0 +1,37 @@
+/* Calendar and tree screens: another entity's records in another shape. */
+.fw-calendar, .fw-tree { display: flex; flex-direction: column; flex: 1; min-height: 0; width: 100%; gap: 8px; }
+.fw-view-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fw-view-move { display: inline-flex; align-items: center; gap: 4px; margin-left: 12px; }
+.fw-view-move strong { min-width: 76px; text-align: center; font-variant-numeric: tabular-nums; }
+.fw-view-note { font-size: 12px; color: var(--fw-muted, #5f6b7c); }
+.fw-calendar-grid { flex: 1; min-height: 420px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border: 1px solid var(--fw-border, #d3d8de); border-radius: 4px; overflow: hidden; background: var(--fw-border, #d3d8de); gap: 1px; }
+.fw-calendar-week { background: var(--fw-header, #eef0f2); color: var(--fw-header-text, inherit); text-align: center; font-weight: 600; font-size: 12.5px; padding: 3px 0; }
+.fw-calendar-day { background: var(--fw-surface, #fff); padding: 2px 4px 4px; display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow: hidden; }
+.fw-calendar-day.is-other { background: var(--fw-surface-2, #f6f7f9); }
+.fw-calendar-day.is-other .fw-calendar-date { opacity: .45; }
+.fw-calendar-date { font-size: 12px; font-variant-numeric: tabular-nums; align-self: flex-start; padding: 0 4px; border-radius: 9px; }
+.fw-calendar-day.is-today .fw-calendar-date { background: var(--fw-accent, #2d72d2); color: #fff; }
+.fw-calendar-week.is-sun, .fw-calendar-date.is-sun { color: #c23030; } .fw-calendar-week.is-sat, .fw-calendar-date.is-sat { color: #2d72d2; }
+.fw-calendar-day.is-today .fw-calendar-date.is-sun, .fw-calendar-day.is-today .fw-calendar-date.is-sat { color: #fff; }
+.fw-calendar-item { border: 0; text-align: left; font: inherit; font-size: 12px; padding: 1px 5px; border-radius: 2px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; background: #e3ecf9; color: #1c4a8f; }
+.fw-calendar-item:hover { filter: brightness(.95); }
+.fw-calendar-item.is-going { background: #fbf0d6; color: #7a5200; } .fw-calendar-item.is-done { background: #dff3e4; color: #1c6e42; } .fw-calendar-item.is-off { background: #eceff2; color: #5f6b7c; text-decoration: line-through; }
+.fw-calendar-more { font-size: 11px; color: var(--fw-muted, #5f6b7c); padding-left: 5px; }
+.fw-tree-body { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--fw-border, #d3d8de); border-radius: 4px; background: var(--fw-surface, #fff); }
+.fw-tree-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.fw-tree-table th { position: sticky; top: 0; background: var(--fw-header, #eef0f2); color: var(--fw-header-text, inherit); font-weight: 600; padding: 4px 8px; text-align: center; border-bottom: 1px solid var(--fw-border, #d3d8de); }
+.fw-tree-table td { padding: 2px 8px; border-bottom: 1px solid var(--fw-border, #e6e9ed); font-variant-numeric: tabular-nums; height: 24px; }
+.fw-tree-name { display: inline-flex; align-items: center; gap: 4px; }
+.fw-tree-fold { width: 16px; display: inline-block; border: 0; background: transparent; cursor: pointer; padding: 0; color: var(--fw-muted, #5f6b7c); font-size: 12px; }
+.fw-tree-open { border: 0; background: transparent; padding: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; }
+.fw-tree-open:hover { color: var(--fw-accent, #2d72d2); text-decoration: underline; }
+.fw-tree-count { font-size: 11px; color: var(--fw-muted, #5f6b7c); margin-left: 4px; }
+
+/* Take-over screen: the values asked once above the list, and the line that says what to do / what was made. */
+.fw-take-ask { flex: none; display: flex; flex-direction: column; gap: 6px; }
+.fw-take-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px 12px; align-items: end; padding: 8px 10px; border: 1px solid var(--fw-border); border-radius: 4px; background: var(--fw-surface); }
+.fw-take-note { display: flex; align-items: center; gap: 12px; min-height: 24px; font-size: 13px; color: var(--fw-muted); }
+.fw-take-message { color: #1c6e42; } .fw-take-message.is-bad { color: #b42318; }
+
+.fw-take-lot { display: flex; align-items: center; gap: 6px; width: 100%; } .fw-take-lot > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.fw-take-lot button { border: 1px solid var(--fw-border); background: var(--fw-surface); border-radius: 3px; padding: 0 6px; height: 20px; font-size: 12px; cursor: pointer; color: var(--fw-text); }

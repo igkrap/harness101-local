@@ -1,0 +1,31 @@
+{
+  "id": "query-panel",
+  "kind": "composite",
+  "version": "1",
+  "source": "frontend/src/framework/QueryPanel.tsx",
+  "export": "QueryPanel",
+  "summary": "조회 입력을 독립 관리하며 기본/상세 조건을 구분합니다. advancedFields의 입력 필수 항목은 기본 영역에 남기고 선택 항목은 접습니다. 외부 공통 버튼은 formId로 연결합니다. BusinessWorkspace 안에서는 자체 버튼이 숨겨진다.",
+  "intents": [
+    "조회조건 입력과 독립된 검색 패널",
+    "현황 목록을 조건으로 조회",
+    "검색 필터 초기화"
+  ],
+  "capabilities": [
+    "query-draft",
+    "submit-query",
+    "reset-query"
+  ],
+  "uses": [
+    "form-fields",
+    "submission-state",
+    "panel",
+    "form-actions",
+    "async-feedback",
+    "query-sections"
+  ],
+  "example": "<QueryPanel fields={queryFields} onQuery={queryRecords} />",
+  "props_type": "QueryPanelProps",
+  "dom": {
+    "form": "form[data-ui=\"query-panel\"]"
+  }
+}

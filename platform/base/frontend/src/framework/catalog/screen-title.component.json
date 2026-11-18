@@ -1,0 +1,18 @@
+{
+  "id": "screen-title",
+  "kind": "primitive",
+  "version": "1",
+  "source": "frontend/src/framework/ScreenTitle.tsx",
+  "export": "ScreenTitle",
+  "props_type": "ScreenTitleProps",
+  "summary": "업무 화면 제목을 16px, 하위 패널 제목을 14px로 표시하며 시맨틱 heading 레벨을 보존합니다.",
+  "intents": [
+    "작은 업무 화면 타이틀",
+    "컴팩트한 제목과 패널 제목"
+  ],
+  "capabilities": [
+    "compact-heading"
+  ],
+  "uses": [],
+  "example": "<ScreenTitle>연락처 관리</ScreenTitle>"
+}

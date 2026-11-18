@@ -1,0 +1,67 @@
+/* RecordGrid on Blueprint's table: cells fill their box so a click anywhere in a row hits a cell. */
+.fw-grid { max-height: 62vh; }
+/* Docked (inside BusinessWorkspace results): fill the area; empty space shows blank grid lines. */
+.fw-grid.is-docked { flex: 1 1 auto; min-height: 0; height: 100%; max-height: none; }
+.fw-grid .bp6-table-container { box-shadow: none; border: 1px solid var(--fw-border); border-radius: 4px; }
+.fw-grid .fw-grid-td.bp6-table-cell { padding: 0; cursor: pointer; }
+.fw-grid .fw-grid-td.is-selected { background: var(--fw-selected); }
+.fw-grid-cell { height: 100%; padding: 0 10px; display: flex; align-items: center; outline: none; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.fw-grid-check { display: flex; align-items: center; justify-content: center; height: 100%; }
+.fw-grid-check > [role="columnheader"] { display: flex; align-items: center; justify-content: center; }
+/* The main quadrant keeps a copy of the header underneath the sticky one; only the sticky copy is real. */
+.fw-grid .bp6-table-quadrant-main .bp6-table-column-headers { visibility: hidden; }
+.fw-grid .fw-grid-td > div { height: 100%; }
+/* No focus frames on the grid itself; editable grids draw their own cell cursor. */
+.fw-grid .bp6-table-container:focus, .fw-grid .bp6-table-quadrant-scroll-container:focus, .fw-grid *:focus { outline: none; }
+.fw-grid.is-docked { margin-bottom: 16px; }
+/* Header: grey for read-only columns, light blue with a red corner mark for editable columns. */
+.fw-grid .fw-grid-th.bp6-table-header { background: var(--fw-header); color: var(--fw-header-text); }
+.fw-grid .fw-grid-th .bp6-table-column-name { text-align: center; }
+.fw-grid .fw-grid-th .bp6-table-column-name-text { font-weight: 700; color: inherit; }
+.fw-grid .fw-grid-th.is-editable.bp6-table-header { background: var(--fw-header-edit); color: var(--fw-header-edit-text); position: relative; }
+.fw-grid .fw-grid-th.is-editable::before { content: ""; position: absolute; top: 0; left: 0; z-index: 1; width: 0; height: 0;
+  border-style: solid; border-width: 7px 7px 0 0; border-color: #e5484d transparent transparent transparent; }
+/* Body is white (data cells and the blank docked area). */
+.fw-grid .bp6-table-container, .fw-grid .bp6-table-quadrant, .fw-grid .bp6-table-cell, .fw-grid .bp6-table-body { background-color: var(--fw-surface); }
+.fw-grid .fw-grid-td.is-selected.bp6-table-cell { background-color: var(--fw-selected); }
+.fw-grid .fw-grid-check { min-height: 28px; }
+/* Row numbers and the header's handle/menu strip share the header grey. */
+.fw-grid .fw-grid-rh.bp6-table-header, .fw-grid .bp6-table-quadrant-top-left .bp6-table-menu, .fw-grid .bp6-table-row-headers { background: var(--fw-header); color: var(--fw-header-text); }
+.fw-grid .fw-grid-rownum { min-width: 28px; height: 100%; padding: 0 6px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-variant-numeric: tabular-nums; }
+.fw-grid .fw-grid-th .bp6-table-column-name { position: relative; }
+.fw-grid .fw-grid-th.is-sorted-asc .bp6-table-column-name::after, .fw-grid .fw-grid-th.is-sorted-desc .bp6-table-column-name::after { position: absolute; right: 30px; bottom: 8px; font-size: 9px; line-height: 1; color: var(--fw-accent); }
+.fw-grid .fw-grid-th.is-sorted-asc .bp6-table-column-name::after { content: "▲"; }
+.fw-grid .fw-grid-th.is-sorted-desc .bp6-table-column-name::after { content: "▼"; }
+/* Selection: the table's blue region outline; the cell tint stays light under it. */
+.fw-grid .bp6-table-selection-region { border-color: var(--fw-accent, #2d72d2); background-color: transparent; }
+.fw-grid .fw-grid-name { pointer-events: auto; cursor: grab; font-weight: 700; text-align: center; }
+.fw-grid .fw-grid-th.is-drop.bp6-table-header { box-shadow: inset 3px 0 0 var(--fw-accent, #2d72d2); }
+/* Compact business density: 24px rows, 13px text, tight padding (Blueprint keeps the header at 30px). */
+.fw-grid .bp6-table-column-name-text, .fw-grid .fw-grid-name { font-size: 13px; }
+.fw-grid { font-size: 13px; }
+.fw-grid .bp6-table-cell { font-size: 13px; line-height: 24px; }
+.fw-grid .fw-grid-cell { padding: 0 8px; }
+.fw-grid .fw-grid-rownum { font-size: 12px; }
+.fw-grid .bp6-table-row-name { line-height: 24px; padding: 0; }
+.fw-grid .fw-grid-number { margin-left: auto; font-variant-numeric: tabular-nums; }
+.fw-grid .fw-grid-input { width: 100%; height: 22px; box-sizing: border-box; font: inherit; padding: 0 4px; border: 1px solid var(--fw-accent, #2d72d2); border-radius: 2px; outline: none; }
+.fw-grid .fw-grid-check { min-height: 22px; }
+.fw-grid .fw-grid-check input, .fw-grid .fw-grid-cell input[type="checkbox"] { margin: 0; }
+/* Header 26px. */
+.fw-grid .bp6-table-column-name-text, .fw-grid .fw-grid-name { line-height: 26px; min-height: 26px; }
+.fw-grid .bp6-table-header, .fw-grid .bp6-table-column-name { min-height: 26px; }
+.fw-grid .bp6-table-th-menu-container, .fw-grid .bp6-table-th-menu { height: 26px; }
+.fw-grid .bp6-table-th-menu .bp6-icon { margin-top: -2px; }
+
+.fw-grid .fw-grid-center { margin: 0 auto; text-align: center; font-variant-numeric: tabular-nums; }
+
+/* The count line under a list that knows its total. */
+.fw-grid.is-docked:has(+ .fw-grid-foot) { margin-bottom: 0; }
+.fw-grid-foot { flex: none; display: flex; align-items: center; gap: 10px; height: 24px; padding: 0 4px; font-size: 12px; color: var(--fw-muted); font-variant-numeric: tabular-nums; }
+.fw-grid-more { border: 1px solid var(--fw-border); background: var(--fw-surface); border-radius: 3px; padding: 0 8px; height: 20px; font-size: 12px; cursor: pointer; color: var(--fw-text); }
+.fw-grid-more:hover { background: var(--fw-surface-2, #f6f7f9); }
+.fw-grid-foot-note { color: var(--fw-muted); }
+
+/* The row each cell stands in fills the cell; with no rows, one row says so (read out, not shown). */
+.fw-grid .fw-grid-rowbox { height: 100%; }
+.fw-grid-empty-row { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

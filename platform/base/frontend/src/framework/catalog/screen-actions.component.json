@@ -1,0 +1,21 @@
+{
+  "id": "screen-actions",
+  "kind": "composite",
+  "version": "1",
+  "source": "frontend/src/framework/ScreenActions.tsx",
+  "export": "ScreenActions",
+  "props_type": "ScreenActionsProps",
+  "summary": "우측 상단 조회 신규 삭제 저장 엑셀 출력 공통 버튼. 화면이 등록한 콜백이나 form ID에 연결하며 저장 범위와 업무 규칙은 화면이 결정합니다. 등록하지 않은 동작은 실행하지 않습니다.",
+  "intents": [
+    "공통 업무 버튼 상단 툴바",
+    "조회 신규 삭제 저장 엑셀 출력"
+  ],
+  "capabilities": [
+    "screen-actions"
+  ],
+  "uses": [
+    "submission-state",
+    "async-feedback"
+  ],
+  "example": "<ScreenActions actions={{query:{form:queryId},create:{onClick:newRecord},save:{form:editorId}}}/>"
+}

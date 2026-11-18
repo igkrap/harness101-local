@@ -1,0 +1,1 @@
+ALTER TABLE companies ADD COLUMN fax VARCHAR(30);

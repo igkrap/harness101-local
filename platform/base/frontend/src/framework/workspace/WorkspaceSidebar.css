@@ -1,0 +1,40 @@
+/* Dark sidebar: Blueprint's dark theme (bp6-dark) does the styling; this file is layout only. */
+.workspace-sidebar { flex: none; width: 232px; height: 100%; display: flex; flex-direction: column; box-sizing: border-box; overflow: hidden;
+  background: #1c2127; color: #f6f7f9; transition: width .18s ease; }
+.workspace-sidebar.is-collapsed { width: 48px; }
+.ws-head { display: flex; align-items: center; gap: 10px; padding: 12px; min-height: 30px; box-shadow: inset 0 -1px 0 rgba(255, 255, 255, .15); }
+.is-collapsed .ws-head { justify-content: center; padding-inline: 0; }
+.ws-logo { width: 28px; height: 28px; border-radius: 4px; object-fit: contain; flex: none; }
+.ws-logo-mark { display: inline-grid; place-items: center; font-weight: 700; color: #fff; background: var(--fw-accent, #2d72d2); }
+.ws-title { flex: 1; min-width: 0; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ws-search { padding: 10px 10px 2px; }
+.ws-nav { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 0 10px; scrollbar-width: thin; }
+.ws-nav .bp6-tree-node-content { height: 28px; padding-right: 8px; }
+.ws-nav .bp6-tree-node-label { display: flex; }
+.ws-node { all: unset; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.ws-node:focus-visible { text-decoration: underline; }
+.ws-section { display: flex; align-items: center; justify-content: space-between; min-height: 24px; padding: 12px 10px 4px 14px; font-size: 12px; font-weight: 600; color: #abb3bf; }
+.ws-tools { display: inline-flex; gap: 2px; }
+.ws-rail { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.ws-empty { padding: 10px 14px; color: #abb3bf; }
+.ws-nav small { color: #abb3bf; }
+.ws-modules { display: flex; flex-wrap: wrap; gap: 4px; padding: 8px 10px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .15); }
+.is-collapsed .ws-modules { flex-direction: column; align-items: center; padding-inline: 0; }
+.ws-user { display: flex; align-items: center; gap: 10px; padding: 10px 12px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .15); }
+.is-collapsed .ws-user { flex-direction: column; padding-inline: 0; gap: 6px; }
+.ws-avatar { flex: none; width: 30px; height: 30px; border-radius: 50%; display: inline-grid; place-items: center; font-weight: 700; color: #fff; background: var(--fw-accent, #2d72d2); }
+.ws-user-names { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
+.ws-user-names strong, .ws-user-names span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ws-user-names span { font-size: 12px; color: #abb3bf; }
+.ws-nav .bp6-tree-node-secondary-label { display: inline-flex; align-items: center; gap: 4px; padding-right: 0; }
+.ws-nav .fw-star { opacity: 0; }
+.ws-nav .bp6-tree-node-content:hover .fw-star, .ws-nav .fw-star.is-on, .ws-nav .fw-star:focus-visible { opacity: 1; }
+.ws-empty { font-size: 12px; }
+.ws-dot-box { display: inline-grid; place-items: center; width: 16px; height: 16px; }
+.ws-dot { width: 7px; height: 7px; border-radius: 50%; }
+.ws-account.bp6-button { display: flex; justify-content: flex-start; align-items: center; flex: 1; min-width: 0; height: auto; padding: 4px 6px; color: inherit; text-align: left; }
+.ws-account .bp6-button-text { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ws-account:hover strong { text-decoration: underline; }
+.ws-account:focus-visible { outline: 2px solid var(--fw-accent, #2d72d2); }
+.ws-user > .bp6-popover-target:first-child { flex: 1; min-width: 0; display: flex; }
+.is-collapsed .ws-user > .bp6-popover-target:first-child { flex: none; }

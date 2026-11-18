@@ -1,0 +1,412 @@
+COMPOSABLE ERP FRAMEWORK
+Import existing parts from '../framework'. Components implement shared UI behavior;
+the business screen owns fields, requests, data conversion and transaction boundaries.
+Patterns are optional compositions. They do not dictate business operations.
+The primary authoring path is direct typed JSX: choose parts, arrange them and connect
+data/callbacks. DB screen definitions and LLM calls are not prerequisites.
+Use ordinary React state/props; a new layout does not require a new framework screen type.
+Design system: Blueprint (@blueprintjs/core), reached only through the framework. Screens import UI from
+'../framework' (Button label/variant/onClick, Text, VStack/HStack gap) and never from
+@blueprintjs or any other design-system package directly.
+
+COMPOSITION GUIDE
+A business screen is ONE file in frontend/src/screens. The usual screen is BusinessWorkspace with a query
+panel, a grid and an edit panel (see frontend/src/screens/ItemMaster.tsx). Other arrangements compose the
+same parts differently; examples follow.
+
+The named nodes below (queryPanel, resultGrid, masterGrid, detailGrid, basicEditor,
+additionalEditor) are caller-created JSX. The screen supplies their fields, rows and handlers.
+
+Query-only: compose the common header and query with any result node.
+ <div style={{display:'flex',flexDirection:'column',flex:1,minHeight:0,gap:8}}>
+   <header style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
+     <ScreenTitle>{title}</ScreenTitle><ScreenActions actions={queryActions}/>
+   </header>
+   {queryPanel}
+   <div style={{flex:1,minHeight:0,overflow:'auto'}}>{resultGrid}</div>
+ </div>
+ queryActions={query:{form:queryId}} links to QueryPanel formId={queryId} showActions={false}.
+
+Multiple grids and bottom editor tabs: compose a split inside the results slot.
+ <BusinessWorkspace title={title} actions={actions} query={queryPanel}
+   results={<SplitPane direction="horizontal" label="목록 영역 너비"
+     primary={masterGrid} secondary={detailGrid}/>}
+   editorTabs={[
+     {id:'basic',label:'기본정보',content:basicEditor},
+     {id:'additional',label:'추가정보',content:additionalEditor}
+   ]}/>
+ Change direction to "vertical" for stacked grids; nest SplitPane for additional regions.
+ A standalone SplitPane needs a parent with available height (e.g. height:480 or a flex area
+ with minHeight:0). BusinessWorkspace already provides that space for its results slot.
+ Master selection -> detail rows is connected by the screen, not inferred by SplitPane.
+ Each editor has a unique formId. actions.save.form targets one form; grouped save requires
+ an explicit business handler and transaction contract. Tabs alone do not define save scope.
+ For free layouts, compose Panel/QuerySections/ScreenActions/SplitPane/TabbedPanel directly.
+ When using a standalone toolbar with hidden editor tabs, wire beforeAction/revealForm so
+ the target form is visible before validation; BusinessWorkspace already handles this.
+
+BUSINESS WORKSPACE (query + bottom editor pattern)
+ <BusinessWorkspace title="연락처 관리" actions={actions} query={queryPanel}
+   results={grid} editorTabs={[{id:'basic',label:'기본정보',content:editorForm}]} />
+ Header: compact title left, common actions right. Query below the header, results in
+ the middle, tabbed editor at the bottom, expanded by default and sized to its content (no
+ page scroll). A button collapses/expands it with a height animation; drafts are retained.
+ Optional editorCollapsed/onEditorCollapsedChange let a row-selection handler reveal it.
+ Pass the edit form as editor={{fields,record,onSave,onNew,formId}}: field group 'basic'/'extra' (default: required→기본정보, others→추가정보) become tabs of one form, 3 columns, no own buttons (the header toolbar drives 조회/신규/삭제/저장). The editor panel is toggled by a button and animates; there is no split/resize. Query/editor slots accept arbitrary nodes.
+ BusinessWorkspace does not decide how to query, save, delete or group transactions.
+ DOM: [data-ui="business-workspace"], [data-region="screen-header"],
+ [data-region="query"], [data-region="results"], [data-region="editor"].
+ Without `editor`/`editorTabs` it is a query-only screen (no edit panel).
+
+COMMON ACTIONS
+ The shared toolbar (BusinessWorkspace actions, or <ScreenActions actions/>) takes actions keyed
+ query/create/remove/save/export/print, shown in that order as 조회/신규/삭제/저장/엑셀/출력 with built-in icons
+ and colours. Missing entries are not shown; an entry with no callback/form is disabled.
+ Each action: {form?: string, onClick?: ()=>void|Promise<void>, disabled?:boolean, pending?:boolean, confirm?:string}.
+ Use either a form ID or a callback per action.
+ actions={query:{form:queryId},create:{onClick:newRecord},save:{form:editorId},
+          remove:{onClick:deleteRecord,disabled:!selected,confirm:'삭제할까요?'}}
+ confirm shows an in-app AlertDialog (role=alertdialog, buttons 취소/<action label>) before running the
+ action; never use window.confirm (embedded browsers suppress it).
+ Actions the user's role may not do are hidden automatically (program permission): do not hide them yourself.
+ Use unique form IDs per screen (a constant string per screen is fine).
+ BusinessWorkspace reveals the save target's editor tab before native form validation.
+
+QUERY INPUT
+ FieldValues = Record<string,string>; all controlled drafts, including numbers, are strings.
+ <QueryPanel formId={queryId} showActions={false} fields={basicFields}
+   advancedFields={optionalFields} initialValues={queryDefaults} onQuery={queryRecords}/>
+ Basic fields remain visible. Advanced fields can be expanded/collapsed without losing
+ values; required advanced fields are promoted to the always-visible area.
+ Input-required and basic/detail visibility are separate concerns.
+ onQuery receives ALL query values, including collapsed details; reject/throw on failure.
+ QueryPanel owns validation, pending state, duplicate-submit prevention and errors.
+ Own 조회/조건 지우기 buttons appear only outside BusinessWorkspace (showActions default);
+ inside BusinessWorkspace they are always hidden and the header toolbar runs the query.
+ Extra controls in the query area (e.g. a '조건 초기화' button) go in children:
+   <QueryPanel ... children={({values,setValue})=>
+     <Button label="조건 초기화" onClick={()=>queryFields.forEach(f=>setValue(f.name,''))}/>}/>
+   (Button from '../framework'.)
+ For existing/custom forms use QuerySections primary={basicControls} advanced={details}.
+ QuerySections only controls visibility and never changes the business draft.
+
+RECORD EDITOR
+ <RecordEditor formId={editorId} showActions={false} compact fields={editFields}
+   record={selection} defaults={defaults} resetKey={resetKey}
+   onSave={saveRecord} onNew={clearSelection}/>
+ selection: {id:string|number, values:FieldValues}|null. null means create.
+ Supply EVERY editable field as a string on row selection.
+ onSave(values,id) receives null for create; convert numeric payload fields explicitly.
+ Owns draft/validation/pending/error/success and dirty-state registration with MDI.
+ Record-ID changes reset drafts; list/query rerenders with the same ID preserve edits.
+ Selecting a row whose values differ from the current selection reloads them. After saving a new record,
+ pass {id:newId, values:{}}: the editor keeps the saved draft and success message (now edit mode).
+ Toolbar New clears selection and increments resetKey to reset an already-new draft.
+ compact lays fields out in responsive columns. Default showActions=true supplies internal
+ save/new buttons. Additional children={({values,setValue})=>JSX} extend the editor.
+ DOM: form[data-ui="record-editor"].
+
+FIELDS
+ FieldDefinition={name,label,type?:'text'|'email'|'password'|'integer'|'decimal'|'date'|'time'|'yesno'|'memo',decimals?,required?,min?,max?,placeholder?,
+   group?:'basic'|'extra'|<your group id>, wide?:boolean, codeGroup?:string, lookup?:{api,label,value?},
+   validate?:(value,allValues)=>string|undefined, render?:({value,onChange,disabled,error})=>ReactNode}.
+ Used by QueryPanel fields, RecordEditor fields and BusinessWorkspace editor.fields. All values are strings.
+ codeGroup:'UNIT' makes the field a drop-down of that common-code group and stores the code (see COMMON CODES).
+ lookup:{api,label} makes it a drop-down of another screen's records and stores the id (see LOOKUP FIELDS).
+ wide:true gives the field the whole row. group puts it on that editor tab.
+ render is for a custom control, e.g. a fixed two-way choice or long text:
+   {name:'useYn',label:'사용',render:c=><Select label="사용" value={c.value||'Y'} isDisabled={c.disabled} onChange={c.onChange}
+      options={[{value:'Y',label:'사용'},{value:'N',label:'미사용'}]}/>}
+   {name:'memo',label:'비고',wide:true,render:c=><TextArea label="비고" value={c.value} isDisabled={c.disabled} onChange={c.onChange}/>}
+ validate returns a message for a business rule. fieldDefaults and validateFields are shared helpers.
+
+RECORD GRID
+ <RecordGrid rows={rows} columns={columns} keyField="id" onSelect={selectRow}/>
+ columns: GridColumn<Row>[] = {key,label,width?:number,render?:(row)=>ReactNode,editable?:boolean,align?:'right'|'center'}.
+ Display standard (set align accordingly): numbers right; dates, date-times, times, common codes and statuses (values of a
+ fixed form) centre; text of any length left (the default, also auto numbers and a record of another screen shown as "code name").
+ One form for every value, from './framework' (never toLocaleString, toFixed or Date methods in a screen):
+   showNumber(v) 1,234,567.5 (as stored)   showAmount(v) computed value, at most 2 decimals   showPercent(v) 45.0%
+   showDate(v) 2026/11/14 (a month 2026/11)   formatDateTime(v) 2026/11/14 09:05:07   showTime(v) 09:05:07
+   storeDate(typed) 2026/11/14, 2026.11.14 or 20261114 -> stored 2026-11-14   readNumber(typed) '1,500' -> '1500'
+   alignOf(type) and showValue(type, v) for type 'number' | 'date' | 'datetime' | 'code' | 'status' | 'text'
+ Nothing is an empty cell (never '-', 'null' or 0). A column with a number value and no render is shown with showNumber.
+ Copying, "엑셀로 내보내기" and "인쇄" of a grid use what the cells read (render results that are text); exported numbers
+ go out without separators so a spreadsheet can add them; printed columns keep their align.
+ Give fixed widths to short columns and leave one text column without width (it takes the rest).
+ Long lists: a list API answers a part (GET /api/data/{key}?_limit=500&_offset=0&_sort=<field|id|status|updatedAt>&_desc=true) and
+ the header X-Total-Count; rows carry _names {field: "V-001 한빛상사"} for fields that point at other records.
+ <RecordGrid total={n} onMore={bringNext} onSort={sort=>reload(sort)}/> shows "500 / 50,008건", a 더 보기 button, and leaves
+ ordering to the server. usePagedList(api,toRow,failure) from app/pagedList gives rows,total,query,refresh,more,sortBy,all.
+ useLookup(...).more is true when the other screen has more records than were read: pass search={lookup.search} to Picker
+ (it then asks GET /api/lookup/{key}?q=typed) and call lookup.ensure(value) for the stored one (?ids=1,2).
+ Built into every definition-driven screen (nothing to write for them):
+   date conditions are asked as a period in ONE control (Blueprint date range input with 오늘/이번 주/이번 달/지난달/올해; its values are
+   <field>_from / <field>_to; periodFields, storedQuery, openingQuery in app/query). DateInput is Blueprint's date input (calendar, Korean,
+   typed as 2026/01/15 or 20260115); DateRangeInput (ui) for a period anywhere; a FieldDefinition with dateRange: {to} draws one.
+   a screen of work opens on this month unless its definition says "period": all|today|week|month|year;
+   status action names: complete_ship / complete-ship are read as completeShip; a refused action says which part is wrong.
+   toolbar 복사 starts a new record as a copy; choosing several rows (Ctrl/Shift) offers the status actions they all allow;
+   엑셀 exports .xlsx and 올리기 reads .xlsx (framework/xlsx: writeSheet, downloadSheet, readSheet);
+   code groups: "codeGroups": [{"code", "name", "values": [{"code", "name"}]}] - a definition declares the common-code groups its
+   code fields choose from; they are made on save when missing (one already there is used as it is). The framework seeds no business
+   groups (only 사용 여부);
+   period locks: "lock": {"group": "<a name the definition chooses>", "date": "<date field>"} - the screens of a group close month by
+   month together (screen 마감, GET /api/locks, POST /api/locks/{group} {period}, DELETE /api/locks/{group}/{yyyy-MM}); months in order,
+   only the newest reopens; a record dated in a closed month answers 409 to registration, change, deletion or a status action. A group
+   holding screens that move the ledger also locks it up to its end; the ledger hears the month close and keeps month-end quantities
+   (GET /api/ledger/month-end/{group}/{yyyy-MM}). The locks know no other part: parts ask them (through) and hear them (Closed / Reopened).
+   lookups: a field left empty is filled from master data on save (and on the form as soon as its inputs are chosen) - the record of
+   "from" whose "match" fields equal this one's, valid on "at" when it has a period (POST /api/data/{entity}/_lookup answers what would
+   be filled); several for one field are tried in order; a required one nothing gives is refused naming where it looked;
+   print form: "print" may also say logo, company, receiver, fields, columns, vat (company details are system settings).
+   every table (RecordGrid) remembers, per person and screen, its hidden columns, column order and widths (header menu: 이 열 숨기기,
+   열 고르기, 열 설정 처음으로; drag a header name to move it, a header edge to resize) - GET/PUT/DELETE /api/auth/grids?key=<program>:<label>.
+   Nothing to write for it; give settings="name" when one screen has two tables with the same label, settings={false} to keep nothing;
+   further tables of lines: "moreLines": [{name,label,fields,min,max}] beside "lines" - kept in the record under their own name
+   (record.steps = [...]), drawn under the first table; a header total of one is "sum": "<name>.<field>"; lists take <name>.<field>=<value>;
+   fields that depend on another field: "showWhen" | "requiredWhen" | "lockWhen": {field, is:[stored values]} on a field (above or in a line;
+   a line's condition may look at a field above; a ref field holds the chosen record's id, so on it only is:[""] (empty) is taken - other
+   values -> 400). Not there -> stored empty and asked for nothing; requiredWhen -> 400 when empty;
+   lockWhen -> on a change the field above keeps its stored value (in a line the box is only disabled). A hand-written form can say the
+   same three on a FieldDefinition (Fields and validateFields follow them; holds(when, values, above?) from fields).
+ Screens that only show another entity: "calendar" (GET /api/calendar/{key}?month=2026-11) and "tree" (GET /api/tree/{key});
+   components app/CalendarScreen, app/TreeScreen.
+ Taking over from an earlier stage, many records at once, in the list (no form): "take": {entity, from, statuses?, set?, lines:{set}?, columns?}
+   - component app/TakeScreen. GET /api/take/{key}/shape -> {ask:[fields of the new record asked once], quantityLabel, ...};
+   GET /api/take/{key}?<conditions of the earlier screen> -> rows {key, sourceId, line, head, unit, ordered, done, remaining} (only what is open,
+   by the limit the new entity has against the earlier one; a limit without field / entityField = each earlier record followed once: shape.once,
+   no quantity columns); POST /api/take/{key} {values:{asked fields}, rows:[{sourceId, line, quantity}]}
+   -> {count, created:[{id,name}]}; "per": "source" (one record per earlier record, the default; "group" in the definition) or "same" (rows
+   with the same values above the lines share one record across earlier records - only when the new entity keeps its pointer to the earlier
+   record in its lines; shape.combinable says so and the screen then offers the choice); all or nothing; the new entity's
+   own rules apply. Work on several records is always done in a list like this (tick rows, edit cells, 저장), never through the edit panel.
+ Where records live: each defined screen has a real table of its own - r_<key> (id, status, created/updated, one typed column f_<field>
+   per field: text/memo/serial TEXT, code VARCHAR, number NUMERIC, date DATE, time TIME, yesno BOOLEAN, ref BIGINT) and r_<key>__<lines> per
+   table of lines (record_id, line_no, f_<field>...). Saving a definition makes or extends the tables; a removed field keeps its column.
+   The APIs are unchanged (records still travel as {field: value, lines: [...]}). Process flows are modelled as an instruction table and a
+   result table per business (출하지시 shipping_instruction -> 출하실적 shipping_result), each registered from the stage before with a take screen.
+   Quantity ledger, by lot (no business assumed: things at places): a definition's "ledger": {direction: in|out|move|count, thing (ref),
+   quantity, place (a required ref), unitCost (in/count only), date, lot, toPlace (move only)} makes its records move quantities. in: one lot
+   per line at the line's unit cost; out: taken from the oldest lots of the thing at the place, each part at its lot's cost; not enough -> 400.
+   Changing or deleting the record takes its movements back (409 for a lot already taken from).
+   A record of such a screen carries _ledger [{line, direction, lot, quantity, unitCost, amount}] - the cost of what went out, lot by lot.
+   GET /api/ledger/balance|lots|moves (?thing=&place=&from=&to=); a ledgerView screen shows 현재 수량 / 묶음 / 들고 난 내역, its words (the
+   thing, the place, the lot) taken from the screens that move the ledger. move: out of `place`, into `toPlace` (a second required ref to the
+   same kind of place), each lot keeping its number and cost.
+   Which things are kept by lots is the ledger part's "lotWhen": {"field", "is"} (a field of the thing's record and the values meaning "by lot");
+   none said: any may carry a lot number. The lot field itself carries no showWhen / requiredWhen.
+   An out / move screen needs no limit against the receipts for "not more than is held": the ledger refuses it; such a limit (by its thing
+   and place, against an in / count screen) is left out when the definition is read. An older spelling ("stock" with item / warehouse / toWarehouse, "stockView") is still read.
+   (a text field) takes a lot number: when receiving it names the lot, when issuing only that lot is taken from; typed for a NONE item -> 400.
+   Made from an earlier list: "from": {"entity", "statuses"?} on a definition puts in what is not written - a ref to the earlier entity, the
+   limit "each earlier record once", follows - and the stored definition shows them with from {entity, pointer, statuses, carry, ask}: fields
+   of the same name and type are carried over, the rest (text/number/date/time/yes-no) typed in each row of the take-over on /api/take/{key}.
+   Who registered a record: a header field of type "user" holds the signed-in account (set on create, never typed or changed; on screens it
+   reads like a serial). A work screen with over.mine lists and handles only the records whose user field is the person signed in (others 404).
+   A work screen's actions may ask fields: over.ask {"<action>": ["<field>", ...]} - choosing rows and the action puts those fields in the
+   rows (the other fields stay as they are); 확정 sends POST /api/over/{key}/{id}/actions/{action} {"values": {...}} per row: the fields are
+   written and the action taken in one go (400 without them). For what ends once (leaving, returning, confirming), not a record of its own.
+   A record changed by someone else after a screen showed it is not saved over: the screens send X-Seen (the updatedAt they showed) with a
+   change, a delete or a status action, and a take-over row its seen; a different updatedAt now -> 409 "조회한 뒤에 다른 사람이 바꾼
+   자료입니다. 다시 조회한 뒤 …하세요." Without X-Seen nothing is compared.
+   A from-screen's own screen is the take-over grid: the earlier records still open, queried, ticked and saved (no edit panel, no 신규);
+   a row may also choose another record (a ref) in its cell. Its records are looked after on a work screen made for them.
+   GET /api/meta/graph(?drafts=true) - the screens as one graph, read off the definitions: nodes (entities keeping records: states, and the
+   steps moving a record between them - action, from, to, the work screens taking it) and edges earlier -> later with how (from / take /
+   limit / expand / create / choose); each node lists prev and next. Definitions write only the earlier side; next is worked out.
+   Query conditions always include a screen's automatic number and its first date (a period); with no field marked search at all, the
+   fields choosing other records (two at most, the earlier record of a from-screen first) are marked search too, when the definition is read.
+   Spans that may not overlap: "noOverlap": [{from, to, by, ignore, message}] - two required date fields (whole days: touching ends meet) or two
+   time fields with their date in by (half open: 10:00-11:00 and 11:00-12:00 do not meet); records with the same by whose spans meet are refused
+   (400, with the span already there); statuses in ignore (a cancelled booking) are not counted; to before from is refused.
+   Master data in layers: layer 1 stands alone (item, warehouse, vendor); layer 2 combines layer 1 as a master with details (BOM: an item and
+   its parts; routing: an item and its steps) - "uniqueBy": [[fields]] (no two records with the same combination), a line field "unique"
+   (not twice in one record's lines), "noCycle": {parent, child} (a part may not be the item itself or lead back to it at any depth; child is a line field, or a field
+   of the record itself when each record is one pair). expand also works on a master without lines: every matching record is one "line".
+   Layer 3 (master data on layer-2 master data: 공정별 자재소요량 = an item and, per line, a step of its routing, a part of its BOM, a quantity):
+   a ref with "line": true points at a LINE of the other master; "within": {field, target} keeps it to lines of the record whose `target`
+   equals this record's `field`. Lines keep their ids when their record is edited (they travel as _line), and a line something points at
+   cannot be removed. GET /api/lookup/{key}/lines?field=&value=&ids= lists lines; LineField (framework/fields) is the picker.
+   Business drawing on master data: effects [{"on": "create"|<action>, "expand": {from, match, into, set, quantity: {into, line, times}}}] -
+   the master records matching this record (the BOM of its item) are found and every line of them becomes a record of `into` (one item
+   each), quantity = the line's × this record's; set takes "line.<field>" and one step through a line ref "line.<field>.<field>".
+   No matching master: 400.
+   Periods: "effective": {from, to?, by: [fields]} - records with the same `by` may not overlap in time (to empty = still valid);
+   expand "at": "<this record's date field>" uses the master valid on that day (else today).
+   History: each screen keeps its own history table h_<key> beside r_<key> (the record as it stood after each registration, change,
+   status action, attachment or deletion; who and when). A record's 이력 button reads it (GET /api/data/{entity}/{id}/history,
+   newest first, each entry set against the one before it). There is no screen over every screen's history.
+   The edit panel always registers or changes ONE record. A table of lines in it is for a master with several details (a price list and its
+   item prices, a routing and its steps; a BOM is kept one parent-part pair per record); process records (requests, instructions, results) hold one item each and have no lines.
+   Process records hold one item each (no lines): a take screen then makes one record per chosen row; "set" may take values from the earlier
+   line, and "ask": [fields] are typed in the row.
+   A take screen may ask for more than the quantity in its rows: "lines": {"ask": ["lotNo", ...]} (text, number, date, time or yes/no fields of
+   the new line; a yes/no is a tick box in the row).
+   Naming the quantity or a field handed over in ask asks for nothing more (it is in the row already).
+   Choosing a lot: on a screen that takes quantities out the lot field has a button that opens app/LotDialog (the lots of the line's thing held
+   at its place: number, date, cost, what is left); a take screen that asks for the lot shows 찾기 in the row. Built in, nothing to write.
+   Counting: "ledger": {"direction": "count", ...} - quantity is what was counted; saving sets the books (the place, or the lot named)
+   to it, more as a new lot (unitCost field, or the newest lot's cost), less from the oldest lots. Opening quantities are a count too.
+   Seeing the ledger: a screen {"title": ..., "ledgerView": {"show": "all|balance|lots|moves", "thing": "<thing entity>"}} (app/LedgerViewScreen) - stores nothing;
+   with thing only that thing's quantities show (GET /api/ledger/...?entity=).
+   POST /api/system/ledger/adjust (administrators) puts quantities in or out without a record (used by the checks).
+   effects may say {"on":"create","fill":{entity, action}}: an earlier record used up in full takes that status action.
+ Moving between screens is built in (definition-driven screens show 연결, summaries show 내역):
+ GET /api/data/{key}/{id}/links -> {from:[{entity,title,programCode,field,label,count}], to:[{...,id,name}]};
+ lists also take <date>_from / <date>_to (a period) and lines.<field>=<value> (records that have such a line).
+ To send a screen conditions: nav.open(programCode, intentOf({params:{field:value}, note:'수주 SO-1 의 출하', select?:id})) from app/links;
+ the receiving screen reads them with useLinked(programCode) and shows <LinkedNote linked onRelease/> above its list.
+ Every record has a change history and attached files, built in (definition-driven screens show 이력 and 첨부 buttons):
+ GET /api/data/{key}/{id}/history -> [{at,by,what,automatic,changes:[{label,before,after}]}] newest first;
+ GET|POST /api/data/{key}/{id}/files (POST ?name=..., body = the file's bytes), GET|DELETE .../files/{fileId}.
+ <HistoryDialog api id title isOpen onClose/> and <FilesDialog api id title isOpen onClose readOnly? onCount?/> from app/.
+ Toolbar actions: query, create, remove, save, import, export, print, files, history ({onClick,disabled,label?}).
+ Clicking a row selects it (no per-row buttons). onSelect(row) = current row,
+ onSelectionChange(rows[]) = all selected rows. Deleted rows drop out of the selection.
+ selection='single'(default) | 'multiple'(Ctrl/Cmd toggle, Shift range, Ctrl+A)
+   | 'checkbox-single' | 'checkbox-multiple'(checkbox column + select-all header).
+ Selection -> delete through the shared toolbar:
+   const [picked,setPicked]=useState<Row[]>([]);
+   <RecordGrid selection="checkbox-multiple" onSelectionChange={setPicked} .../>
+   actions={{remove:{onClick:()=>deleteRows(picked),disabled:!picked.length,confirm:'선택한 행을 삭제할까요?'}}}
+ Multi-row editing: editable forces checkbox-multiple + cell focus (arrows/Tab move,
+ Enter/F2/typing edits, Enter/Tab commit, Esc cancels, Space on checkbox cell selects).
+   const grid=useEditableRows<Row>('id'); grid.load(fetched);
+   <RecordGrid editable rows={grid.rows} onRowsChange={grid.onRowsChange} columns={[{key:'qty',label:'수량',editable:true}]} .../>
+   grid.changed = edited rows to save; grid.isDirty for the save button.
+ Built into every grid, so NEVER build these yourself: sort (header ▾ menu), column reorder (drag a header),
+ column resize, copy (right-click, Ctrl/Cmd+C), 엑셀로 내보내기 and 인쇄 (right-click), compact density,
+ right-aligned numbers, docking (inside BusinessWorkspace results it fills the area and scrolls inside).
+ No sizing, font or colour props; do not style the grid with CSS.
+ Sorting and column order are the user's view only: rows/onRowsChange keep the caller's order.
+ Show a code as its name or a server time readably with render:
+   {key:'unit',label:'단위',width:80,render:row=>unit.name(row.unit)}   // const unit=useCommonCodes('UNIT')
+   {key:'updatedAt',label:'수정일시',width:140,render:row=>formatDateTime(row.updatedAt)}
+
+OTHER LAYOUTS
+ SplitPane supports horizontal/vertical nested layouts, primary/secondary React slots,
+ initialRatio, label, secondaryCollapsed and secondaryCollapsedSize.
+ TabbedPanel accepts tabs=[{id,label,content}], collapsed, onCollapsedChange. It retains
+ mounted contents and supports arrow/Home/End tab navigation.
+ Panel (a compact card with optional title/actions) and Card frame a block. DataWorkspace is an
+ optional wide-left query/results + right-editor arrangement.
+
+UI PARTS
+ Everything visual comes from '../framework' (Blueprint underneath). Never import @blueprintjs or another
+ design-system package in a screen, never hand-draw tabs, trees, tooltips or dialogs, and never restyle
+ controls with CSS (heights, fonts, paddings, colours are fixed: 24px controls, 13px text).
+ Button{label,variant?:'primary'|'secondary'|'ghost'|'destructive'|'success',outlined?,icon?:'<Blueprint icon name>',
+   isDisabled?,isLoading?,isIconOnly?,onClick,type?}   icons: search, plus, trash, floppy-disk, print, edit, download, th, cog ...
+ NumberInput{label,value,onChange,hideLabel?} right-aligned, separators when not typing, value is the plain number.
+ DateInput{label,value,onChange,hideLabel?,center?,onDone?} reads 2026/11/14, typed forms are rewritten on leaving the box.
+ TimeInput{label,value,onChange,hideLabel?,center?} reads 09:30:00 (typed 0930, 9:30).  YesNoInput{label,value('true'|''),onChange,hideLabel?} a tick box.
+ Field type 'time' uses TimeInput, 'yesno' YesNoInput, 'memo' a TextArea across the form; decimals:2 reads 1,500.00.
+ showYesNo(v) 예/아니오, storeTime(typed), showNumber(v, 2, true) fixed places.
+ Field types 'integer'|'decimal' use NumberInput and 'date' uses DateInput (a typed '1,500' is accepted; save Number(readNumber(v)), storeDate(v)).
+ TextInput{label,value,onChange,type?,isRequired?,isDisabled?,placeholder?}  TextArea{label,value,onChange,rows?,isReadOnly?,hideLabel?,maxLength?}
+ Select{label,value,onChange,options:[{value,label}],isDisabled?,hideLabel?}  Checkbox{label,checked,onChange,hideLabel?,indeterminate?}
+ DateRangeInput{label,from,to,onChange(from,to),isDisabled?,hideLabel?} a period in one control.  SearchInput{label,value,onChange,placeholder?}
+ ContentButton{label?,children,onClick,outlined?} a button whose face is more than a word (a title with a count, a chip with a time).
+ PopoverMenu + MenuItem/MenuDivider for menus.  A list shown as a plain table: <table className="bp6-html-table bp6-compact">.
+ Every control is a Blueprint one: never write <button>, <input>, <select>, <textarea> or <input type="checkbox"> in a screen.
+ A row of buttons that switches a view is role="group" with aria-pressed on the buttons (not tabs; tabs are TabList).
+ Card{label?,children}  Tag{intent?,round?,minimal?}  Icon{name,size?}  Text  VStack/HStack{gap}  ScreenTitle
+ Dialog{isOpen,onClose,title,children,footer?}  AlertDialog (confirmation)  AsyncFeedback{error,succeeded?,successText?}
+ Rows of labelled inputs and buttons: display:'flex', alignItems:'end', gap:8.
+
+COMMON CODES
+ Drop-down values that an administrator keeps in 공통 코드 관리 (group > code). Use them for every choice a
+ business user may want to change (단위, 구분, 유형, 상태, 등급 ...); do NOT hard-code such option lists.
+ Field:  {name:'unit',label:'단위',codeGroup:'UNIT'}            // drop-down of the group, stores the code
+ Name in a grid:  const unit=useCommonCodes('UNIT');  render:row=>unit.name(row.unit)
+ unit.codes=[{code,name}]; unit.options=[{value,label}] (with an empty '선택') for a <Select>.
+ A group that does not exist yet simply gives an empty list; the administrator adds its codes later.
+ Existing groups: USE_YN (사용 여부: Y 사용, N 미사용), UNIT (단위: EA 개, BOX 박스, SET 세트, KG, M).
+ The backend stores the code as plain text (VARCHAR); no foreign key and no code table of your own.
+
+LOOKUP FIELDS
+ A value that is a record of another screen (an employee's department, an order's customer) is a lookup:
+ Field:  {name:'departmentId',label:'부서',lookup:{api:'/api/departments',label:'name'}}   // drop-down of that API's rows, stores the row id
+ Name in a grid:  const dept=useLookup({api:'/api/departments',label:'name'});  ... unitName-style view value: dept.name(row.departmentId)
+ dept.options=[{value,label}] (with an empty '선택') for a <Select> in a query panel.
+ Backend: the column is <name>_id BIGINT (nullable unless required), the JSON field <name>Id is a number or null,
+ and no foreign-key constraint is added. Never ask the user to type an id, and never copy the other record's name
+ into this table.
+
+BACKEND CONVENTIONS
+ A new API follows the item API: Flyway migration -> entity -> repository -> controller, same package.
+ Every business entity extends com.example.localinventory.framework.audit.AuditedEntity and its table has
+   created_by VARCHAR(100), created_at TIMESTAMP, updated_by VARCHAR(100), updated_at TIMESTAMP   (all nullable)
+ The four values are filled automatically on save; controllers and request bodies never carry them. They come
+ back in JSON as createdBy/createdAt/updatedBy/updatedAt (UTC; show with formatDateTime).
+ Never edit an existing migration file; add the next V<n>__name.sql. Signed-in users may call /api/**; do not
+ touch the security configuration. JSON field names are camelCase. Validation failures answer 400 with a message,
+ duplicates 409, missing records 404.
+
+EXCEL AND PRINT
+ Every grid already offers 엑셀로 내보내기 and 인쇄 in its right-click menu. For toolbar buttons too:
+   actions={{...,export:{onClick:()=>exportRows(title,columns,rows),disabled:!rows.length},
+                 print:{onClick:()=>printRows(title,columns,rows),disabled:!rows.length}}}
+ exportRows downloads a CSV that Excel opens; printRows prints all rows (not only the visible ones).
+ columns may be the grid's own columns ({key,label}); pass rows already holding the text to show.
+ Both follow the 출력 program permission. formatDateTime(value) shows a server time in local time.
+
+SCREEN REGISTRATION
+ A screen file exports a default component and meta:
+   export const meta={code:'MST0005',title:'자재 등록',icon:'box',keywords:['자재','원자재','부품']};
+ code = three letters + four digits, not used by another screen, never starting with SYS. It is an internal
+ identity: do not show it to users. title is the menu and tab name. icon: home, box, list, document, building,
+ users, truck, factory, warehouse, chart, calendar, money, settings.
+ keywords (at least 2) are the words users type to find the screen (search uses title, menu path, keywords
+ and initial consonants). The file is picked up automatically: it becomes a program, appears for administrators
+ under 미편성 프로그램 until placed in a menu, and is searchable at once. Do not edit App.tsx, Home.tsx,
+ the workspace/system folders or menus in code.
+ Call your API with a literal path, apiFetch('/api/materials...'): the screen's permissions are derived from
+ the '/api/...' paths in its source. Check response.ok and throw an Error with a readable message.
+ Any screen opens by link: <app url>#open=<title>.
+
+BUILT IN (do not build or edit)
+ These belong to the framework and need no code in a screen: sign-in, sign-up and approval, roles, modules and
+ menus, menu and program permissions, duplicate sign-in prevention, 내 정보 and password rules, access log,
+ system name/logo/theme/login background, the home page (search, notices, favourites, recent programs),
+ the board (게시판: notices and general posts with comments), favourites (☆), tab reordering and the tab menu,
+ program search, common code administration. Their screens use codes SYS0001-SYS0009.
+ const permission = useProgramPermission();  // {query,create,save,delete,print} if an extra control must follow it
+ Open another screen with data: const nav=useWorkspaceNav(); nav?.open('<program code>',{key:'value'});
+   the target reads nav.intents['<its code>']?.values (and .at, which changes on every open).
+ Custom editors report unsaved changes with useUnsavedChanges; RecordEditor already does.
+
+DOM FOR CHECKS
+ Stable hooks for verification (prefer roles and names over CSS classes):
+ screen = tabpanel named by the screen title; open-screen tabs = [data-ui="workspace-tabs"] [role="tab"], each
+ followed by a button '<title> 닫기'; menu entries = buttons inside nav[aria-label="메뉴"].
+ [data-ui="business-workspace"] with [data-region="screen-header"|"query"|"results"|"editor"].
+ Toolbar = [role="toolbar"][aria-label="업무 버튼"] with buttons 조회/신규/삭제/저장/엑셀/출력.
+ Grid = [data-ui="record-grid"][role="grid"]; it is virtualized and NOT a <table>: every cell is
+ [role="gridcell"][data-row-key][data-row-index][data-col] with aria-selected, a row is the cells sharing
+ data-row-key, column headers are .bp6-table-column-name-text. Find a row by its text with
+ [data-ui="record-grid"] [role="gridcell"]:has-text("...") and click that cell to select it.
+ Editor = form[data-ui="record-editor"]; its tabs = [data-ui="tabbed-panel"] [role="tab"]. A field is an input
+ named by its <label> (it has NO aria-label): select it as  form[data-ui="record-editor"] >> internal:label="회사명".
+ A codeGroup field is a <select> found the same way. Query fields: form[data-ui="query-panel"] >> internal:label="...".
+ One selector per check: a comma list (A, B) means "any of them" and matches several elements.
+ Confirmation = [role="alertdialog"] with buttons 취소 and the action label.
+
+AUTHENTICATION / SHELL
+ App composes AuthProvider -> AuthGate -> WorkspaceShell. Spring ID/password login uses an HttpOnly
+ server-session cookie. useAuth exposes user/status/error/signIn/signOut/refresh (user.admin, user.username).
+ Business API calls use apiFetch('/api/...', options): CSRF on writes, login gate on HTTP 401.
+ Roles: users have roles; ADMIN may open and do everything. Program permission per role is
+ 조회/신규/저장/삭제/출력; the server refuses the matching calls (GET=조회, POST=신규, PUT/PATCH=저장,
+ DELETE=삭제) with 403 PROGRAM_FORBIDDEN. Menu visibility never replaces backend authority.
+
+DISCOVERY
+ search_components({query:'한국어 또는 English behavior'}) uses local multilingual vectors
+ and lexical search. It returns source-derived props, dependencies and validation evidence.
+ Add a nearby *.component.json for each new reusable piece: id,kind,version,source,export,
+ props_type,summary,intents,capabilities,uses,example. Read existing descriptors for shape.
+ kind=primitive|composite|pattern; uses lists component IDs. Sources/exports must exist.
+ New pieces start unverified. Trusted checks bind validation to current source/dependencies;
+ source changes invalidate old evidence. Do not self-attest or treat relevance as proof.
+

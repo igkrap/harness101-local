@@ -1,0 +1,12 @@
+.workspace-tabs { flex: none; padding: 0 0 0 12px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; border-bottom: 1px solid var(--fw-border); background: var(--fw-band); }
+.workspace-tabs::-webkit-scrollbar { display: none; }
+.workspace-tabs .fw-tabs, .workspace-tabs .bp6-tabs { width: max-content; min-width: 100%; }
+.workspace-tabs .bp6-tab-list { align-items: center; min-height: 32px; width: max-content; min-width: 100%; }
+/* The star and the tab menu do not scroll with the tabs. */
+.workspace-tab-tools { position: sticky; right: 0; z-index: 2; display: flex; align-items: center; align-self: stretch; padding: 0 8px 0 6px;
+  background: var(--fw-band); box-shadow: -8px 0 8px -6px rgba(17, 20, 24, .18); }
+.workspace-tabs .bp6-tab { line-height: 32px; margin-right: 0; white-space: nowrap; }
+.workspace-tabs .workspace-tab-close { margin: 0 12px 0 0; }
+.fw-tabs .bp6-tab:focus { outline: none; }
+.workspace-tab-title { display: inline-block; cursor: grab; }
+.workspace-tab-title.is-drop { box-shadow: -3px 0 0 var(--fw-accent, #2d72d2); }

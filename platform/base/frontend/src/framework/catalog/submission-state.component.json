@@ -1,0 +1,19 @@
+{
+  "id": "submission-state",
+  "kind": "primitive",
+  "version": "1",
+  "source": "frontend/src/framework/useSubmission.ts",
+  "export": "useSubmission",
+  "summary": "비동기 작업의 실행 중 상태, 오류, 성공 여부를 관리하고 중복 제출을 막는 훅입니다.",
+  "intents": [
+    "저장 중 중복 요청 방지",
+    "비동기 오류와 성공 상태"
+  ],
+  "capabilities": [
+    "pending",
+    "single-flight",
+    "error-state"
+  ],
+  "uses": [],
+  "example": "const submission = useSubmission(); await submission.run(saveRecord);"
+}

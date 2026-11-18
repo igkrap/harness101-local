@@ -1,16 +1,14 @@
 """Making a new project: a folder with the base framework in it and a working set of its own.
 
-A project is of a kind (업무 사이트 ...). The kind decides which template it starts from; the template is the
-base framework exactly as the reference project holds it, without that project's own screens. The new project gets
+A project is of a kind (업무 사이트 ...). It starts from the platform's framework (platform/base, see framework_update) -
+no project is the template of another. The new project gets
 its own git history, development database, server, preview address, sign-in files and - later - setup packs, all
 named after it. Nothing of another project is shared with it except the tools (database container, build cache).
 """
 import hashlib
-import io
 import shutil
 import socket
 import subprocess
-import tarfile
 from pathlib import Path
 
 import project_git as vcs
@@ -18,7 +16,6 @@ import sites
 from first_setup import Setup
 
 HOME = sites.ROOT / 'projects'          # where new projects are made (ignored by the platform's own git)
-LEFT_OUT = ('release/', 'principles.md')  # the reference project's own screens and business principles do not belong to the base framework
 
 
 def kinds():
@@ -92,17 +89,6 @@ def chosen_ports(hub, body, but=None):
     return out
 
 
-def _template(source, target):
-    """The committed files of the reference project, without its own screens."""
-    raw = subprocess.run(['git', 'archive', '--format=tar', 'HEAD'], cwd=source, capture_output=True, timeout=300)
-    if raw.returncode != 0:
-        raise ValueError('기본 프레임워크를 꺼내지 못했습니다: ' + raw.stderr.decode(errors='replace')[-300:])
-    with tarfile.open(fileobj=io.BytesIO(raw.stdout)) as archive:
-        members = [member for member in archive.getmembers() if not member.name.startswith(LEFT_OUT) and member.name + '/' not in LEFT_OUT]
-        archive.extractall(target, members=members)
-    return subprocess.run(['git', 'rev-parse', 'HEAD'], cwd=source, capture_output=True, text=True).stdout.strip()
-
-
 def create(hub, body, log=None):
     """Make the project and everything it needs to be worked on. Returns its record (already registered)."""
     note = log or (lambda *_: None)
@@ -120,18 +106,18 @@ def create(hub, body, log=None):
             raise ValueError(f'{slug} 은(는) 이미 있는 프로젝트 이름입니다.')
     if root.exists():
         raise ValueError(f'{root} 폴더가 이미 있습니다.')
-    source = Path(hub.records[0]['root'])        # the reference project: the first one, wherever it is and whatever it is called
     ports = chosen_ports(hub, body)              # as asked, or the first free ones
     api_port, preview_port = ports['api_port'], ports['preview_port']
     try:
-        note('기본 프레임워크 복사')
+        note('플랫폼의 프레임워크 넣기')
         root.mkdir(parents=True)
-        commit = _template(source, root)
+        import framework_update
+        commit = framework_update.copy_into(root)        # the platform's framework, not any project's copy
         (root / 'harness').symlink_to(sites.ROOT / 'erp-harness')
         vcs.ensure_repo(root)
         default = hub.records[0]
         own = {'slug': slug, 'title': title, 'kind': kind_id, 'db': database, 'api_container': f'mdi-{slug}-api', 'api_port': api_port, 'preview_port': preview_port,
-               'template': Path(hub.records[0]['root']).name, 'template_commit': commit}
+               'framework': commit}
         record = {'id': hashlib.sha256(str(root.resolve()).encode()).hexdigest()[:16], 'name': slug, 'root': str(root.resolve()), 'preview_url': f'http://127.0.0.1:{preview_port}',
                   'model_url': default.get('model_url', 'http://127.0.0.1:8099/v1'), 'default_model': default.get('default_model', ''), 'test_db_url': f'jdbc:postgresql://{sites.DB_CONTAINER}:5432/{database}_test',
                   **({'model_config': default['model_config']} if default.get('model_config') else {}), 'site': own}

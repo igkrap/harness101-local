@@ -1,0 +1,32 @@
+{
+  "id": "record-editor",
+  "kind": "composite",
+  "version": "1",
+  "source": "frontend/src/framework/RecordEditor.tsx",
+  "export": "RecordEditor",
+  "summary": "선택 행 수정과 신규 등록 편집 폼(입력 검증, 저장 중 상태, 오류 표시). BusinessWorkspace에서는 editor 설정으로 넘긴다.",
+  "intents": [
+    "선택한 행 내용을 편집 폼에 표시",
+    "신규 등록과 수정 저장",
+    "조회와 독립된 편집 상태"
+  ],
+  "capabilities": [
+    "record-draft",
+    "create",
+    "update",
+    "validation",
+    "new-record"
+  ],
+  "uses": [
+    "form-fields",
+    "submission-state",
+    "panel",
+    "form-actions",
+    "async-feedback"
+  ],
+  "example": "<RecordEditor fields={editFields} record={selectedRecord} onSave={saveRecord} onNew={clearSelection} columns={3} />",
+  "props_type": "RecordEditorProps",
+  "dom": {
+    "form": "form[data-ui=\"record-editor\"]"
+  }
+}

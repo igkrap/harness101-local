@@ -1,0 +1,20 @@
+{
+  "id": "form-actions",
+  "kind": "primitive",
+  "version": "1",
+  "source": "frontend/src/framework/FormActions.tsx",
+  "export": "FormActions",
+  "props_type": "FormActionsProps",
+  "summary": "제출 버튼과 보조 동작 버튼, 처리 중 상태를 조합합니다.",
+  "intents": [
+    "저장 취소 버튼",
+    "조회 초기화 버튼"
+  ],
+  "capabilities": [
+    "submit",
+    "secondary-action",
+    "pending"
+  ],
+  "uses": [],
+  "example": "<FormActions submitLabel=\"저장\" pending={pending} secondary={{label:\"초기화\",onClick:reset}}/>"
+}

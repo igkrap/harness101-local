@@ -1,0 +1,9 @@
+# managed by the platform (project_git.py)
+/harness
+node_modules/
+dist/
+target/
+.zvec-grep/
+*.tsbuildinfo
+*.log
+*.env

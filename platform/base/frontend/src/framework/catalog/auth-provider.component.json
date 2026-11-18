@@ -1,0 +1,20 @@
+{
+  "id": "auth-provider",
+  "kind": "composite",
+  "version": "1",
+  "source": "frontend/src/framework/auth/AuthProvider.tsx",
+  "export": "AuthProvider",
+  "summary": "공통 인증 상태: useAuth로 사용자와 권한, signIn, signOut, refresh를 제공합니다. 서버 세션이 로그인 여부의 기준입니다.",
+  "intents": [
+    "로그인 상태 세션 공통 관리",
+    "인증 공급자"
+  ],
+  "capabilities": [
+    "auth-provider"
+  ],
+  "uses": [
+    "session-client"
+  ],
+  "example": "<AuthProvider><AuthGate><Workspace /></AuthGate></AuthProvider>",
+  "props_type": "AuthProviderProps"
+}

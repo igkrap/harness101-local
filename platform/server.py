@@ -584,6 +584,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(self.server.platform.catalog());return
             if parsed.path=='/api/environment' and hasattr(self.server.platform,'catalog'):
                 import environment;self.send_json({'items':environment.check(self.server.platform)});return
+            if parsed.path=='/api/framework' and hasattr(self.server.platform,'catalog'):
+                import framework_update;self.send_json(framework_update.status(self.server.platform));return
             if parsed.path=='/api/projects/environment' and hasattr(self.server.platform,'catalog'):
                 import projects as _projects;self.send_json(_projects.environment(self.server.platform,(query.get('id') or [''])[0]));return
             if parsed.path=='/api/projects/ports' and hasattr(self.server.platform,'catalog'):
@@ -728,6 +730,8 @@ class Handler(BaseHTTPRequestHandler):
                 import environment;self.send_json(environment.fix(hub,str(body.get('id') or ''),bool(body.get('sure')),body.get('way')));return
             if parsed.path=='/api/environment/find' and hasattr(hub,'catalog'):
                 import environment;self.send_json(environment.find(hub,str(body.get('id') or ''),body.get('path')));return
+            if parsed.path=='/api/framework/update' and hasattr(hub,'catalog'):
+                import framework_update;framework_update.update_all(hub);self.send_json(framework_update.status(hub));return
             if parsed.path=='/api/environment/setup-all' and hasattr(hub,'catalog'):
                 import environment;self.send_json(environment.setup_all(hub,bool(body.get('sure'))));return
             if parsed.path=='/api/projects' and hasattr(hub,'add'):self.send_json(hub.add(body),201);return
@@ -779,6 +783,7 @@ def main():
     try:app=Workspaces(a.project,a.state,a.port)
     except BaseException:server.server_close();raise
     server.platform=app
+    import framework_update;framework_update.watch(app)        # every project on the platform's framework, together
     def terminate(signum,frame):raise KeyboardInterrupt
     signal.signal(signal.SIGTERM,terminate)
     print(f'Local development platform: http://127.0.0.1:{a.port}',flush=True)

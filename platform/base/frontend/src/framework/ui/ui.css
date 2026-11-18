@@ -1,0 +1,242 @@
+/* Theme variables: the accent comes from the system settings; dark mode swaps the surfaces. */
+/* Neutral base. The look chosen in the system settings (data-look on <html>) layers colour on top: plain | tint | solid. */
+:root { --fw-accent: #2d72d2; --fw-bg: #f6f7f9; --fw-surface: #fff; --fw-panel: #f6f7f9; --fw-border: rgba(17, 20, 24, 0.15);
+  --fw-band: #f6f7f9; --fw-band-text: #1c2127; --fw-surface-2: var(--fw-band);
+  --fw-muted: #5f6b7c; --fw-text: #1c2127; --fw-header: #eef0f4; --fw-header-text: #6b7280; --fw-header-edit: #dbe4ff; --fw-header-edit-text: #374151;
+  --fw-selected: color-mix(in srgb, var(--fw-accent) 14%, var(--fw-surface)); --fw-hover: color-mix(in srgb, var(--fw-accent) 7%, var(--fw-surface)); }
+/* tint: light washes of the accent */
+:root[data-look="tint"]:not([data-theme="dark"]) { --fw-bg: color-mix(in srgb, var(--fw-accent) 6%, #f1f3f6); --fw-border: color-mix(in srgb, var(--fw-accent) 16%, rgba(17, 20, 24, 0.16));
+  --fw-band: color-mix(in srgb, var(--fw-accent) 9%, var(--fw-surface)); --fw-band-text: color-mix(in srgb, var(--fw-accent) 45%, #1c2127);
+  --fw-header: color-mix(in srgb, var(--fw-accent) 13%, var(--fw-surface)); --fw-header-text: color-mix(in srgb, var(--fw-accent) 50%, #1c2127); }
+/* solid: a grey page with white panels and white table headings ruled off by one firm line; the accent only on buttons, selection and marks */
+:root[data-look="solid"]:not([data-theme="dark"]) { --fw-deep: #4b5563; --fw-bg: #eff1f4; --fw-border: #cfd4db;
+  --fw-band: var(--fw-surface); --fw-band-text: #1c2127; --fw-header: #eceef2; --fw-header-text: #3d4654; --fw-header-edit: #e2e8f3; --fw-header-edit-text: #1c2127; }
+:root[data-theme="dark"] { --fw-bg: #1c2127; --fw-surface: #252a31; --fw-panel: #1f242b; --fw-border: rgba(255, 255, 255, 0.16);
+  --fw-muted: #abb3bf; --fw-text: #f6f7f9; --fw-header: #2f343c; --fw-header-text: #c5cbd3; --fw-header-edit: #2b3a5c; --fw-header-edit-text: #e5e8eb; }
+body { background: var(--fw-bg); color: var(--fw-text); }
+/* Framework-level adjustments on top of the Blueprint styles. */
+html, body, #root { margin: 0; height: 100%; }
+.fw-app { height: 100%; }
+.fw-icon { display: inline-flex; }
+.fw-field.bp6-form-group { margin: 0; }
+.fw-field .bp6-label { font-size: 13px; }
+h1.bp6-heading, h2.bp6-heading, h3.bp6-heading { margin: 0; }
+/* Buttons, tabs and menu items never draw a focus frame; inputs keep theirs. */
+.fw-app .bp6-button:focus, .fw-app [role="tab"]:focus, .fw-app [role="separator"]:focus { outline: none; }
+/* The accent colour drives primary actions. */
+.fw-app .bp6-button.bp6-intent-primary:not(.bp6-outlined):not(.bp6-minimal) { background: var(--fw-accent); }
+.fw-app .bp6-button.bp6-intent-primary:not(.bp6-outlined):not(.bp6-minimal):hover { background: color-mix(in srgb, var(--fw-accent) 88%, #000); }
+.fw-app .bp6-button.bp6-intent-primary.bp6-outlined { color: var(--fw-accent-text); border-color: color-mix(in srgb, var(--fw-accent) 60%, transparent); }
+.fw-checkbox.bp6-control { margin: 0; }
+/* The real box lies over the drawn one (transparent), so a click - a person's or a check's - lands on the input itself. */
+.fw-checkbox.bp6-control input { z-index: 1; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.fw-checkbox.bp6-control input:disabled { cursor: not-allowed; }
+.fw-checkbox.bp6-control .bp6-control-indicator { pointer-events: none; }
+
+/* Business density: 13px text, 24px controls (buttons, inputs and selects share one height), tight spacing. */
+.fw-app, .bp6-portal { font-size: 13px; }
+.fw-app .bp6-button.bp6-small, .fw-app .bp6-input-group.bp6-small .bp6-input, .fw-app .bp6-html-select select { height: 24px; min-height: 24px; line-height: 22px; font-size: 13px; }
+.fw-app .bp6-button.bp6-small { padding: 0 8px; }
+.fw-app .bp6-html-select select { padding: 0 22px 0 8px; }
+.fw-app .bp6-html-select .bp6-icon { top: 4px; right: 5px; }
+.fw-field .bp6-label { font-size: 12px; font-weight: 600; color: var(--fw-muted); margin-bottom: 2px; }
+.fw-field.bp6-form-group .bp6-form-content { min-width: 0; }
+.fw-app .bp6-card.bp6-compact { padding: 10px 12px; }
+.fw-app .bp6-tab { font-size: 13px; line-height: 30px; }
+.fw-app .bp6-control { font-size: 13px; }
+.fw-app .bp6-html-table td, .fw-app .bp6-html-table th { font-size: 13px; }
+.fw-app .bp6-input-group.bp6-small .bp6-input:not(:first-child) { padding-left: 26px; }
+.fw-app .bp6-input-group.bp6-small > .bp6-icon { margin: 5px 6px; }
+.fw-app .bp6-input-group .bp6-input[type="search"] { border-radius: 4px; }
+.fw-app .bp6-button.fw-star.is-on .bp6-icon, .fw-app .bp6-dark .bp6-button.fw-star.is-on .bp6-icon { color: #f0b726 !important; }
+
+/* Picker: the candidates under the box, and the search window. */
+.fw-pick-menu { max-height: 280px; overflow-y: auto; min-width: 180px; }
+.fw-pick-window .fw-pick-list { margin-top: 8px; height: 360px; overflow: auto; border: 1px solid var(--fw-border, #d3d8de); }
+.fw-pick-window .fw-pick-list table { width: 100%; }
+.fw-pick-window .fw-pick-list th { position: sticky; top: 0; background: var(--fw-surface-2, #f6f7f9); white-space: nowrap; }
+.fw-pick-window .fw-pick-list td { white-space: nowrap; cursor: default; }
+.fw-pick-window .fw-pick-list tr.is-marked td { background: rgba(45, 114, 210, .16); }
+.fw-pick-window .fw-pick-empty { color: #5f6b7c; text-align: center; padding: 24px; }
+.fw-pick-window .fw-pick-count { margin-top: 6px; font-size: 12px; color: #5f6b7c; }
+.fw-pick-window .fw-pick-list td, .fw-pick-window .fw-pick-list th { padding: 4px 8px; font-size: 13px; }
+.fw-pick-window .fw-pick-list tbody tr.is-marked td { background: #cfe0f7 !important; box-shadow: none; }
+
+/* Code box + name box */
+.fw-pick-split { display: flex; gap: 2px; min-width: 0; }
+.fw-pick-split > .bp6-popover-target { flex: 0 0 38%; min-width: 96px; max-width: 170px; display: block; }
+.fw-pick-split > .fw-pick-name { flex: 1 1 auto; min-width: 0; }
+.fw-pick-split > .fw-pick-name input { background: #f6f7f9; color: #1c2127; }
+
+/* Chart: colours are a validated set of eight, in a fixed order (never cycled); text wears text colours, never a series colour. */
+.fw-chart, .fw-stats { --chart-1: #2a78d6; --chart-2: #eb6834; --chart-3: #1baf7a; --chart-4: #eda100; --chart-5: #e87ba4; --chart-6: #008300; --chart-7: #6250d6; --chart-8: #e34948;
+  --chart-surface: var(--fw-surface, #fff); --chart-ink: #1c2127; --chart-ink-2: #52514e; --chart-muted: #898781; --chart-grid: #e6e8eb; --chart-axis: #c3c7cc; }
+.bp6-dark .fw-chart, .bp6-dark .fw-stats { --chart-1: #3987e5; --chart-2: #d95926; --chart-3: #199e70; --chart-4: #c98500; --chart-5: #d55181; --chart-6: #008300; --chart-7: #9085e9; --chart-8: #e66767;
+  --chart-ink: #f0efec; --chart-ink-2: #c3c2b7; --chart-grid: #2c2c2a; --chart-axis: #383835; }
+.fw-chart { position: relative; width: 100%; }
+.fw-chart svg { display: block; max-width: 100%; }
+.fw-chart-text { font-size: 11px; fill: var(--chart-muted); }
+.fw-chart-tick { font-size: 11px; fill: var(--chart-muted); font-variant-numeric: tabular-nums; }
+.fw-chart-label { font-size: 12px; fill: var(--chart-ink-2); }
+.fw-chart-value { font-size: 11.5px; fill: var(--chart-ink); font-weight: 600; }
+.fw-chart-hero { font-size: 22px; fill: var(--chart-ink); font-weight: 600; }
+.fw-chart-grid { stroke: var(--chart-grid); stroke-width: 1; }
+.fw-chart-axis { stroke: var(--chart-axis); stroke-width: 1; }
+.fw-chart-cross { stroke: var(--chart-axis); stroke-width: 1; }
+.fw-chart-dot { stroke: var(--chart-surface); stroke-width: 2; }
+.fw-chart-mark, .fw-chart-zone { outline: none; cursor: default; }
+.fw-chart-mark path { stroke: var(--chart-surface); stroke-width: 0; }
+.fw-chart path.fw-chart-mark { stroke: var(--chart-surface); stroke-width: 2; }
+.fw-chart-zone:focus-visible, .fw-chart-mark:focus-visible { outline: 2px solid var(--chart-1); outline-offset: -2px; }
+.fw-chart-legend { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 0 6px; padding: 0 0 0 56px; font-size: 12px; color: var(--chart-ink-2); }
+.fw-chart-legend li { display: flex; align-items: center; gap: 6px; }
+.fw-chart-key { display: inline-block; width: 10px; height: 10px; border-radius: 2px; flex: none; }
+.fw-chart-key.is-line { width: 12px; height: 3px; border-radius: 2px; }
+.fw-chart-tip { position: absolute; z-index: 5; pointer-events: none; min-width: 120px; max-width: 220px; padding: 6px 9px; border-radius: 4px; background: var(--chart-surface); color: var(--chart-ink);
+  border: 1px solid var(--chart-axis); box-shadow: 0 4px 14px rgba(17, 20, 24, .16); font-size: 12px; }
+.fw-chart-tip-title { color: var(--chart-ink-2); margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fw-chart-tip-row { display: flex; align-items: center; gap: 6px; line-height: 1.5; }
+.fw-chart-tip-row strong { font-weight: 600; }
+.fw-chart-tip-row span:last-child { color: var(--chart-ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fw-chart-empty { padding: 28px; color: var(--chart-muted, #898781); text-align: center; }
+/* Headline figures */
+.fw-stats { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.fw-stat { min-width: 132px; padding: 7px 12px 8px; border: 1px solid var(--fw-border, #d3d8de); border-radius: 4px; background: var(--chart-surface); }
+.fw-stat-label { font-size: 11.5px; color: var(--chart-ink-2); }
+.fw-stat-value { font-size: 20px; font-weight: 600; color: var(--chart-ink); line-height: 1.25; }
+.fw-stat-note { font-size: 11px; color: var(--chart-muted); }
+.fw-chart-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
+.fw-chart-bar .fw-seg { display: inline-flex; gap: 2px; }
+
+/* Summary screen: figures and chart as a plain panel above the table */
+.fw-summary-panel { flex: none; margin-bottom: 8px; padding: 10px 12px 8px; border: 1px solid var(--fw-border, #d3d8de); border-radius: 4px; background: var(--fw-surface, #fff); max-height: 56%; overflow-y: auto; }
+.fw-summary-panel .fw-stats { margin-bottom: 8px; }
+
+/* Comparison: the mark to reach, the grey series to compare with, direction arrows */
+.fw-chart, .fw-stats { --chart-quiet: #b9bec5; --chart-up: #1a7f37; --chart-down: #c9303a; }
+.fw-chart-goal { stroke: var(--chart-ink); stroke-width: 2; stroke-linecap: round; }
+.fw-chart-key.is-goal { width: 14px; height: 2px; background: var(--chart-ink); border-radius: 1px; }
+.fw-stat-arrow { font-size: 11px; margin-right: 4px; vertical-align: 3px; }
+.fw-stat-arrow.is-up { color: var(--chart-up); } .fw-stat-arrow.is-down { color: var(--chart-down); }
+
+/* Summary screen: headline figures on their own; the chart panel holds only the chart */
+[data-ui="summary"] > .fw-stats { flex: none; margin: 0 0 8px; }
+.fw-chart-panel { flex: none; margin-bottom: 8px; border: 1px solid var(--fw-border, #d3d8de); border-radius: 4px; background: var(--fw-surface, #fff); overflow: hidden; }
+.fw-chart-panel-head { display: flex; align-items: center; gap: 10px; padding: 4px 8px 4px 12px; min-height: 32px; border-bottom: 1px solid var(--fw-border, #d3d8de); background: var(--fw-surface-2, #f6f7f9); font-size: 13px; }
+.fw-chart-panel-head .fw-seg { display: inline-flex; gap: 2px; }
+.fw-chart-panel-body { padding: 10px 12px 6px; }
+
+/* Dashboard: chart panels only, three to a row */
+.fw-dashboard { display: flex; flex-direction: column; flex: 1; min-height: 0; width: 100%; gap: 8px; }
+.fw-dashboard-head { display: flex; align-items: center; gap: 10px; flex: none; }
+.fw-dashboard-time { font-size: 12px; color: #5f6b7c; }
+.fw-dashboard-grid { display: grid; grid-auto-flow: dense; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; align-content: start; overflow-y: auto; min-height: 0; flex: 1; padding-bottom: 8px; }
+.fw-dashboard-grid > .fw-chart-panel { margin: 0; min-width: 0; }
+.fw-dashboard-of { font-size: 12px; color: #5f6b7c; }
+.fw-dashboard .fw-stats { margin: 0; }
+@media (max-width: 1100px) { .fw-dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .fw-dashboard-grid > .fw-chart-panel { grid-column: span 2 !important; } }
+
+/* Colour by region: page, bands (tab strip, panel headings), the grid's heading row, the conditions box */
+.fw-app { background: var(--fw-bg); }
+[data-ui="tabbed-panel"] { background: var(--fw-surface); }
+[data-ui="tabbed-panel"] > div:first-child { background: var(--fw-band); }
+.fw-grid .fw-grid-th.bp6-table-header { font-weight: 600; }
+:root[data-look="solid"] .fw-grid .fw-grid-th.bp6-table-header, :root[data-look="solid"] .doc-lines th { font-weight: 500; }
+.fw-chart-panel-head { color: var(--fw-band-text); }
+:root[data-look="tint"] [data-ui="query-panel"] > * { border-top: 2px solid color-mix(in srgb, var(--fw-accent) 55%, var(--fw-surface)); }
+/* solid: slightly rounded panels and tables, light grey table headings */
+:root[data-look="solid"] .bp6-card, :root[data-look="solid"] [data-ui="tabbed-panel"], :root[data-look="solid"] .fw-chart-panel, :root[data-look="solid"] .fw-stat, :root[data-look="solid"] .fw-summary-panel { border-radius: 6px !important; }
+:root[data-look="solid"] .fw-grid, :root[data-look="solid"] .fw-grid .bp6-table-container { border-radius: 6px; overflow: hidden; }
+:root[data-look="solid"] .doc-lines { border-radius: 6px; border-collapse: separate; border-spacing: 0; overflow: hidden; }
+:root[data-look="solid"]:not([data-theme="dark"]) [data-ui="tabbed-panel"] > div:first-child, :root[data-look="solid"]:not([data-theme="dark"]) .fw-chart-panel-head { border-bottom: 1px solid var(--fw-border); font-weight: 600; }
+:root[data-look="solid"]:not([data-theme="dark"]) .workspace-tabs .bp6-tab[aria-selected="true"] { background: var(--fw-surface); box-shadow: inset 0 2px 0 var(--fw-deep), inset 1px 0 0 var(--fw-border), inset -1px 0 0 var(--fw-border); padding: 0 10px; color: var(--fw-text); font-weight: 600; }
+:root[data-look="solid"]:not([data-theme="dark"]) .workspace-tabs .bp6-tab-indicator { display: none; }
+/* A status reads at a glance: where it starts, on the way, done, called off */
+.fw-status { display: inline-block; min-width: 40px; text-align: center; padding: 0 7px; border-radius: 3px; font-size: 12px; line-height: 18px; font-weight: 600; }
+.fw-status.is-start { background: #dbe8fa; color: #184a90; } .fw-status.is-going { background: #fbe9c8; color: #7a4a05; }
+.fw-status.is-done { background: #d5f0df; color: #165a36; } .fw-status.is-off { background: #e8eaed; color: #5f6b7c; text-decoration: line-through; }
+
+
+/* Dragging over the app never paints a text selection: it is a program, not a document. What a person
+   actually copies stays selectable - what they type, what they read (a post, a message, a result), and grid cells through the grid's own copy. */
+.fw-app, .fw-app *, .bp6-portal, .bp6-portal * { -webkit-user-select: none; user-select: none; }
+.fw-app input, .fw-app textarea, .fw-app [contenteditable="true"], .bp6-portal input, .bp6-portal textarea,
+.fw-app .fw-selectable, .fw-app .fw-selectable *, .fw-app .board-post .board-body, .fw-app .board-post .board-body *, .fw-app .board-comments, .fw-app .board-comments *,
+.fw-app [role="alert"], .fw-app [role="status"], .fw-app pre, .fw-app code { -webkit-user-select: text; user-select: text; }
+
+/* Summary: list or cross table */
+.fw-table-switch { flex: none; display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.fw-table-switch .fw-seg { display: inline-flex; gap: 2px; }
+.fw-table-switch-note { font-size: 12px; color: #5f6b7c; }
+
+/* Import dialog */
+.fw-import { display: grid; gap: 8px; }
+.fw-import-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.fw-import-hint { font-size: 12px; color: #5f6b7c; }
+.fw-import-note { font-size: 13px; } .fw-import-note.is-bad { color: #b42318; }
+.fw-import-problems { margin: 0; padding: 6px 10px 6px 26px; max-height: 180px; overflow-y: auto; font-size: 12.5px; border: 1px solid var(--fw-border); border-radius: 4px; }
+
+/* Dashboard: one period for every panel */
+.fw-dashboard-period { display: inline-flex; align-items: center; gap: 4px; margin-left: 16px; }
+
+/* Display standard: numbers right, values of a fixed form (dates, times, codes, statuses) centre, text left. */
+.fw-number input { text-align: right; font-variant-numeric: tabular-nums; }
+.fw-date input { font-variant-numeric: tabular-nums; }
+.fw-date.is-center input { text-align: center; }
+.fw-pick-window .fw-pick-list .is-right { text-align: right; font-variant-numeric: tabular-nums; }
+.fw-pick-window .fw-pick-list .is-center { text-align: center; font-variant-numeric: tabular-nums; }
+.fw-pick-window .fw-pick-list th { text-align: center; }
+.fw-dashboard-period .fw-date { width: 104px; }
+.fw-yesno { display: flex; align-items: center; min-height: 24px; }
+.doc-lines td.is-center .fw-yesno { justify-content: center; }
+
+/* Change history of one record. */
+.fw-history { max-height: 60vh; overflow: auto; font-size: 13px; }
+.fw-history-table { width: 100%; border-collapse: collapse; }
+.fw-history-table th { position: sticky; top: 0; background: var(--fw-header, #eef0f2); color: var(--fw-header-text, inherit); font-weight: 600; padding: 4px 8px; border: 1px solid var(--fw-border, #d3d8de); text-align: center; }
+.fw-history-table td { padding: 4px 8px; border: 1px solid var(--fw-border, #d3d8de); vertical-align: top; }
+.fw-history-table td.is-center { text-align: center; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fw-history-table ul { margin: 0; padding: 0; list-style: none; }
+.fw-history-table li + li { margin-top: 2px; }
+.fw-history-table b { font-weight: 600; margin-right: 4px; }
+.fw-history-table del { color: var(--fw-muted, #5f6b7c); text-decoration: line-through; }
+.fw-history-table ins { text-decoration: none; font-weight: 600; }
+.fw-history-none, .fw-history-empty { color: var(--fw-muted, #5f6b7c); }
+.fw-history-empty { padding: 16px 4px; }
+.fw-history-auto { margin-left: 4px; font-size: 11px; padding: 0 4px; border: 1px solid var(--fw-border, #d3d8de); border-radius: 2px; color: var(--fw-muted, #5f6b7c); }
+
+/* Files attached to one record. */
+.fw-files { font-size: 13px; }
+.fw-files-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.fw-files-hint { font-size: 12px; color: var(--fw-muted, #5f6b7c); }
+.fw-files-note { margin-bottom: 8px; white-space: pre-wrap; }
+.fw-files-note.is-bad { color: #b42318; }
+.fw-files .fw-history-table { max-height: 50vh; }
+
+/* Moving between screens: the note above a list, the links window. */
+.fw-linked { flex: none; display: flex; align-items: center; gap: 8px; margin-bottom: 4px; padding: 2px 4px 2px 8px; border: 1px solid var(--fw-accent, #2d72d2); border-radius: 3px; background: var(--fw-surface, #fff); font-size: 12.5px; }
+.fw-linked-mark { color: var(--fw-accent, #2d72d2); font-weight: 600; }
+.fw-linked > span:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fw-links { font-size: 13px; } .fw-links h4 { margin: 10px 0 4px; font-size: 13px; } .fw-links h4:first-child { margin-top: 0; }
+.fw-links ul { list-style: none; margin: 0; padding: 0; border: 1px solid var(--fw-border, #d3d8de); border-radius: 3px; }
+.fw-links li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 5px 8px; }
+.fw-links li + li { border-top: 1px solid var(--fw-border, #d3d8de); }
+.fw-links-none { color: var(--fw-muted, #5f6b7c); font-size: 12px; }
+
+/* Conditions kept under a name; the bar for several chosen records. */
+.fw-bulk { flex: none; display: flex; align-items: center; gap: 8px; margin-bottom: 4px; padding: 2px 8px; border: 1px solid var(--fw-border, #d3d8de); border-radius: 3px; background: var(--fw-surface-2, #f6f7f9); font-size: 12.5px; }
+.fw-bulk-note { color: var(--fw-muted, #5f6b7c); white-space: pre-wrap; }
+
+/* Tabs drawn by TabList: the selected one underlined; the empty element that owns them (for assistive technology) takes no room. */
+.fw-tablist-owner { display: none; }
+.fw-tab-row { display: flex; align-items: flex-end; gap: 0 4px; }
+.fw-tab-row > .bp6-tab { cursor: pointer; padding: 0 6px; border-bottom: 3px solid transparent; }
+.fw-tab-row > .bp6-tab[aria-selected="true"] { border-bottom-color: var(--fw-accent); color: var(--fw-accent-text); }
+/* Text in the accent colour on a light ground: one step darker, so it reads (contrast 4.5:1 and more). */
+:root { --fw-accent-text: color-mix(in srgb, var(--fw-accent) 78%, #000); }
+:root[data-theme="dark"] { --fw-accent-text: color-mix(in srgb, var(--fw-accent) 70%, #fff); }
+
+/* A period in one control: the two date boxes share the width evenly. */
+.fw-date-range, .fw-date-range .bp6-popover-target { display: block; width: 100%; }
+.fw-date-range .bp6-control-group { display: flex; width: 100%; }
+.fw-date-range .bp6-control-group > * { flex: 1 1 0; min-width: 0; }

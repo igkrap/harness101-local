@@ -1,0 +1,20 @@
+{
+  "id": "common-codes",
+  "kind": "primitive",
+  "version": "1",
+  "source": "frontend/src/framework/system/commonCodes.ts",
+  "export": "useCommonCodes",
+  "summary": "공통 코드 그룹의 코드 목록을 읽는 훅. 선택 상자 옵션과 그리드의 코드→이름 표시에 씁니다. 관리자가 공통 코드 관리에서 값을 바꿉니다.",
+  "intents": [
+    "단위 구분 상태 같은 선택 값",
+    "코드를 이름으로 표시",
+    "드롭다운 옵션을 관리자가 관리"
+  ],
+  "capabilities": [
+    "common-code",
+    "select-options",
+    "code-name"
+  ],
+  "uses": [],
+  "example": "const unit = useCommonCodes('UNIT'); // 필드: {name:'unit',label:'단위',codeGroup:'UNIT'}  그리드: unit.name(row.unit)"
+}

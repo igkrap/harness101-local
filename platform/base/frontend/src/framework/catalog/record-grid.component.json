@@ -1,0 +1,26 @@
+{
+  "id": "record-grid",
+  "kind": "composite",
+  "version": "1",
+  "source": "frontend/src/framework/RecordGrid.tsx",
+  "export": "RecordGrid",
+  "summary": "행 클릭 선택 그리드(단일/다중/체크박스, editable 셀 편집). 정렬·엑셀·인쇄 내장, <table> 아님. 사용법 API.txt",
+  "intents": [
+    "조회결과 표와 행 선택",
+    "다중/체크박스 선택 후 삭제",
+    "그리드 셀 다중 편집"
+  ],
+  "capabilities": [
+    "row-selection",
+    "multi-select",
+    "cell-edit",
+    "sort",
+    "export"
+  ],
+  "uses": [],
+  "example": "<RecordGrid rows={rows} columns={columns} keyField=\"id\" onSelect={selectRow} />",
+  "props_type": "RecordGridProps",
+  "dom": {
+    "grid": "[role=\"grid\"]"
+  }
+}

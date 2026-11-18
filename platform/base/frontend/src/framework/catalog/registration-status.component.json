@@ -1,0 +1,33 @@
+{
+  "id": "registration-status",
+  "kind": "pattern",
+  "version": "1",
+  "source": "frontend/src/framework/BusinessWorkspace.tsx",
+  "export": "BusinessWorkspace",
+  "props_type": "BusinessWorkspaceProps",
+  "summary": "선택 가능한 조회+편집 업무 화면 조합: 상단 제목과 우측 공통 버튼, 조회조건, 결과 목록, 맨 아래 탭형 편집 영역. 하단 편집 패널은 접기와 높이 조절을 지원합니다. 업무 필드와 버튼 동작은 호출자가 제공합니다.",
+  "intents": [
+    "조회 결과 하단 편집 탭",
+    "상단 공통 버튼 하단 접기 크기조절 편집",
+    "일반 조회 편집 업무 패턴"
+  ],
+  "capabilities": [
+    "registration-status",
+    "query-grid-editor",
+    "editor-bottom",
+    "editor-collapse",
+    "editor-resize"
+  ],
+  "layout": {"query": "top", "results": "middle", "editor": "bottom"},
+  "slots": {"query": ["query-panel"], "results": ["record-grid"], "editor": ["record-editor"]},
+  "uses": [
+    "screen-title",
+    "screen-actions",
+    "query-panel",
+    "record-grid",
+    "record-editor",
+    "split-pane",
+    "tabbed-panel"
+  ],
+  "example": "<BusinessWorkspace title={title} actions={actions} query={queryPanel} results={resultGrid} editorTabs={editorTabs}/>"
+}

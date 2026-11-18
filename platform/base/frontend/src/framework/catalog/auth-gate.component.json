@@ -1,0 +1,21 @@
+{
+  "id": "auth-gate",
+  "kind": "composite",
+  "version": "1",
+  "source": "frontend/src/framework/auth/AuthGate.tsx",
+  "export": "AuthGate",
+  "summary": "세션 확인 중, 인증 실패 재시도, 로그인 폼과 로그인한 업무 화면을 전환합니다. AuthProvider 안에서 사용합니다.",
+  "intents": [
+    "로그인 전에 업무 화면 차단",
+    "인증 화면 전환"
+  ],
+  "capabilities": [
+    "auth-gate"
+  ],
+  "uses": [
+    "auth-provider",
+    "login-form"
+  ],
+  "example": "<AuthGate><Workspace /></AuthGate>",
+  "props_type": "AuthGateProps"
+}

@@ -1,0 +1,19 @@
+{
+  "id": "workspace-nav",
+  "kind": "primitive",
+  "version": "1",
+  "source": "frontend/src/framework/workspace/navContext.ts",
+  "export": "useWorkspaceNav",
+  "summary": "다른 화면을 탭으로 열고 값(intent)을 넘깁니다. 받는 화면은 nav.intents[자기 코드]로 읽습니다.",
+  "intents": [
+    "다른 화면으로 이동",
+    "화면 간 값 전달",
+    "상세 화면 열기"
+  ],
+  "capabilities": [
+    "open-screen",
+    "intent"
+  ],
+  "uses": [],
+  "example": "const nav = useWorkspaceNav(); nav?.open('MST0001', { itemCode: row.itemCode });"
+}

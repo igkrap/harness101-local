@@ -1,0 +1,34 @@
+{
+  "id": "business-workspace",
+  "kind": "pattern",
+  "version": "1",
+  "source": "frontend/src/framework/BusinessWorkspace.tsx",
+  "export": "BusinessWorkspace",
+  "summary": "기준정보·업무 화면의 표준 골격입니다. 상단 공통 버튼, 조회 조건, 결과 그리드, 접고 펼치는 편집 패널을 배치합니다. 편집 폼은 editor 파라미터로 넘깁니다. 사용법: frontend/src/framework/API.txt",
+  "intents": [
+    "기준정보(마스터) 등록/수정 화면",
+    "조회 조건과 결과 그리드, 편집 폼을 한 화면에 배치",
+    "편집 항목을 기본정보와 추가정보 탭으로 구분",
+    "편집 패널 접기/펼치기"
+  ],
+  "capabilities": [
+    "collapsible-editor",
+    "grouped-editor",
+    "screen-layout",
+    "shared-toolbar",
+    "toolbar-actions"
+  ],
+  "uses": [
+    "screen-actions",
+    "query-panel",
+    "record-editor",
+    "tabbed-panel"
+  ],
+  "example": "<BusinessWorkspace title=\"품목 등록\" actions={{ query: { form: queryFormId }, create: { onClick: handleNew }, save: { form: editorFormId } }} query={<QueryPanel fields={queryFields} onQuery={handleQuery} formId={queryFormId} />} results={<RecordGrid rows={rows} columns={gridColumns} keyField=\"id\" onSelect={select} />} editor={{ fields: editFields, record: selected, onSave: handleSave, onNew: handleNew, formId: editorFormId }} />",
+  "props_type": "BusinessWorkspaceProps",
+  "dom": {
+    "workspace": "[data-ui=\"business-workspace\"]",
+    "results": "[data-region=\"results\"]",
+    "editor": "[data-region=\"editor\"]"
+  }
+}

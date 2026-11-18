@@ -1,0 +1,29 @@
+.sys-page { display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; width: 100%; }
+.sys-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sys-columns { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 12px; flex: 1; min-height: 0; }
+.sys-card.bp6-card { padding: 14px; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+.sys-card h3 { margin: 0; font-size: 14px; }
+.sys-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.sys-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 2px; cursor: pointer; min-height: 32px; }
+.sys-row:hover { background: var(--fw-hover); }
+.sys-row.is-selected { background: var(--fw-selected); }
+.sys-row .sys-grow { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sys-muted { color: var(--fw-muted); font-size: 12px; }
+.sys-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; align-items: end; }
+.sys-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: flex-end; }
+.sys-table { width: 100%; }
+.sys-table th { position: sticky; top: 0; background: var(--fw-surface); text-align: center; }
+.sys-table td { text-align: center; vertical-align: middle; }
+.sys-table td:first-child, .sys-table th:first-child { text-align: left; }
+.sys-preview { width: 56px; height: 56px; border: 1px dashed var(--fw-border); border-radius: 10px; display: grid; place-items: center; overflow: hidden; background: var(--fw-panel); }
+.sys-preview img { max-width: 100%; max-height: 100%; }
+.sys-check { display: inline-flex; align-items: center; gap: 6px; margin-right: 7px; }
+.sys-card h3 { font-size: 13px; }
+.sys-page { gap: 8px; }
+.sys-columns { gap: 8px; }
+.bp6-tree-node-selected .sys-muted { color: inherit; }
+/* A long settings page: full width, natural height; the screen area scrolls as a whole (no inner scroll boxes). */
+.sys-page.is-flow { flex: none; min-height: auto; height: auto; align-self: flex-start; }
+.sys-page.is-flow .sys-card.bp6-card { flex: none; overflow: visible; }
+.sys-page.is-flow .sys-form { grid-template-columns: repeat(auto-fill, minmax(220px, 320px)); }
+.sys-page.is-flow .sys-card > .fw-field { max-width: 480px; }

@@ -1,0 +1,18 @@
+{
+  "id": "screen-registry",
+  "kind": "primitive",
+  "version": "1",
+  "source": "frontend/src/framework/workspace/registry.ts",
+  "export": "createScreenRegistry",
+  "summary": "meta.code 화면코드(모듈1자+분류2자+숫자4자리, ABC0001)를 MDI와 메뉴의 식별자로 사용합니다. 중복 및 잘못된 코드 차단. 파일명과 제목은 별도이며 기존 파일명 탭 설정은 호환됩니다.",
+  "intents": [
+    "새 업무 화면 메뉴 등록",
+    "사이드바 그룹 권한 순서",
+    "화면코드 모듈 분류 일련번호"
+  ],
+  "capabilities": [
+    "screen-registry"
+  ],
+  "uses": [],
+  "example": "const screens = createScreenRegistry(import.meta.glob('./screens/*.tsx', {eager:true}) as Record<string, ScreenModule>);"
+}

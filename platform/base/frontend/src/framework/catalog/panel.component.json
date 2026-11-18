@@ -1,0 +1,22 @@
+{
+  "id": "panel",
+  "kind": "primitive",
+  "version": "1",
+  "source": "frontend/src/framework/Panel.tsx",
+  "export": "Panel",
+  "props_type": "PanelProps",
+  "summary": "제목, 작업 버튼, 본문 슬롯을 가진 공통 패널",
+  "intents": [
+    "패널 테두리와 제목",
+    "카드 영역에 컨텐츠 넣기"
+  ],
+  "capabilities": [
+    "header",
+    "actions",
+    "children"
+  ],
+  "uses": [
+    "screen-title"
+  ],
+  "example": "<Panel title=\"상세\" actions={actions}>{content}</Panel>"
+}

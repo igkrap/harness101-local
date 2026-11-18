@@ -1,0 +1,20 @@
+{
+  "id": "workspace-tabs",
+  "kind": "composite",
+  "version": "1",
+  "source": "frontend/src/framework/workspace/WorkspaceTabs.tsx",
+  "export": "WorkspaceTabs",
+  "summary": "업무 탭 선택과 닫기 버튼, 저장하지 않은 변경 표시를 담당합니다. 열린 탭 상태는 WorkspaceShell이 소유합니다.",
+  "intents": [
+    "MDI 탭 선택 닫기",
+    "저장되지 않은 변경 표시"
+  ],
+  "capabilities": [
+    "workspace-tabs"
+  ],
+  "uses": [
+    "screen-registry"
+  ],
+  "example": "<WorkspaceTabs screens={screens} tabs={tabs} active={active} dirty={dirtyIds} onSelect={selectTab} onClose={closeTab} />",
+  "props_type": "WorkspaceTabsProps"
+}

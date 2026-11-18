@@ -1,0 +1,6 @@
+UPDATE inventory SET category = 'Steel Sheet', name = 'Steel Sheet (A1)', quantity = 100, unit_price = 55000.0 WHERE id = 1 AND category = '양념' AND name = '고춧가루' AND quantity = 10 AND unit_price = 15000.0;
+UPDATE inventory SET category = 'Electronic Component', name = 'Capacitor 10uF', quantity = 500, unit_price = 120.0 WHERE id = 2 AND category = '양념' AND name = '참기름' AND quantity = 5 AND unit_price = 25000.0;
+UPDATE inventory SET category = 'Chemical Resin', name = 'Epoxy Resin B-Type', quantity = 50, unit_price = 12000.0 WHERE id = 3 AND category = '곡류' AND name = '쌀' AND quantity = 20 AND unit_price = 30000.0;
+UPDATE inventory SET category = 'Fastener', name = 'M6 Hex Bolt', quantity = 1000, unit_price = 50.0 WHERE id = 4 AND category = '조미료' AND name = '설탕' AND quantity = 15 AND unit_price = 5000.0;
+UPDATE inventory SET category = 'Electronic Component', name = 'Resistor 1k Ohm', quantity = 200, unit_price = 10.0 WHERE id = 5 AND category = '조미료' AND name = '간장' AND quantity = 8 AND unit_price = 8000.0;
+UPDATE inventory SET category = 'Steel Sheet', name = 'Aluminum Plate', quantity = 30, unit_price = 45000.0 WHERE id = 6 AND category = '조미료' AND name = '소금' AND quantity = 12 AND unit_price = 2000.0;

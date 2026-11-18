@@ -1,0 +1,24 @@
+{
+  "id": "login-form",
+  "kind": "composite",
+  "version": "1",
+  "source": "frontend/src/framework/auth/LoginForm.tsx",
+  "export": "LoginForm",
+  "summary": "아이디 비밀번호 입력과 로그인 제출, 중복 제출 방지 및 오류 표시를 조합합니다. 실제 인증은 onSignIn 콜백이 처리합니다.",
+  "intents": [
+    "로그인 폼 아이디 비밀번호",
+    "인증 오류 메시지"
+  ],
+  "capabilities": [
+    "login-form"
+  ],
+  "uses": [
+    "form-fields",
+    "panel",
+    "form-actions",
+    "async-feedback",
+    "submission-state"
+  ],
+  "example": "<LoginForm onSignIn={signIn} />",
+  "props_type": "LoginFormProps"
+}

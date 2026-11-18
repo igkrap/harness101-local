@@ -1,0 +1,18 @@
+{
+  "id": "tabbed-panel",
+  "kind": "composite",
+  "version": "1",
+  "source": "frontend/src/framework/TabbedPanel.tsx",
+  "export": "TabbedPanel",
+  "props_type": "TabbedPanelProps",
+  "summary": "접어도 탭 제목이 남는 편집 영역입니다. 탭 전환과 접기에서 내용과 입력값을 보존하고 키보드로 탭을 이동합니다.",
+  "intents": [
+    "하단 편집 패널 탭 접기",
+    "여러 편집 탭 입력 유지"
+  ],
+  "capabilities": [
+    "tabbed-panel"
+  ],
+  "uses": [],
+  "example": "<TabbedPanel tabs={editorTabs} collapsed={collapsed} onCollapsedChange={setCollapsed}/>"
+}

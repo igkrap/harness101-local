@@ -8,6 +8,8 @@ the thing asked for was done.
 
   ctl.py projects                                   the projects and the kinds a new one can be
   ctl.py create <slug> "<name>" [--kind business] [--api-port N --preview-port N]   a new project with the base framework (ports: the first free ones unless given)
+  ctl.py framework                                  the platform's framework and where every project stands with it
+  ctl.py framework-update                           bring every project to the platform's framework now (it also happens by itself)
   ctl.py ports                                      the free ports for a new project's services (api / preview)
   ctl.py rename <slug> [--title "<name>"] [--slug <new>]   another name: the one people see, and/or the English one (folder, database, server, packs)
   ctl.py remove <slug> --confirm <slug>             a project away for good (its packs are kept)
@@ -94,7 +96,7 @@ def show(queue):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('command', choices=['projects', 'ports', 'create', 'rename', 'remove', 'status', 'screens', 'screen', 'records', 'server-log', 'apply', 'ask', 'commit', 'undo', 'branch', 'sync', 'remote', 'push', 'log', 'pack', 'undo-request'])
+    parser.add_argument('command', choices=['projects', 'ports', 'create', 'rename', 'remove', 'status', 'screens', 'screen', 'records', 'server-log', 'apply', 'ask', 'commit', 'undo', 'branch', 'sync', 'remote', 'push', 'log', 'pack', 'undo-request', 'framework', 'framework-update'])
     parser.add_argument('values', nargs='*')
     parser.add_argument('-p', '--project')
     parser.add_argument('-m', '--message')
@@ -121,6 +123,10 @@ def main():
             made = platform.call('POST', '/api/projects/create', {'slug': args.values[0], 'title': args.values[1], 'kind': args.kind,
                                                                    'api_port': args.api_port, 'preview_port': args.preview_port})
             print(json.dumps({'ok': True, 'project': made}, ensure_ascii=False, indent=1))
+            return 0
+        if args.command in ('framework', 'framework-update'):
+            said = platform.call('POST', '/api/framework/update', {}, timeout=7200) if args.command == 'framework-update' else platform.call('GET', '/api/framework')
+            print(json.dumps({'ok': all(item.get('state') in ('ok', 'waiting') for item in said['projects']), **said}, ensure_ascii=False, indent=1))
             return 0
         if args.command == 'ports':
             print(json.dumps({'ok': True, 'free': platform.call('GET', '/api/projects/ports')}, ensure_ascii=False, indent=1))
