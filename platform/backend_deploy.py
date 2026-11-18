@@ -164,7 +164,17 @@ def swap(config, jar, stamp, tmp):
         subprocess.run(['docker', 'rename', rollback, site().api_container], capture_output=True)
         subprocess.run(['docker', 'start', site().api_container], capture_output=True)
         raise
+    prune_rollbacks(keep=2)
     return rollback
+
+
+def prune_rollbacks(keep=2, container=None):
+    """The server copies kept for going back after a deploy: only the newest few (each deploy used to leave one behind for good)."""
+    name = container or site().api_container
+    listed = subprocess.run(['docker', 'ps', '-a', '--format', '{{.Names}}'], capture_output=True, text=True).stdout.split()
+    old = sorted(item for item in listed if item.startswith(f'{name}-before-'))
+    for item in old[:-keep] if keep else old:
+        subprocess.run(['docker', 'rm', '-f', item], capture_output=True)
 
 
 def flyway_versions():

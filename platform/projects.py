@@ -178,6 +178,8 @@ def remove(hub, project_id, confirm):
             pass
     slug, root = own['slug'], Path(record['root'])
     subprocess.run(['docker', 'rm', '-f', own['api_container']], capture_output=True)
+    from backend_deploy import prune_rollbacks
+    prune_rollbacks(keep=0, container=own['api_container'])        # the copies its deploys kept for going back go with it
     for name in (own['db'], own['db'] + '_test'):
         subprocess.run(['docker', 'exec', sites.DB_CONTAINER, 'psql', '-U', sites.DB_USER, '-d', 'postgres', '-c', f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'], capture_output=True)
     copy = sites.SHARE / 'prod' / slug / 'copy'
