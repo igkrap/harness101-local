@@ -12,7 +12,7 @@ import GuidePage from "./GuidePage";
 import HomePage from "./HomePage";
 import DevTools from "./DevTools";
 import { Selector } from "@astryxdesign/core/Selector";
-import ProjectManager, { ProjectPicker } from "./ProjectManager";
+import ProjectManager, { ProjectPicker, EnvironmentCheck } from "./ProjectManager";
 import ModelManager, {type ModelConfig} from "./ModelManager";
 import ChatPanel from "./ChatPanel";
 import { QueuePanel, type TaskQueue } from "./QueuePanel";
@@ -189,6 +189,7 @@ function Mark({ kind }: { kind: string }) {
     source: "m8 5-6 7 6 7 M16 5l6 7-6 7",
     preview: "M3 4h18v15H3z M3 8h18",
     models: "M4 6h16 M4 12h16 M4 18h16 M8 3v6 M16 9v6 M10 15v6",
+    environment: "M3 5h18v11H3z M8 20h8 M12 16v4 M7 9l2 2-2 2 M11 13h5",
     chat: "M3 4h18v13H8l-5 4V4z M7 9h10 M7 13h7",
     history: "M3 12a9 9 0 1 0 3-6.7 M3 4v5h5 M12 7v5l3 2",
     guide: "M4 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4z M20 4h-7a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h8z",
@@ -511,7 +512,7 @@ export default function App() {
     data?.active && post(`/api/jobs/${data.active.id}/stop`, {});
   const navGroups: [string, string[][]][] = [
     ["업무", [["home", "만들기"], ["preview", "앱 보기"], ["guide", "업무 안내서"], ["history", "변경 이력"]]],
-    ["설정", [["projects", "프로젝트"], ["models", "AI 모델"]]],
+    ["설정", [["projects", "프로젝트"], ["environment", "개발 환경"], ["models", "AI 모델"]]],
     ["개발자 도구", [["tools", "화면 정의·자료·서버"], ["run", "실행 기록"], ["overview", "통계"], ["source", "프로젝트 소스"], ["chat", "채팅"]]],
   ];
   const navigation = navGroups.flatMap(([, items]) => items);
@@ -694,6 +695,7 @@ export default function App() {
           {page === "tools" && <DevTools/>}
           {page === "projects" && <ProjectManager token={data?.token||""}/>}
           {page === "models" && <ModelManager token={data?.token||""}/>}
+          {page === "environment" && <EnvironmentCheck token={data?.token||""}/>}
           {chatOpened && <div style={{display:page === "chat" ? "block" : "none",minWidth:0}}><ChatPanel token={data?.token||""} model={effectiveModel} online={!!data?.model.online} modelBusy={(!!data?.workspace_busy&&!data?.chat_active)||!!data?.active}/></div>}
           {sourceOpened && <VStack style={{display:page === "source" ? "flex" : "none",minWidth:0}}><Suspense fallback={<Text color="secondary">소스 화면 불러오는 중</Text>}><SourceBrowser/></Suspense></VStack>}
           {page === "preview" && <Preview token={data?.token||""}/>}

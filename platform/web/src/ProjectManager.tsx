@@ -22,7 +22,7 @@ type EnvWay={way:string;label:string;command:string};
 type EnvItem={id:string;label:string;why:string;state:'ok'|'missing'|'off';detail:string;find:boolean;fix:{label:string;command:string;installs:boolean;manual?:boolean;note?:string;ways?:EnvWay[]}|null};
 /** What this computer needs for the platform and its projects: looked at, found where it is installed, and set up from here -
  *  by several ways (official builds, or Homebrew / winget when there); a program is put on the computer only when asked once more. */
-function EnvironmentCheck({token}:{token:string}){
+export function EnvironmentCheck({token}:{token:string}){
   const [items,setItems]=useState<EnvItem[]|null>(null),[busy,setBusy]=useState(''),[said,setSaid]=useState(''),[all,setAll]=useState(false);
   const [asking,setAsking]=useState<{id:string;way?:string;text:string;every?:boolean}|null>(null),[typing,setTyping]=useState<{id:string;path:string}|null>(null);
   const load=()=>apiFetch('/api/environment').then(r=>r.json()).then(d=>setItems(d.items||[])).catch(e=>setSaid(String(e)));
@@ -135,7 +135,6 @@ export default function ProjectManager({token}:{token:string}){
     const result=await response.json();if(!response.ok)throw Error(result.error||'프로젝트를 만들지 못했습니다.');switchProject(result.id);
   }catch(e){setMakeError(String(e instanceof Error?e.message:e));}finally{setMaking(false);}}
   return <VStack gap={5}>
-    <EnvironmentCheck token={token}/>
     <Card padding={5}><VStack gap={4}>
       <Heading level={2}>새 프로젝트 만들기</Heading>
       <div className="project-kinds" role="radiogroup" aria-label="사이트 종류">{kinds.map(k=>
