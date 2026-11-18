@@ -7,7 +7,8 @@ type Check = { description: string; passed: boolean; detail: string; at: number;
 type Live = {
   goal: string; queue?: string | null; stopping?: boolean; started: number; ended: number | null; ok: boolean | null; said: string; calls: number; tokens: number; now: number;
   steps: Step[]; checks: { total: number; passed: number; recent: Check[]; failed: Check[] };
-  model?: { name: string; model: string; title: string; started: number; ended: number | null; first?: number | null; text: string; thinking: string; tokens: number; chunks: number; chars: number };
+  model?: { name: string; model: string; title: string; started: number; ended: number | null; first?: number | null; input_chars?: number;
+    reading?: { done: number; total: number; skipped: number; pos: number; section: string; before: string; after: string }; text: string; thinking: string; tokens: number; chunks: number; chars: number };
 };
 
 const clock = (seconds: number) => { const s = Math.max(0, Math.round(seconds)); return s >= 3600 ? `${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}` : `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; };
@@ -37,7 +38,11 @@ export default function MonitorPage({ token }: { token: string }) {
     const ticking = setInterval(() => setTick(n => n + 1), 1000);
     return () => { stop = true; clearTimeout(timer); clearInterval(ticking); };
   }, []);
-  useEffect(() => { if (out.current && follow.current) out.current.scrollTop = out.current.scrollHeight; }, [live?.model?.text, live?.model?.thinking, thinking]);
+  useEffect(() => {
+    const el = out.current; if (!el || !follow.current) return;
+    const mark = el.querySelector(".mon-read-mark") as HTMLElement | null;
+    el.scrollTop = mark ? Math.max(0, mark.offsetTop - el.clientHeight * 0.6) : el.scrollHeight;
+  }, [live?.model?.text, live?.model?.thinking, live?.model?.reading?.pos, thinking]);
   void tick;
   const now = Date.now() / 1000 + offset;
 
@@ -96,8 +101,15 @@ export default function MonitorPage({ token }: { token: string }) {
           <div className="mon-model-meta">{model && <>{model.model.split("/").pop()} · {model.chars.toLocaleString()}자 · {clock(modelSeconds)}</>}
             {!!model?.thinking && <button type="button" className={thinking ? "on" : ""} onClick={() => setThinking(v => !v)}>생각 보기</button>}</div>
         </div>
+        {reading && model?.reading && <div className="mon-reading">
+          <div className="mon-reading-head"><b>입력을 읽는 중</b>
+            <span>{model.reading.done.toLocaleString()} / {model.reading.total.toLocaleString()} 토큰 ({Math.round(model.reading.done / Math.max(1, model.reading.total) * 100)}%)</span>
+            {model.reading.skipped > 200 && <span className="mon-muted">앞서 읽어 둔 {model.reading.skipped.toLocaleString()}토큰은 건너뜀</span>}
+            {model.reading.section && <span className="mon-reading-section">지금: {model.reading.section}</span>}</div>
+          <div className="mon-bar"><i style={{ width: `${Math.round(model.reading.done / Math.max(1, model.reading.total) * 100)}%` }} /></div></div>}
         <pre ref={out} className="mon-terminal" onScroll={e => { const el = e.currentTarget; follow.current = el.scrollHeight - el.scrollTop - el.clientHeight < 40; }}>
-          {shown || (reading ? `요청과 업무 안내서, 부품 설명을 읽는 중… (${clock(modelSeconds)})` : model ? "" : "모델 호출을 기다리는 중…")}{writing && <span className="mon-caret" />}
+          {reading && model?.reading ? <>{model.reading.before}<span className="mon-read-mark" /><span className="mon-unread">{model.reading.after}</span></>
+            : shown || (reading ? `입력을 읽기 시작하는 중… (${clock(modelSeconds)})` : model ? "" : "모델 호출을 기다리는 중…")}{writing && <span className="mon-caret" />}
         </pre>
       </section>
     </div>

@@ -68,3 +68,8 @@
 .mon-stop { align-self: center; flex-shrink: 0; font: inherit; font-size: 12px; font-weight: 600; padding: 6px 16px; border-radius: 6px; border: 1px solid var(--color-text-error); color: var(--color-text-error); background: transparent; cursor: pointer; }
 .mon-stop:hover:not(:disabled) { background: var(--color-error-muted); }
 .mon-stop:disabled { opacity: .55; cursor: default; }
+.mon-reading { display: flex; flex-direction: column; gap: 4px; }
+.mon-reading-head { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; font-size: 12px; font-variant-numeric: tabular-nums; }
+.mon-reading-section { margin-left: auto; color: var(--color-text-link); font-weight: 600; }
+.mon-read-mark { display: inline-block; width: 2px; height: 14px; vertical-align: -2px; background: #8ab4ff; box-shadow: 0 0 6px #8ab4ff; animation: mon-blink 1s steps(1) infinite; }
+.mon-unread { color: #5d6675; }

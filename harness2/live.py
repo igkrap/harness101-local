@@ -85,14 +85,61 @@ def end_step(state='done', detail=None):
             run['steps'][-1].update(state=state, ended=time.time(), **({'detail': detail} if detail is not None else {}))
 
 
-def model_start(name, model):
+LOG = None                     # the model server's log, where it says how far it has read (set from the platform's place)
+_ratio = {'chars_per_token': 1.3}      # learned from each answer's usage: how many characters of input one token is
+
+
+def _log():
+    global LOG
+    if LOG is None:
+        try:
+            from sites import ROOT
+            LOG = ROOT / 'platform/state/qwen-model-server.log'
+        except Exception:
+            return None
+    return LOG
+
+
+def _read_progress(since):
+    """How far the model server has read the input it was given at `since`: (done, total) tokens of what it reads anew
+    (what it read before and kept is skipped, and is the input's beginning), or None."""
+    import re as _re, datetime as _dt
+    path = _log()
+    if not path or not path.exists():
+        return None
+    with open(path, 'rb') as handle:
+        handle.seek(0, 2)
+        handle.seek(max(0, handle.tell() - 20000))
+        tail = handle.read().decode('utf-8', 'replace').splitlines()
+    for line in reversed(tail):
+        found = _re.match(r'(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d),\d+ - INFO - Prompt processing progress: (\d+)/(\d+)', line)
+        if found:
+            at = _dt.datetime.strptime(found.group(1), '%Y-%m-%d %H:%M:%S').timestamp()
+            return (int(found.group(2)), int(found.group(3))) if at >= since - 2 else None
+    return None
+
+
+def _section(text, pos):
+    """The heading of the part being read: the nearest line before it that looks like one."""
+    import re as _re
+    for line in reversed(text[:pos].splitlines()[-400:]):
+        line = line.strip()
+        if _re.fullmatch(r'[A-Z][A-Z0-9 /()&.,+-]{3,60}', line) or _re.fullmatch(r'\[[^\]]{2,40}\]', line) or (line.startswith(('■', '#')) and len(line) < 80) \
+                or (line.endswith(':') and len(line) < 40):
+            return line.strip('#[]: ')
+    return ''
+
+
+def model_start(name, model, messages=None):
     title = MODEL_NAMES.get(name) or ('모델이 정의를 씀' if name == 'define-1' else f"모델이 정의를 고쳐 씀 ({name.rsplit('-', 1)[-1]}번째)" if name.startswith('define-') else f'모델: {name}')
     step(title)
     with _lock:
         run = _run()
         if run:
             run['calls'] += 1
-            run['model'] = {'name': name, 'model': model, 'title': title, 'started': time.time(), 'ended': None, 'first': None, 'text': '', 'thinking': '', 'tokens': 0, 'chunks': 0}
+            given = '\n\n'.join(f"[{item.get('role')}]\n{item.get('content') or ''}" for item in messages or [])
+            run['model'] = {'name': name, 'model': model, 'title': title, 'started': time.time(), 'ended': None, 'first': None, 'text': '', 'thinking': '', 'tokens': 0, 'chunks': 0,
+                            '_input': given}
 
 
 def model_chunk(text='', thinking=''):
@@ -111,6 +158,8 @@ def model_end(usage=None):
         run = _run()
         if run and run['model']:
             tokens = (usage or {}).get('completion_tokens') or run['model']['chunks']
+            if (usage or {}).get('prompt_tokens') and run['model'].get('_input'):
+                _ratio['chars_per_token'] = max(0.5, min(4.0, len(run['model']['_input']) / usage['prompt_tokens']))
             run['model'].update(ended=time.time(), tokens=tokens)
             run['tokens'] += tokens
     end_step()
@@ -150,7 +199,15 @@ def snapshot(slug=None, tail=6000):
                          'failed': [item for item in run['checks'] if not item['passed']][-20:]}
         model = run['model']
         if model:
-            out['model'] = {key: value for key, value in model.items() if key not in ('text', 'thinking')}
-            out['model'].update(chars=len(model['text']), text=model['text'][-tail:], thinking=model['thinking'][-tail:])
+            out['model'] = {key: value for key, value in model.items() if key not in ('text', 'thinking') and not key.startswith('_')}
+            out['model'].update(chars=len(model['text']), text=model['text'][-tail:], thinking=model['thinking'][-tail:], input_chars=len(model.get('_input') or ''))
+            given = model.get('_input') or ''
+            if given and not model['chunks'] and not model['ended']:          # still reading its input: where it is in it
+                progress = _read_progress(model['started'])
+                if progress:
+                    done, total = progress
+                    pos = max(0, min(len(given), int(len(given) - (total - done) * _ratio['chars_per_token'])))
+                    out['model']['reading'] = {'done': done, 'total': total, 'skipped': max(0, int(len(given) / _ratio['chars_per_token']) - total),
+                                               'pos': pos, 'section': _section(given, pos), 'before': given[max(0, pos - 2500):pos], 'after': given[pos:pos + 900]}
         out['now'] = time.time()
         return out

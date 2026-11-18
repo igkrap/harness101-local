@@ -21,7 +21,7 @@ def ask(messages, record_to, name='model', max_tokens=3000, temperature=0.2):
     started = time.time()
     payload = dict(payload, stream=True, stream_options={'include_usage': True})       # written as it comes, so the platform's monitor can show it
     request = urllib.request.Request(URL + '/chat/completions', data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'})
-    live.model_start(name, payload['model'])
+    live.model_start(name, payload['model'], messages)
     parts, usage = [], None
     try:
         with urllib.request.urlopen(request, timeout=900) as response:
