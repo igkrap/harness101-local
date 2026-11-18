@@ -50,9 +50,9 @@ def _titled(definition):
 
 def resolve(names, framework):
     """Screen keys for the names of a flow's stages: a screen's key, its title, or its title without 등록 - screens that keep records only."""
-    keeping = {item['key']: item['definition'] for item in framework.definitions()
-               if (item['definition'].get('fields') and not any(item['definition'].get(part) for part in ('summary', 'dashboard', 'over', 'calendar', 'tree', 'take', 'ledgerView')))
-               or (item['definition'].get('over') and item['definition']['over'].get('actions'))}      # a work screen where a record takes its next step
+    keeping = {item['key']: item['definition'] for item in framework.definitions() if not item['key'].startswith('trial_') and
+               ((item['definition'].get('fields') and not any(item['definition'].get(part) for part in ('summary', 'dashboard', 'over', 'calendar', 'tree', 'take', 'ledgerView')))
+               or (item['definition'].get('over') and item['definition']['over'].get('actions')))}      # a work screen where a record takes its next step (trial copies are not screens)
     keys, problems = [], []
     for name in names:
         word = name.strip()
@@ -474,6 +474,15 @@ def handle(request, framework):
     keys, problems = resolve(names, framework)
     if problems:
         return {'status': 'flow', 'ok': False, 'lines': ['업무 흐름의 화면을 찾지 못했습니다:'] + ['  - ' + problem for problem in problems]}
+    # Master data is chosen from by the work, never a stage records flow through: a flow that names it is refused as it is,
+    # with the stages it leaves - never handed to the model to bend the screens until it fits.
+    kinds = {screen['key']: screen for screen in framework.ok('GET', '/api/meta/process').get('screens', [])}
+    masters = [name for name, key in zip(names, keys) if (kinds.get(key.split(':')[1] if key.startswith('state:') else key) or {}).get('layer') is not None]
+    if masters:
+        rest = [name for name, key in zip(names, keys) if name not in masters]
+        return {'status': 'flow', 'ok': False, 'masters': masters,
+                'lines': [f"{', '.join(f'「{name}」' for name in masters)} 은(는) 업무에서 골라 쓰는 기준 정보라서 업무 흐름의 단계가 아닙니다."
+                          + (f" 흐름은 {' → '.join(rest)} 입니다." if len(rest) >= 2 else ''), '등록하지 않았습니다.']}
     flow = {'name': ' → '.join(names), 'stages': keys}
     report = simulate(flow, framework)
     lines = [f"업무 흐름: {flow['name']}", f"끝까지 돌려 본 검사 {len(report.results)}개 중 {sum(1 for item in report.results if item['passed'])}개 통과"]

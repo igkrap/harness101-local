@@ -403,7 +403,16 @@ def accepted(saved, written):
     return complete(definition)
 
 
-def _mismatch(request, key, definition, before, record_to):
+def _follow_up(question, record_to, name, after=None, max_tokens=200):
+    """A small question put after the conversation the definition was written in (when given): the model server reuses what it
+    already read there instead of reading a long input again - and keeps it for the next answer, which a separate conversation
+    would push out of its limited memory."""
+    messages = (list(after) + [{'role': 'user', 'content': '(여기서부터는 새 질문이다. 위에서 쓴 답을 다시 쓰지 말고 이 질문에만 JSON 으로 답한다.)\n\n' + question}]) if after \
+        else [{'role': 'system', 'content': 'JSON only'}, {'role': 'user', 'content': question}]
+    return _json(llm.ask(messages, record_to, name, max_tokens=max_tokens))
+
+
+def _mismatch(request, key, definition, before, record_to, after=None):
     """Does the result say what the request said? Put to the model as a reading task (easier than writing): the request
     beside the result in words. Returns '' when they agree, else one line naming the difference."""
     made = describe(key, complete(json.loads(json.dumps(definition))))
@@ -419,7 +428,7 @@ def _mismatch(request, key, definition, before, record_to):
 어긋남이 아닌 것: 요청이 정해 주지 않은 세부(항목 구성, 이름, 조회 조건, 차트 모양 등)를 알아서 정한 것, 요청과 무관하게 원래 있던 것.
 형식: {"ok": true} 또는 {"ok": false, "kind": "빠짐" | "바뀜" | "덧붙임", "problem": "<무엇이 어떻게 다른지 한 줄>"}''')
     try:
-        verdict = _json(llm.ask([{'role': 'system', 'content': 'JSON only'}, {'role': 'user', 'content': question}], record_to, 'matches-request', max_tokens=200))
+        verdict = _follow_up(question, record_to, 'matches-request', after)
     except Exception:
         return ''
     if verdict.get('ok') is not False:
@@ -455,7 +464,7 @@ def unmet(request, keys, framework, record_to):
     return '' if verdict.get('ok') is not False else str(verdict.get('problem') or '요청의 일부가 빠졌다')[:300]
 
 
-def _unasked(request, lost, record_to):
+def _unasked(request, lost, record_to, after=None):
     """Of the things that went missing, the ones the request did not ask to remove. Whether a sentence asks for a
     removal is a question of meaning, so it is put to the model as its own small question - not as a refusal of
     its answer, which it would simply obey ("팩스번호 없애줘" once came back with the fax number restored)."""
@@ -464,7 +473,7 @@ def _unasked(request, lost, record_to):
                 + '\n\n각각에 대해, 요청이 그것을 없애거나 바꾸라고 한 것이면 true, 요청과 상관없는데 없어진 것이면 false 로 답하라.\n'
                   '형식: {"1": true|false, "2": ...}')
     try:
-        verdict = _json(llm.ask([{'role': 'system', 'content': 'JSON only'}, {'role': 'user', 'content': question}], record_to, 'removed-on-purpose', max_tokens=200))
+        verdict = _follow_up(question, record_to, 'removed-on-purpose', after)
     except Exception:
         return list(lost)        # no clear answer: treat every loss as unasked, the safe side
     return [item for index, item in enumerate(lost, 1) if verdict.get(str(index)) is not True]
@@ -533,7 +542,7 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
                 raise ValueError('definition 이 있어야 한다')
             if action == 'change' and not asked_back:
                 _, lost = differences(stored[key], definition)
-                unasked = _unasked(request, lost, record_to) if lost else []
+                unasked = _unasked(request, lost, record_to, messages + [{'role': 'assistant', 'content': answer}]) if lost else []
                 if unasked:
                     asked_back = True
                     raise ValueError('요청하지 않은 것이 사라졌다:\n- ' + '\n- '.join(unasked) + '\n이것들만 원래대로 되살리고, 나머지 고친 것은 그대로 둔다')
@@ -547,7 +556,7 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
             # Read once against the request; a difference goes back to the model once. If it is still there, the result carries
             # the doubt instead of stopping - the person is told only when there is something to look at.
             taken = accepted(saved, definition)
-            doubt = _mismatch(request, key, taken, stored.get(key) if action == 'change' else None, record_to)
+            doubt = _mismatch(request, key, taken, stored.get(key) if action == 'change' else None, record_to, messages + [{'role': 'assistant', 'content': answer}])
             undone = doubt.startswith(UNMET)
             if doubt and (compared < (2 if undone and allow_steps else 1)):
                 compared += 1

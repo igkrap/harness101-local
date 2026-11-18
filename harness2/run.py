@@ -127,6 +127,10 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
     framework = Framework()
     result = {'request': request, 'folder': str(folder)}
     started = time.time()
+    if part_of is None:          # trial copies an interrupted run left behind (its clean-up never ran) go before anything is tried
+        for item in framework.definitions():
+            if item['key'].startswith(TRIAL) and item.get('status') == 'DRAFT':
+                framework.delete_definition(item['key'], force=True)
     mark = checks.high_water(framework) if part_of is None else None      # a step is cleaned up by the request it is part of
     groups_before = {group['code'] for group in framework.capabilities().get('codeGroups', [])} if part_of is None else None
     published = None
@@ -134,7 +138,7 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
         if request and not definition_file and re.match(r'\s*업무\s*흐름', request):
             # A business flow, not a screen: registered (after running it end to end), shown or removed.
             result.update(flows.handle(request, framework))
-            if not result.get('ok') and result.get('results') and '등록' in request.split(':', 1)[0] and not dry and part_of is None:
+            if not result.get('ok') and result.get('results') and not result.get('masters') and '등록' in request.split(':', 1)[0] and not dry and part_of is None:
                 _mend_flow(request, result, force)
             if result.get('changed') and not dry and part_of is None:
                 commit(result, request, model=False)
