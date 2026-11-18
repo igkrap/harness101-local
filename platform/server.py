@@ -698,7 +698,9 @@ class Handler(BaseHTTPRequestHandler):
             if not path.is_relative_to(dist):raise ValueError('올바르지 않은 경로입니다.')
             if not path.is_file():path=dist/'index.html'
             if not path.exists():self.send_json({'error':'먼저 platform/web에서 npm run build를 실행하세요.'},503);return
-            data=path.read_bytes();self.send_response(200);self.send_header('Content-Type',mimetypes.guess_type(path)[0] or 'application/octet-stream');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
+            data=path.read_bytes();self.send_response(200);self.send_header('Content-Type',mimetypes.guess_type(path)[0] or 'application/octet-stream');self.send_header('Content-Length',str(len(data)))
+            # the page itself is checked every time (a new build shows at the next refresh); its hashed scripts never change
+            self.send_header('Cache-Control','public, max-age=31536000, immutable' if '/assets/' in parsed.path else 'no-cache');self.end_headers();self.wfile.write(data)
         except (ValueError,OSError) as exc:self.send_json({'error':str(exc)},400)
     def do_POST(self):
         hub=self.server.platform
