@@ -80,7 +80,20 @@ def _write(app, **values):
     _state(app).write_text(json.dumps(dict(values, at=time.strftime('%Y/%m/%d %H:%M:%S')), ensure_ascii=False, indent=1))
 
 
+HOLD = sites.ROOT / 'platform/state/framework-hold.json'
+
+
+def held_back():
+    """Projects kept as they are for now (a measurement running in one): their slugs."""
+    try:
+        return set(json.loads(HOLD.read_text()))
+    except (OSError, ValueError):
+        return set()
+
+
 def _busy(app):
+    if (getattr(app, 'metadata', None) or {}).get('name') in held_back():
+        return True
     try:
         app.require_idle('프레임워크 업데이트')
         return False
