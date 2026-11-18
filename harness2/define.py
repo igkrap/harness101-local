@@ -561,7 +561,7 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
             trials.add(trial_name(key, trial_prefix))
             saved = trial_save(framework, key, definition, trial_prefix)
             # Rules and effects name real entities, so they are judged under the real key (nothing is stored): a refusal goes back to the model like any other.
-            if definition.get('rules') or definition.get('effects'):
+            if definition.get('rules') or definition.get('effects') or action == 'change':      # (a change: also whether the screens using it still work)
                 framework.validate_definition(key, definition)
             # Read once against the request; a difference goes back to the model once. If it is still there, the result carries
             # the doubt instead of stopping - the person is told only when there is something to look at.

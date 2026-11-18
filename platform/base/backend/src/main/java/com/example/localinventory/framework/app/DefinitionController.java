@@ -47,11 +47,48 @@ public class DefinitionController {
     /** programCode: for a new definition, the program code to give it (a release keeps the codes of the place it was made in, so menus and permissions line up). */
     public record SaveRequest(JsonNode definition, String status, String programCode) {}
 
+    /** The screens that depend on this one keep working: a field they show, take a code from, list or copy from it is not taken away
+     *  or renamed under them (the other side of the check a pointing screen gets when it is saved). */
+    private void stillServes(String key, AppDefinitions.Definition changed) {
+        if (key.startsWith("trial_")) return;
+        java.util.Set<String> own = new java.util.HashSet<>(), lines = new java.util.HashSet<>();
+        changed.fields().forEach(field -> own.add(field.name()));
+        for (AppDefinitions.LineSet set : changed.lineSets()) set.fields().forEach(field -> lines.add(field.name()));
+        List<String> broken = new java.util.ArrayList<>();
+        Map<String, String> was = new java.util.HashMap<>();      // the names people saw, from the definition as it is now
+        AppDefinitions.Stored before = definitions.find(key);
+        if (before != null) {
+            before.definition().fields().forEach(field -> was.put(field.name(), field.label()));
+            for (AppDefinitions.LineSet set : before.definition().lineSets()) set.fields().forEach(field -> was.putIfAbsent(field.name(), field.label()));
+        }
+        for (AppDefinitions.Stored other : definitions.all()) {
+            AppDefinitions.Definition d = other.definition();
+            if (d.key().equals(key) || d.key().startsWith("trial_")) continue;
+            List<AppDefinitions.Field> all = new java.util.ArrayList<>(d.fields());
+            d.lineSets().forEach(set -> all.addAll(set.fields()));
+            for (AppDefinitions.Field field : all) {
+                if (field.ref() == null || !field.ref().entity().equals(key)) continue;
+                java.util.Set<String> there = field.ref().line() ? lines : own;
+                List<String> needs = new java.util.ArrayList<>();
+                needs.add(field.ref().label());
+                if (field.ref().code() != null) needs.add(field.ref().code());
+                if (field.ref().columns() != null) needs.addAll(field.ref().columns());
+                if (field.fill() != null) needs.addAll(field.fill().values());
+                for (String need : needs)
+                    if (need != null && !need.equals("id") && !there.contains(need))
+                        broken.add("「" + d.title() + "」의 " + field.label() + " 이(가) 이 자료의 " + was.getOrDefault(need, need) + " 을(를) 씁니다");
+            }
+        }
+        if (!broken.isEmpty())
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, String.join("; ", broken) + ". 그 항목을 없애거나 이름을 바꾸려면 그 화면부터 고쳐야 합니다.");
+    }
+
     /** Create or change a definition. status: DRAFT (default for a new one) or PUBLISHED. */
     @PutMapping("/api/system/definitions/{key}")
     @Transactional
     public Map<String, Object> save(@PathVariable String key, @RequestBody SaveRequest request, @RequestParam(defaultValue = "false") boolean validate, Authentication authentication) {
         AppDefinitions.Definition definition = definitions.parse(key, request.definition(), true);
+        stillServes(key, definition);
         // validate=true: judge the definition as it would be saved under this key (rules and effects included) and store nothing.
         if (validate) { Map<String, Object> out = new LinkedHashMap<>(); out.put("key", key); out.put("valid", true); out.put("definition", definition); return out; }
         AppDefinitions.Stored current = definitions.find(key);
@@ -101,8 +138,9 @@ public class DefinitionController {
         if (current == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "정의를 찾지 못했습니다.");
         Long records = store.count(key);
         if (records != null && records > 0 && !force) throw new ResponseStatusException(HttpStatus.CONFLICT, "자료가 " + records + "건 있어 지울 수 없습니다.");
+        List<String> users = new java.util.ArrayList<>();      // every screen that uses it, said at once
         for (AppDefinitions.Stored other : definitions.all())
-            if (!other.definition().key().equals(key) && (other.definition().fields().stream().anyMatch(field -> field.ref() != null && field.ref().entity().equals(key))
+            if (!other.definition().key().equals(key) && (ProcessGraph.dependsOn(other.definition(), null).stream().anyMatch(on -> key.equals(on.get("key")))
                     || (other.definition().summary() != null && (other.definition().summary().entity().equals(key)
                         || (other.definition().summary().compare() != null && key.equals(other.definition().summary().compare().entity()))))
                     || (other.definition().over() != null && other.definition().over().entity().equals(key))
@@ -110,7 +148,9 @@ public class DefinitionController {
                     || (other.definition().take() != null && (other.definition().take().entity().equals(key) || other.definition().take().from().equals(key)))
                     || (other.definition().tree() != null && other.definition().tree().entity().equals(key))
                     || (other.definition().dashboard() != null && other.definition().dashboard().panels().stream().anyMatch(panel -> panel.summary().equals(key)))))
-                throw new ResponseStatusException(HttpStatus.CONFLICT, other.definition().title() + " 이(가) 이 자료를 가리키고 있어 지울 수 없습니다.");
+                users.add(other.definition().title());
+        if (!users.isEmpty())
+            throw new ResponseStatusException(HttpStatus.CONFLICT, String.join(", ", users) + " 이(가) 이 자료를 쓰고 있어 지울 수 없습니다.");
         quantities.screenOpen(key, current.definition().title());
         store.drop(key);
         jdbc.update("DELETE FROM ledger_moves WHERE entity_key = ?", key);

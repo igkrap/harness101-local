@@ -23,7 +23,24 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class ProcessGraph {
     private final AppDefinitions definitions;
-    public ProcessGraph(AppDefinitions definitions) { this.definitions = definitions; }
+    private final ProcessGuide guide;
+    public ProcessGraph(AppDefinitions definitions, ProcessGuide guide) { this.definitions = definitions; this.guide = guide; }
+
+    /** What a definition depends on: every field (its own and its lines') that points at another one - one entry per field, the
+     *  single source the graph, the 업무 안내서 (layers, 쓰는 화면) and the refusal to delete a screen in use all read. */
+    public static List<Map<String, Object>> dependsOn(AppDefinitions.Definition d, java.util.Set<String> known) {
+        List<Map<String, Object>> out = new ArrayList<>();
+        java.util.function.BiConsumer<AppDefinitions.Field, String> add = (field, lines) -> {
+            if (field.ref() == null || field.ref().entity().equals(d.key()) || (known != null && !known.contains(field.ref().entity()))) return;
+            Map<String, Object> one = new LinkedHashMap<>();
+            one.put("key", field.ref().entity()); one.put("field", field.name()); one.put("label", field.label());
+            if (lines != null) one.put("lines", lines);
+            out.add(one);
+        };
+        for (AppDefinitions.Field field : d.fields()) add.accept(field, null);
+        for (AppDefinitions.LineSet set : d.lineSets()) for (AppDefinitions.Field field : set.fields()) add.accept(field, set.label() == null ? "명세" : set.label());
+        return out;
+    }
 
     @GetMapping("/api/meta/graph")
     public Map<String, Object> graph(@RequestParam(defaultValue = "false") boolean drafts) {
@@ -50,6 +67,20 @@ public class ProcessGraph {
             node.put("next", new ArrayList<Map<String, Object>>());
             nodes.put(d.key(), node);
         }
+        // what each depends on and what uses it (every pointing field), and the layer of master data - the same as the 업무 안내서 says
+        Map<String, Integer> layers = new LinkedHashMap<>();
+        @SuppressWarnings("unchecked") List<Map<String, Object>> guideScreens = (List<Map<String, Object>>) guide.guide().get("screens");
+        for (Map<String, Object> screen : guideScreens) if (screen.get("layer") != null) layers.put((String) screen.get("key"), (Integer) screen.get("layer"));
+        for (Map<String, Object> node : nodes.values()) { node.put("dependsOn", new ArrayList<Map<String, Object>>()); node.put("usedBy", new ArrayList<Map<String, Object>>()); }
+        for (AppDefinitions.Definition d : known.values()) {
+            if (!nodes.containsKey(d.key())) continue;
+            if (layers.containsKey(d.key())) nodes.get(d.key()).put("layer", layers.get(d.key()));
+            for (Map<String, Object> on : dependsOn(d, nodes.keySet())) {
+                list(nodes.get(d.key()), "dependsOn").add(on);
+                Map<String, Object> back = new LinkedHashMap<>(on); back.put("key", d.key());
+                list(nodes.get((String) on.get("key")), "usedBy").add(back);
+            }
+        }
         // the steps of a record: its own actions, and the work screens that take some of them
         for (AppDefinitions.Definition d : known.values()) {
             if (!nodes.containsKey(d.key()) || d.status() == null) continue;
@@ -68,21 +99,22 @@ public class ProcessGraph {
         for (AppDefinitions.Definition d : known.values()) {
             if (!nodes.containsKey(d.key())) continue;
             java.util.Set<String> linked = new java.util.HashSet<>();
-            if (d.from() != null) { edge(edges, nodes, d.from().entity(), d.key(), "from", d.from().pointer(), null); linked.add(d.from().entity()); }
+            if (d.from() != null) { edge(edges, nodes, d.from().entity(), d.key(), "from", d.from().pointer(), null, labelOf(d, d.from().pointer())); linked.add(d.from().entity()); }
             for (AppDefinitions.Limit limit : d.limits()) {
                 if (linked.contains(limit.entity()) || !limit.entityBy().contains("id")) continue;
                 String take = known.values().stream().filter(other -> other.take() != null && other.take().entity().equals(d.key()) && other.take().from().equals(limit.entity()))
                         .map(AppDefinitions.Definition::key).findFirst().orElse(null);
-                edge(edges, nodes, limit.entity(), d.key(), take != null ? "take" : "limit", limit.by().get(limit.entityBy().indexOf("id")), take);
+                String pointer = limit.by().get(limit.entityBy().indexOf("id"));
+                edge(edges, nodes, limit.entity(), d.key(), take != null ? "take" : "limit", pointer, take, labelOf(d, pointer));
                 linked.add(limit.entity());
             }
             for (AppDefinitions.Effect effect : d.effects()) {
-                if (effect.expand() != null) edge(edges, nodes, d.key(), effect.expand().into(), "expand", null, null);
-                if (effect.create() != null) edge(edges, nodes, d.key(), effect.create().entity(), "create", null, null);
+                if (effect.expand() != null) edge(edges, nodes, d.key(), effect.expand().into(), "expand", null, null, null);
+                if (effect.create() != null) edge(edges, nodes, d.key(), effect.create().entity(), "create", null, null, null);
             }
             for (AppDefinitions.Field field : d.fields())
                 if (field.ref() != null && !linked.contains(field.ref().entity()) && !field.ref().entity().equals(d.key())) {
-                    edge(edges, nodes, field.ref().entity(), d.key(), "choose", field.name(), null);
+                    edge(edges, nodes, field.ref().entity(), d.key(), "choose", field.name(), null, field.label());
                     linked.add(field.ref().entity());
                 }
         }
@@ -95,12 +127,21 @@ public class ProcessGraph {
     @SuppressWarnings("unchecked")
     private static List<Map<String, Object>> steps(Map<String, Object> node) { return (List<Map<String, Object>>) node.get("steps"); }
     @SuppressWarnings("unchecked")
-    private static void edge(List<Map<String, Object>> edges, Map<String, Map<String, Object>> nodes, String from, String to, String how, String pointer, String screen) {
+    private static List<Map<String, Object>> list(Map<String, Object> node, String name) { return (List<Map<String, Object>>) node.get(name); }
+    @SuppressWarnings("unchecked")
+    private static String labelOf(AppDefinitions.Definition d, String name) {
+        if (name == null) return null;
+        for (AppDefinitions.Field field : d.fields()) if (field.name().equals(name)) return field.label();
+        return null;
+    }
+
+    private static void edge(List<Map<String, Object>> edges, Map<String, Map<String, Object>> nodes, String from, String to, String how, String pointer, String screen, String label) {
         if (!nodes.containsKey(from) || !nodes.containsKey(to)) return;
         Map<String, Object> edge = new LinkedHashMap<>();
         edge.put("from", from); edge.put("to", to); edge.put("how", how);
         if (pointer != null) edge.put("pointer", pointer);
         if (screen != null) edge.put("screen", screen);
+        if (label != null) edge.put("label", label);          // the field that points: what the line is (소속 부서)
         edges.add(edge);
         ((List<Map<String, Object>>) nodes.get(to).get("prev")).add(Map.of("key", from, "how", how));
         ((List<Map<String, Object>>) nodes.get(from).get("next")).add(Map.of("key", to, "how", how));

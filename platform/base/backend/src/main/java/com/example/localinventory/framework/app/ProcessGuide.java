@@ -132,7 +132,7 @@ public class ProcessGuide {
             screen.put("sentences", sentences(d));
             List<String> users = new ArrayList<>();
             for (AppDefinitions.Definition other : known.values())
-                if (!other.key().equals(d.key()) && pointsAt(other, d.key())) users.add(other.title());
+                if (!other.key().equals(d.key()) && ProcessGraph.dependsOn(other, known.keySet()).stream().anyMatch(on -> d.key().equals(on.get("key")))) users.add(other.title());
             screen.put("usedBy", users);
             screens.add(screen);
         }
@@ -321,21 +321,13 @@ public class ProcessGuide {
         if (flowOf.containsKey(key) || isWork(key)) return "업무";
         return "기준 정보";
     }
-    private boolean pointsAt(AppDefinitions.Definition d, String key) {
-        for (AppDefinitions.Field field : d.fields()) if (field.ref() != null && field.ref().entity().equals(key)) return true;
-        for (AppDefinitions.LineSet set : d.lineSets()) for (AppDefinitions.Field field : set.fields()) if (field.ref() != null && field.ref().entity().equals(key)) return true;
-        return false;
-    }
     private int layer(String key, Map<String, Integer> layers, Map<String, List<String>> flowOf, Set<String> seen) {
         if (layers.containsKey(key)) return layers.get(key);
         if (!seen.add(key)) return 1;
         int deepest = 0;
-        AppDefinitions.Definition d = known.get(key);
-        List<AppDefinitions.Field> all = new ArrayList<>(d.fields());
-        d.lineSets().forEach(set -> all.addAll(set.fields()));
-        for (AppDefinitions.Field field : all)
-            if (field.ref() != null && !field.ref().entity().equals(key) && known.containsKey(field.ref().entity()) && kind(field.ref().entity(), flowOf).equals("기준 정보"))
-                deepest = Math.max(deepest, layer(field.ref().entity(), layers, flowOf, seen));
+        for (Map<String, Object> on : ProcessGraph.dependsOn(known.get(key), known.keySet()))
+            if (kind((String) on.get("key"), flowOf).equals("기준 정보"))
+                deepest = Math.max(deepest, layer((String) on.get("key"), layers, flowOf, seen));
         layers.put(key, deepest + 1);
         return deepest + 1;
     }

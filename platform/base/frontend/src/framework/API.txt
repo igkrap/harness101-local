@@ -214,7 +214,10 @@ RECORD GRID
    a row may also choose another record (a ref) in its cell. Its records are looked after on a work screen made for them.
    GET /api/meta/graph(?drafts=true) - the screens as one graph, read off the definitions: nodes (entities keeping records: states, and the
    steps moving a record between them - action, from, to, the work screens taking it) and edges earlier -> later with how (from / take /
-   limit / expand / create / choose); each node lists prev and next. Definitions write only the earlier side; next is worked out.
+   limit / expand / create / choose, and label: the field that points, when one does); each node lists prev and next, dependsOn and usedBy
+   (every field pointing at another screen, its own or its lines': key, field, label, lines) and, for master data, its layer. Definitions
+   write only the earlier side; next is worked out. A screen others use cannot be deleted (all of them are named), and a change cannot take
+   away or rename a field they use (the one they show - ref.label -, ref.code, ref.columns, what they fill from): change those screens first.
    Query conditions always include a screen's automatic number and its first date (a period); with no field marked search at all, the
    fields choosing other records (two at most, the earlier record of a from-screen first) are marked search too, when the definition is read.
    Spans that may not overlap: "noOverlap": [{from, to, by, ignore, message}] - two required date fields (whole days: touching ends meet) or two
