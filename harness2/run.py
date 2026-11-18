@@ -17,6 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import checks
 import flows
+import live
 import define
 from framework import Framework, app_url
 
@@ -75,6 +76,7 @@ def run(request=None, definition_file=None, dry=False, force=False, part_of=None
     if result.get('status') == 'failed' and (said or stuck) and request and not definition_file and not dry and part_of is None:
         time.sleep(1.1)                                   # run folders are named by the second
         feedback = ('업무 흐름 판정에서 떨어져 모두 되돌렸다: ' + ' / '.join(said)) if said else stuck
+        live.step('처음 것이 떨어져서 이유를 들고 다시 만듦', feedback[:300])
         again = _run(request, None, dry, force, part_of, feedback=feedback[:1500])
         again['first_try'] = {'folder': result.get('folder'), 'flows': said or [stuck]}
         return again
@@ -310,10 +312,14 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
         checked = define.repoint(definition, key, trial_key)
         trial = {name: value for name, value in checked.items() if name not in ('rules', 'effects')}
         framework.save_definition(trial_key, dict(trial, title=trial_title), 'DRAFT')
+        live.step('자료 점검 (시험용 사본에서 저장·조회·규칙)', trial_title)
         data = (checks.ledger_view_checks if definition.get('ledgerView') else checks.take_checks if definition.get('take') else checks.view_checks if definition.get('calendar') or definition.get('tree') else checks.over_checks if definition.get('over') else checks.dashboard_checks if definition.get('dashboard') else checks.summary_checks if definition.get('summary') else checks.record_checks)(trial_key, checked, framework)
         if definition.get('from'):          # made from an earlier list: its own screen takes over from it, tried like a take-over screen
+            live.step('이어받기 점검 (앞 단계에서 골라 넘기기)')
             taking = checks.take_checks(trial_key, dict(checked, take=checks.take_of(checked, trial_key)), framework)
             data.results += taking.results
+        if definition.get('screen') is not False:
+            live.step('화면 점검 (브라우저로 열어 눌러 봄)')
         screen = checks.Report() if definition.get('screen') is False else checks.screen_checks(trial_title, definition, folder / '2-check', app_url())     # data only: no screen to look at
         results = data.results + screen.results
         (folder / '2-check').mkdir(exist_ok=True)
@@ -325,9 +331,11 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
         if dry:
             result['status'] = 'checked'
             return result
+        live.step('게시')
         saved = framework.save_definition(key, definition, 'PUBLISHED')
         published = (key, current)          # until it is applied, a failure of any kind puts back what was there before
         if definition.get('rules') or definition.get('effects') or (definition.get('status') or {}).get('closed'):
+            live.step('규칙·자동 처리 점검 (게시한 것으로)')
             ruled = checks.rule_checks(key, definition, framework) if definition.get('rules') else checks.Report()
             if definition.get('effects') and ruled.passed:
                 ruled.results += checks.effect_checks(key, definition, framework).results
@@ -345,6 +353,7 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
                 result['status'] = 'failed'
                 return result
         if part_of is None:          # the business flows this screen is part of, run end to end with the screens as they are now
+            live.step('업무 흐름 시험 (처음부터 끝까지)')
             passed, flowed, said = flows.judge([key], framework)
             if flowed:
                 results += flowed

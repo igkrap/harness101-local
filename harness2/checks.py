@@ -25,6 +25,8 @@ HARNESS = Path(__file__).resolve().parents[1] / 'erp-harness'
 
 
 import time as _time
+
+import live
 # Values that must be unique stay unique across runs too (a row left by an interrupted run must not collide with the next one).
 _serial = itertools.count(int(_time.time()) % 100000 * 100)
 
@@ -805,6 +807,7 @@ class Report:
 
     def add(self, description, passed, detail=''):
         self.results.append({'description': description, 'passed': bool(passed), 'detail': '' if passed else str(detail)[:400]})
+        live.check(description, passed, detail)
         return bool(passed)
 
     @property
@@ -1488,12 +1491,12 @@ def take_checks(key, definition, framework):
             for way, expected, words in (('same', 1, '위쪽 값이 같은 두 건의 줄을 함께 넘기면 한 건으로 묶인다'), ('source', 2, '앞 단계 한 건마다 따로 넘기면 두 건이 만들어진다')):
                 pair = [twin(), twin()]
                 chosen = [row for row in framework.ok('GET', api) if row.get('sourceId') in (pair[0]['id'], pair[1]['id']) and row['line'] == 0]
-                code, both = framework.call('POST', api, supplied({'values': values, 'per': way, 'rows': [{'sourceId': row['sourceId'], 'line': row['line'], 'quantity': 1} for row in chosen]}))
+                code, both = framework.call('POST', api, supplied({'values': values, 'per': way, 'rows': [{'sourceId': row['sourceId'], 'line': row['line'], 'quantity': 1, 'values': typed} for row in chosen]}))
                 for item in (both.get('created') or []) if isinstance(both, dict) else []:
                     made.append((part['entity'], item['id']))
                 report.add(f'묶는 기준: {words}', code in (200, 201) and len(chosen) == 2 and both.get('count') == expected, f'{code} {both}')
         else:
-            code, answer2 = framework.call('POST', api, supplied({'values': values, 'per': 'same', 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': 1}]}))
+            code, answer2 = framework.call('POST', api, supplied({'values': values, 'per': 'same', 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': 1, 'values': typed}]}))
             report.add('묶는 기준: 앞 단계를 위쪽에서 가리키는 자료는 여러 건을 한 건으로 묶을 수 없다고 거절한다', code == 400, f'{code} {answer2}')
         now = framework.ok('GET', f"/api/data/{part['from']}/{source['id']}")
         if wanted and now.get('status') not in wanted:
@@ -1503,7 +1506,7 @@ def take_checks(key, definition, framework):
         left = first['remaining'] - part_quantity
         report.add(f'넘긴 만큼 남은 수량이 줄어든다 ({first["remaining"]:g} → {left:g})', (not after and left == 0) or (bool(after) and after[0]['remaining'] == left and after[0]['done'] == part_quantity), f'{after}')
         if left > 0 and after and not once:      # (counted rows are taken one record at a time)
-            code, answer = framework.call('POST', api, supplied({'values': values, 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': left}]}))
+            code, answer = framework.call('POST', api, supplied({'values': values, 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': left, 'values': typed}]}))
             for item in (answer.get('created') or []) if isinstance(answer, dict) else []:
                 made.append((part['entity'], item['id']))
             gone = not [row for row in mine(framework.ok('GET', api)) if row['line'] == first['line']] if code in (200, 201) else False

@@ -88,7 +88,8 @@ class Setup:
         if not self._exists('container', self.db):
             sh(['docker', 'run', '-d', '--name', self.db, '--network', self.internal, '--restart', 'unless-stopped',
                 '-e', 'POSTGRES_USER=mdi', '-e', 'POSTGRES_PASSWORD=mdi', '-e', 'POSTGRES_DB=mdi',
-                '-v', f'{self.data}:/var/lib/postgresql/data', '-p', f'127.0.0.1:{self.db_port}:5432', POSTGRES_IMAGE])
+                '-v', f'{self.data}:/var/lib/postgresql/data', '-p', f'127.0.0.1:{self.db_port}:5432', POSTGRES_IMAGE,
+                'postgres', '-c', 'max_connections=400'])        # every project's server keeps its own pool of connections here
             sh(['docker', 'network', 'connect', self.public, self.db])
         else:
             sh(['docker', 'start', self.db], check=False)

@@ -7,6 +7,7 @@ type or screen type added to the framework is available here without changing th
 import json
 import re
 
+import live
 import llm
 
 PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰지 않는다. 아래 요청을 읽고 답을 JSON 하나로만 하라(설명, 코드 블록 표시 없이).
@@ -507,6 +508,7 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
                     asked_back = True
                     raise ValueError('요청하지 않은 것이 사라졌다:\n- ' + '\n- '.join(unasked) + '\n이것들만 원래대로 되살리고, 나머지 고친 것은 그대로 둔다')
             # The framework is the judge: the definition is saved as a trial draft; a refusal is its message.
+            live.step('프레임워크가 정의를 판정', definition.get('title') or key)
             trials.add(trial_name(key, trial_prefix))
             saved = trial_save(framework, key, definition, trial_prefix)
             # Rules and effects name real entities, so they are judged under the real key (nothing is stored): a refusal goes back to the model like any other.
@@ -521,9 +523,12 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
                 raise ValueError('요청과 다르다: ' + doubt + '\n요청의 말 그대로 되게 고친다 (요청이 맞고 이 지적이 틀렸다고 보면 그대로 다시 답한다)')
             for other in trials - {trial_name(key, trial_prefix)}:
                 framework.delete_definition(other, force=True)
+            live.end_step('done', '받아들임' + (f' (의문: {doubt[:200]})' if doubt else ''))
             return {'action': action, 'key': key, 'definition': taken, 'doubt': doubt}
         except Exception as problem:  # a refusal of any kind goes back to the model once more
             error = str(problem)
+            live.step('받아들여지지 않음 → 모델에게 다시', error[:400])
+            live.end_step('refused')
             messages = base + [{'role': 'assistant', 'content': answer[:4000]},
                                {'role': 'user', 'content': f'받아들여지지 않았다: {error}\n고쳐서 JSON 전체를 다시 답하라.'}]
     for other in trials:          # nothing was accepted: no trial copy stays behind

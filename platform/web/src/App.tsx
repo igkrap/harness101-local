@@ -10,6 +10,7 @@ import Preview from "./Preview";
 import HistoryPage from "./HistoryPage";
 import GuidePage from "./GuidePage";
 import FlowMapPage from "./FlowMapPage";
+import MonitorPage from "./MonitorPage";
 import HomePage from "./HomePage";
 import DevTools from "./DevTools";
 import { Selector } from "@astryxdesign/core/Selector";
@@ -193,6 +194,7 @@ function Mark({ kind }: { kind: string }) {
     environment: "M3 5h18v11H3z M8 20h8 M12 16v4 M7 9l2 2-2 2 M11 13h5",
     chat: "M3 4h18v13H8l-5 4V4z M7 9h10 M7 13h7",
     history: "M3 12a9 9 0 1 0 3-6.7 M3 4v5h5 M12 7v5l3 2",
+    monitor: "M3 12h4l3-7 4 14 3-7h4",
     flowmap: "M3 6h5v4H3z M16 4h5v4h-5z M16 14h5v4h-5z M8 8h4v8h4 M12 6h4",
     guide: "M4 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4z M20 4h-7a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h8z",
     home: "M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z M18 15l.8 2.2L21 18l-2.2.8L18 21l-.8-2.2L15 18l2.2-.8z",
@@ -513,7 +515,7 @@ export default function App() {
   const stop = () =>
     data?.active && post(`/api/jobs/${data.active.id}/stop`, {});
   const navGroups: [string, string[][]][] = [
-    ["업무", [["home", "만들기"], ["preview", "앱 보기"], ["guide", "업무 안내서"], ["flowmap", "업무 흐름도"], ["history", "변경 이력"]]],
+    ["업무", [["home", "만들기"], ["monitor", "실시간 보기"], ["preview", "앱 보기"], ["guide", "업무 안내서"], ["flowmap", "업무 흐름도"], ["history", "변경 이력"]]],
     ["설정", [["projects", "프로젝트"], ["environment", "개발 환경"], ["models", "AI 모델"]]],
     ["개발자 도구", [["tools", "화면 정의·자료·서버"], ["run", "실행 기록"], ["overview", "통계"], ["source", "프로젝트 소스"], ["chat", "채팅"]]],
   ];
@@ -678,6 +680,7 @@ export default function App() {
           {page === "preview" && <Preview token={data?.token||""}/>}
           {page === "guide" && <GuidePage/>}
           {page === "flowmap" && <FlowMapPage/>}
+          {page === "monitor" && <MonitorPage/>}
           {page === "history" && <HistoryPage token={data?.token||""} busy={runningNow} onOpenJob={id => { setSelected(id); setSelectedRecord(null); setRunTab("logs"); navigate("run"); }}/>}
         </VStack>
       </VStack>

@@ -613,6 +613,8 @@ class Handler(BaseHTTPRequestHandler):
                 if tool=='log':self.send_json(devtools.server_log(one('lines','300')));return
                 if tool=='process':self.send_json(devtools.process());return
                 if tool=='graph':self.send_json(devtools.graph());return
+                if tool=='live':
+                    devtools._harness();import live;self.send_json(live.snapshot() or {});return
             if parsed.path=='/api/release/screens':
                 import release
                 self.send_json({'screens':release.screens()});return

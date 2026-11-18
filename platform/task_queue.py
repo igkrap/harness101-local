@@ -372,8 +372,15 @@ class QueueManager:
             self._update(queue_id, items=[{'domain': 'definition', 'title': '화면 정의 작성과 검사', 'checks': ['definition'], 'status': 'running', 'job_id': None, 'attempts': 1}],
                          status='running', route='definition')
             given = self.get(queue_id).get('order') or {}
+            import live
+            live.begin(goal)
             result = definition_run.run(goal, definition_file=given['file']) if given.get('kind') == 'replay' else definition_run.run(goal)
         except Exception as error:
+            try:
+                import live
+                live.finish(False, str(error)[:300])
+            except Exception:
+                pass
             self._update(queue_id, items=[], status='planning', route_error=str(error)[:300])
             return False
         status = result.get('status')
@@ -382,6 +389,8 @@ class QueueManager:
             return False
         ok = status == 'applied' or (status == 'flow' and bool(result.get('ok')))      # (a business flow registered, shown or removed)
         said = definition_run.say(result).rsplit('\n기록:', 1)[0]
+        import live
+        live.finish(ok, said)
         job_id = self._record_definition_run(queue_id, result, ok, said)
         if result.get('planned'):      # one line per step, so it shows which were done and where it stopped
             done = {item['step']: item for item in result.get('steps', [])}
