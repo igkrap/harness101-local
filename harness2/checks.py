@@ -2164,7 +2164,9 @@ def document_screen_criteria(definition):
     if definition.get('follows'):         # made from the earlier stage only: its own screen offers no 신규
         items.append(('앞 단계에서 이어받아 만드는 자료라 신규 버튼이 없다', {'op': 'absent', 'selector': f'{toolbar} >> role=button[name="신규"]'}))
     for field in definition['fields']:
-        if field.get('formula') or field.get('sum') or field['type'] in ('serial', 'user'):
+        if field['type'] == 'serial':
+            pass                                  # numbered when saved: an empty form has no number to show (the list's column is checked below)
+        elif field.get('formula') or field.get('sum') or field['type'] == 'user':
             items.append((f"입력 영역에 {field['label']} 이(가) 보인다", {'op': 'text', 'selector': editor, 'contains': field['label']}))
         elif field.get('showWhen') and not _holds(field['showWhen'], {}):
             pass                                  # there only under another field's value: an empty form does not show it
