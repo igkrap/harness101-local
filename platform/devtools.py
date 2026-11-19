@@ -126,3 +126,56 @@ def graph():
     _harness()
     from framework import Framework
     return Framework().ok('GET', '/api/meta/graph')
+
+
+def made(project, sha):
+    """What a definition change made in the running system, screen by screen: its tables and their columns (the fields this change
+    added marked), the API addresses it answers on, its program and where it sits in the menus, the code groups it declares. Read
+    from the commit (which screens it touched) and the development database as it is now."""
+    names = subprocess.run(['git', 'show', '--format=', '--name-status', sha], cwd=project, capture_output=True, text=True, timeout=60).stdout.splitlines()
+    out = []
+    for line in names:
+        parts = line.split('\t')
+        if len(parts) < 2 or not parts[-1].startswith('release/definitions/') or not parts[-1].endswith('.json'):
+            continue
+        key = Path(parts[-1]).stem
+        status = {'A': '새로 만듦', 'D': '지움'}.get(parts[0][:1], '고침')
+        after = _at(project, key, sha)
+        parent = subprocess.run(['git', 'rev-parse', '--verify', '--quiet', sha + '^'], cwd=project, capture_output=True, text=True).stdout.strip()
+        before = _at(project, key, parent) if status != '새로 만듦' and parent else None
+        screen = {'key': key, 'title': (after or before or {}).get('title', key), 'change': status}
+        if after:
+            def names_of(definition):
+                found = {field['name'] for field in definition.get('fields') or []}
+                for lines in [definition.get('lines')] + list(definition.get('moreLines') or []):
+                    found |= {field['name'] for field in (lines or {}).get('fields') or []}
+                return found
+            added = names_of(after) - (names_of(before) if before else set())
+            tables = release._psql(site().db, f"""SELECT json_build_object('table', c.table_name, 'columns', json_agg(json_build_object('name', c.column_name, 'type', c.data_type) ORDER BY c.ordinal_position))
+                FROM information_schema.columns c WHERE c.table_schema = current_schema() AND (c.table_name = 'r_{key}' OR c.table_name LIKE 'r\\_{key}\\_\\_%' OR c.table_name = 'h_{key}')
+                GROUP BY c.table_name ORDER BY c.table_name""", rows=True)
+            for table in tables:
+                for column in table['columns']:
+                    column['added'] = column['name'].startswith('f_') and _camel(column['name'][2:]) in added
+            screen['tables'] = tables
+            kind = next((part for part in ('over', 'take', 'summary', 'calendar', 'tree', 'dashboard', 'ledgerView') if after.get(part)), None)
+            base = {'over': '/api/over/', 'take': '/api/take/', 'summary': '/api/summary/', 'calendar': '/api/calendar/', 'tree': '/api/tree/'}.get(kind, '/api/data/')
+            api = [f'GET {base}{key}', f'GET {base}{key}/{{id}}'] if base == '/api/data/' else [f'GET {base}{key}']
+            if base == '/api/data/':
+                api += [f'POST {base}{key}', f'PUT {base}{key}/{{id}}', f'DELETE {base}{key}/{{id}}', f'GET {base}{key}/{{id}}/history']
+                api += [f"POST {base}{key}/{{id}}/actions/{action['name']}  ({action.get('label', '')})" for action in ((after.get('status') or {}).get('actions') or [])]
+            elif kind in ('over', 'take'):
+                api += [f'POST {base}{key}']
+            screen['api'] = api
+            program = release._psql(site().db, f"""SELECT json_build_object('code', p.program_code, 'name', p.program_name, 'menu',
+                (SELECT string_agg(COALESCE(parent.menu_name || ' › ', '') || m.menu_name, ', ') FROM sys_menus m LEFT JOIN sys_menus parent ON parent.menu_id = m.parent_id WHERE m.program_code = p.program_code))
+                FROM sys_programs p JOIN app_definitions d ON d.program_code = p.program_code WHERE d.entity_key = '{key}'""", rows=True)
+            screen['program'] = program[0] if program else None
+            screen['codeGroups'] = [f"{group.get('name')} ({group.get('code')}): " + ', '.join(value.get('name', '') for value in group.get('values') or []) for group in after.get('codeGroups') or []]
+        out.append(screen)
+    return {'screens': out}
+
+
+def _camel(snake):
+    head, *rest = snake.split('_')
+    return head + ''.join(part[:1].upper() + part[1:] for part in rest)

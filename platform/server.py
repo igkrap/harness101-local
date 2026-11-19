@@ -693,6 +693,16 @@ class Handler(BaseHTTPRequestHandler):
                 with (app.state/job/'output.log').open('rb') as stream:
                     stream.seek(0,2);stream.seek(max(0,stream.tell()-60000));output=stream.read().decode('utf-8','replace')
                 self.send_json({'text':output});return
+            match=re.fullmatch(r'/api/jobs/([a-f0-9]{32})/made',parsed.path)
+            if match:                            # a definition run: what its change made in the running system (tables, addresses, program)
+                job=match.group(1)
+                if job not in app.jobs: raise ValueError('실행 기록이 없습니다.')
+                record=app.jobs[job];sha=record.get('commit')
+                if not sha and record.get('route')=='definition' and (record.get('queue') or {}).get('id'):
+                    try:sha=((app.queues.get(record['queue']['id']).get('definition_result')) or {}).get('commit')
+                    except Exception:sha=None
+                import devtools
+                self.send_json(devtools.made(app.project,sha) if sha else {'screens':[]});return
             match=re.fullmatch(r'/api/jobs/([a-f0-9]{32})/diff',parsed.path)
             if match:
                 job=match.group(1)
