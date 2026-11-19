@@ -483,6 +483,9 @@ def undo(result):
 
 def say(result):
     """The outcome in plain words."""
+    if result.get('first_try') and result.get('status') in ('applied', 'checked'):       # passed on the second try: said, with why the first fell
+        rest = {key: value for key, value in result.items() if key != 'first_try'}
+        return '처음 시도가 떨어져 이유를 들려주고 다시 만들었습니다: ' + ' / '.join(result['first_try'].get('flows') or [])[:400] + '\n\n' + say(rest)
     if result.get('status') == 'flow':
         return '\n'.join(result.get('lines', [])) + (f"\n깃에 기록했습니다 ({result['commit'][:7]})." if result.get('commit') else '')
     if result.get('planned'):

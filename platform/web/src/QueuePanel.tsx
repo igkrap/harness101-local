@@ -3,7 +3,7 @@ import "./queue.css";
 
 export type QueueItem = { domain: string; title: string; checks: string[]; status: string; job_id: string | null; attempts?: number; deploy?: string; deploy_note?: string };
 export type TaskQueue = { id: string; goal: string; status: string; items: QueueItem[]; detail?: string; plan_seconds?: number; plan_fallback?: boolean; created_at: string; finished_at?: string | null; route?: string; undone?: boolean;
-  /** The outcome of a definition-route request (harness2). */ definition_result?: { status?: string; action?: string; key?: string; title?: string; checks?: number; seconds?: number; failed?: unknown[] } };
+  /** The outcome of a definition-route request (harness2). */ definition_result?: { status?: string; action?: string; key?: string; title?: string; checks?: number; seconds?: number; failed?: unknown[]; first_try?: { flows?: string[] } } };
 
 const statusLabel: Record<string, string> = {
   planning: "작업 분리 중", running: "진행 중", stopping: "중지 중", succeeded: "완료", failed: "실패", stopped: "중지됨",

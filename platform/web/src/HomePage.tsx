@@ -11,6 +11,12 @@ const queueStatus: Record<string, [string, string]> = {
   planning: ["진행 중", "live"], running: ["진행 중", "live"], stopping: ["중지 중", "live"],
   succeeded: ["완료", "ok"], failed: ["실패", "bad"], stopped: ["중지됨", "muted"], interrupted: ["중단됨", "muted"],
 };
+// a request that failed once and passed on the harness's own second try says so (and why the first one fell)
+const statusOf = (q: TaskQueue): [string, string, string] => {
+  const [label, tone] = queueStatus[q.status] || [q.status, "muted"];
+  const first = q.definition_result?.first_try;
+  return first && q.status === "succeeded" ? ["재시도 후 완료", "ok", `처음 시도가 떨어진 이유: ${(first.flows || []).join(" / ")}`] : [label, tone, ""];
+};
 const doing: Record<string, string> = { model: "AI가 코드를 작성하는 중", tool: "파일을 고치는 중", check: "만든 결과를 검사하는 중", running: "진행 중" };
 const deployText: Record<string, string> = { running: "실행 중인 앱에 반영하는 중", succeeded: "실행 중인 앱에 반영됨", skipped: "앱에 이미 반영됨", failed: "앱 반영 실패" };
 
@@ -144,7 +150,7 @@ export default function HomePage(props: {
   }, [queue?.status, queue?.id]);
   const live = !!queue && ["planning", "running", "stopping"].includes(queue.status);
   const start = () => { if (props.canStart) props.onStart(); };
-  const [label, tone] = queue ? queueStatus[queue.status] || [queue.status, "muted"] : ["", ""];
+  const [label, tone, retried] = queue ? statusOf(queue) : ["", "", ""];
   const failedJob = queue?.items.find(i => i.status === "failed")?.job_id;
   const lastJob = [...(queue?.items || [])].reverse().find(i => i.job_id)?.job_id;
   const [undoing, setUndoing] = useState("");
@@ -195,6 +201,7 @@ export default function HomePage(props: {
         <span className="home-time">{since(queue.created_at, live ? null : queue.finished_at)}</span>
       </header>
       {queue.status === "planning" && <p className="home-note">요청을 작업 단위로 나누는 중입니다…</p>}
+      {retried && <p className="home-note">{retried} - 이유를 들려주고 처음부터 다시 만들어 통과했습니다.</p>}
       <ol className="home-steps">{queue.items.map((item, i) => <Step key={i} item={item} index={i} phase={props.phase} onDetail={props.onDetail} events={eventsFor(item.job_id)} />)}</ol>
       {queue.status === "failed" && <p className="home-fail-detail">{queue.detail}</p>}
       {queue.status === "succeeded" && queue.detail && <p className="home-note home-result">{queue.detail}</p>}
@@ -220,11 +227,11 @@ export default function HomePage(props: {
       <table className="biz-table">
         <colgroup><col style={{ width: 62 }} /><col /><col style={{ width: "22%" }} /><col style={{ width: 58 }} /><col style={{ width: 56 }} /><col style={{ width: 84 }} /><col style={{ width: 104 }} /><col style={{ width: 104 }} /></colgroup>
         <thead><tr><th>상태</th><th>요청</th><th>결과</th><th>구분</th><th className="num">검사</th><th className="num">걸린 시간</th><th>일시</th><th /></tr></thead>
-        <tbody>{others.map(q => { const [l, t] = queueStatus[q.status] || [q.status, "muted"]; const job = [...q.items].reverse().find(i => i.job_id)?.job_id; const r = q.definition_result;
+        <tbody>{others.map(q => { const [l, t, why] = statusOf(q); const job = [...q.items].reverse().find(i => i.job_id)?.job_id; const r = q.definition_result;
           const failed = r?.failed?.length || 0;
           const outcome = r ? (r.status === "applied" ? `${r.title || ""}${r.key ? ` (${r.key})` : ""}` : (q.detail || "").split("\n").filter(Boolean).pop() || "") : (q.detail || "").split("\n")[0] || "";
           return <tr key={q.id}>
-            <td><span className={`biz-tag tone-${t}`}>{l}</span></td>
+            <td><span className={`biz-tag tone-${t}`} title={why || undefined}>{l}</span></td>
             <td title={q.goal}>{q.goal}</td>
             <td className="dim" title={q.detail || outcome}>{outcome}</td>
             <td className="dim">{r ? (r.action === "change" ? "수정" : r.action === "create" ? "신규" : "") : q.items.length ? `작업 ${q.items.filter(i => i.status === "succeeded").length}/${q.items.length}` : ""}</td>
