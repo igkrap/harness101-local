@@ -1,6 +1,6 @@
 /**
  * The platform as a desktop app: one window instead of a browser tab, and the things the platform needs are looked
- * after from here - the platform's own server (which brings up the preview of the first project's screens itself), the
+ * after from here - the platform's own server (which brings up a project's screens when they are asked for), the
  * development database and app server (Docker containers) and the local model's server.
  *
  * Each is started only when it is not already answering, so the app can be opened beside a platform that was started
@@ -16,12 +16,11 @@ const fs = require('fs');
 const PLATFORM = path.resolve(__dirname, '..');
 const ROOT = path.resolve(PLATFORM, '..');
 const STATE = path.join(PLATFORM, 'state');
-const URLS = { platform: 'http://127.0.0.1:5293', preview: 'http://127.0.0.1:5292', model: 'http://127.0.0.1:8099/v1/models' };
+const URLS = { platform: 'http://127.0.0.1:5293', model: 'http://127.0.0.1:8099/v1/models' };
 const SMOKE = process.argv.includes('--smoke');
-// The first project's names (its server container, where its screens are previewed) as the platform's records hold them.
-function first() { try { return JSON.parse(fs.readFileSync(path.join(STATE, 'projects.json'), 'utf8'))[0].site || {}; } catch { return {}; } }
-const apiContainer = () => first().api_container || 'mdi-local-api';
-const previewUrl = () => `http://127.0.0.1:${first().preview_port || 5292}`;
+// Every project's server container, as the platform's records hold them (no project is special; there may be none yet).
+function projects() { try { return JSON.parse(fs.readFileSync(path.join(STATE, 'projects.json'), 'utf8')).map(record => record.site || {}); } catch { return []; } }
+const apiContainers = () => projects().map(own => own.api_container).filter(Boolean);
 const started = {};          // what this app started: name -> child process
 let win = null, quitting = false;
 
@@ -57,7 +56,7 @@ function run(name, command, args, cwd, detached = false) {
 async function bringUp(tell) {
   const problems = [];
   tell('도커(개발 DB와 앱 서버) 확인');
-  await new Promise(done => execFile('docker', ['start', 'mdi-db', apiContainer()], { env: ENV, timeout: 30000 }, error => {
+  await new Promise(done => execFile('docker', ['start', 'mdi-db', ...apiContainers()], { env: ENV, timeout: 30000 }, error => {
     if (error) problems.push('도커가 꺼져 있거나 개발 DB·앱 서버 컨테이너가 없습니다. 도커를 켠 뒤 메뉴의 "다시 확인"을 누르세요.');
     done();
   }));
@@ -79,9 +78,9 @@ async function bringUp(tell) {
 }
 
 async function status() {
-  const [platform, preview, model] = await Promise.all([answers(URLS.platform + '/api/state'), answers(previewUrl()), answers(URLS.model)]);
-  const docker = await new Promise(done => execFile('docker', ['inspect', '-f', '{{.State.Running}}', 'mdi-db', apiContainer()], { env: ENV, timeout: 10000 }, (error, out) => done(!error && out.trim().split('\n').every(line => line === 'true'))));
-  return { platform, preview, model, docker, mine: Object.keys(started) };
+  const [platform, model] = await Promise.all([answers(URLS.platform + '/api/state'), answers(URLS.model)]);
+  const docker = await new Promise(done => execFile('docker', ['inspect', '-f', '{{.State.Running}}', 'mdi-db', ...apiContainers()], { env: ENV, timeout: 10000 }, (error, out) => done(!error && out.trim().split('\n').every(line => line === 'true'))));
+  return { platform, model, docker, mine: Object.keys(started) };
 }
 
 const loading = text => `data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html><meta charset="utf-8"><body style="margin:0;height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;font:14px -apple-system,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;background:#f4f5f7;color:#1c2127"><div style="font-size:20px;font-weight:600">Local Workshop</div><div id="t">${text}</div></body>`)}`;
@@ -112,7 +111,7 @@ async function open() {
 
 function menu() {
   const say = async () => { const now = await status(); const mark = ok => (ok ? '켜짐' : '꺼짐');
-    dialog.showMessageBox(win, { type: 'info', message: '상태', detail: `플랫폼 서버: ${mark(now.platform)}\n앱 화면(미리보기): ${mark(now.preview)}\n도커(개발 DB·앱 서버): ${mark(now.docker)}\n로컬 모델 서버: ${mark(now.model)}\n\n이 앱이 켠 것: ${now.mine.join(', ') || '없음'}` }); };
+    dialog.showMessageBox(win, { type: 'info', message: '상태', detail: `플랫폼 서버: ${mark(now.platform)}\n도커(개발 DB·앱 서버): ${mark(now.docker)}\n로컬 모델 서버: ${mark(now.model)}\n\n이 앱이 켠 것: ${now.mine.join(', ') || '없음'}` }); };
   const again = async () => { const problems = await bringUp(() => {}); if (win && (await answers(URLS.platform + '/api/state'))) win.loadURL(URLS.platform + '/');
     if (problems.length) dialog.showMessageBox(win, { type: 'warning', message: '준비되지 않은 것이 있습니다', detail: problems.join('\n') }); };
   const stopModel = () => { for (const name of ['qwen-supervisor.pid', 'qwen-model-server.pid']) { try { process.kill(Number(fs.readFileSync(path.join(STATE, name), 'utf8').trim())); } catch { /* not running */ } } };
