@@ -1053,10 +1053,25 @@ def record_checks(key, definition, framework):
                     report.add(f"한도(건수): {limit['message']} - {limit['entity']} 의 {limit['entityField']} 만큼 채워 볼 수 없었다", False, f'한도 {cap}')
                     continue
                 count, kept_all = 0, True
+                # what other rules key on (a person already in the group, by name) differs from record to record: each filling record
+                # is someone else, so only this limit can refuse it
+                others = {name for other in definition.get('limits') or [] if other is not limit for name in other.get('by') or []} - set(limit['by'])
+                kinds = {field['name']: field for field in plain + list(line_fields)}
+                def apart(body):
+                    for name in others:
+                        field, holder = kinds.get(name), at(body)
+                        if not field or name not in holder:
+                            continue
+                        if field.get('type', 'text') in ('text', 'memo'):
+                            holder[name] = f"{field['label']} 시험{next(_serial)}"
+                        elif field.get('type') == 'number':
+                            holder[name] = _number(field, 10 + next(_serial))
+                    return body
                 while kept_all and count < cap:
                     one_more = new_body()
                     for name in limit['by']:
                         at(one_more)[name] = at(first_one).get(name)
+                    apart(one_more)
                     code, answer = post(one_more)
                     kept_all = code == 201
                     count += 1 if kept_all else 0
@@ -1064,6 +1079,7 @@ def record_checks(key, definition, framework):
                 beyond_one = new_body()
                 for name in limit['by']:
                     at(beyond_one)[name] = at(first_one).get(name)
+                apart(beyond_one)
                 code, answer = post(beyond_one)
                 report.add(f"한도(건수): 다 차면 더는 거절된다 ({limit['message']})", code == 400 and str((answer or {}).get('detail', '')).startswith(limit['message']), f'{code} {answer}')
                 continue
