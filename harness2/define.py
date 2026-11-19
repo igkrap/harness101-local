@@ -503,6 +503,7 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
     stored = {item['key']: item['definition'] for item in real(framework, trial_prefix)}
     messages, error, answer, target, asked_back, compared, doubt = list(base), '', '', None, False, 0, ''
     told_done = False      # a step told once that the work it put before itself is there already
+    planned_checked = False      # a plan is read against the request once
     trials = set()       # trial copies saved along the way; only the accepted one is left for the checks
     for attempt in range(1, 5):
         answer = llm.ask(messages, record_to, f'define-{attempt}')
@@ -530,6 +531,21 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
                     for other in trials:
                         framework.delete_definition(other, force=True)
                     return {'action': 'split', 'steps': steps}
+                if not planned_checked:
+                    # the plan read against the request, in the same conversation (what it read is reused): a step may not bring in a
+                    # condition, rule, screen or word the person did not say - it goes back once to be split again in their words
+                    planned_checked = True
+                    question = ('요청: ' + request + '\n\n이 요청을 나눈 단계 문장:\n' + '\n'.join(f'{index}. {step}' for index, step in enumerate(steps, 1)) + '''
+
+단계 문장이 요청에 없는 것을 덧붙였는지 본다: 요청에 없는 조건·숫자·규칙(예: "09:00보다 늦으면 지각"), 요청에 없는 화면, 요청에 없는 새 낱말.
+요청을 하려면 꼭 있어야 하는 것(가리킬 기준 정보 화면 등)을 먼저 만드는 단계는 덧붙인 것이 아니다.
+형식: {"ok": true} 또는 {"ok": false, "added": "<덧붙인 것 한 줄>"}''')
+                    try:
+                        verdict = _follow_up(question, record_to, 'plan-matches-request', messages + [{'role': 'assistant', 'content': answer}])
+                    except Exception:
+                        verdict = {}
+                    if verdict.get('ok') is False:
+                        raise ValueError('단계 문장이 요청에 없는 것을 덧붙였다: ' + str(verdict.get('added') or '')[:300] + '\n요청에 있는 말만으로 단계를 다시 나눈다 (조건·규칙·화면·낱말을 지어내지 않는다).')
                 return {'action': 'steps', 'steps': steps}         # (one step only: that one request, done as a step)
             action, key, definition = proposal.get('action'), proposal.get('key'), proposal.get('definition')
             if action not in ('create', 'change') or not isinstance(key, str) or key.startswith(trial_prefix):

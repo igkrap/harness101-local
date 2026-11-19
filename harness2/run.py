@@ -163,6 +163,12 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
             result.update(status='split', parts=proposal['steps'])
             return result
         if proposal['action'] == 'other':
+            if part_of is not None or feedback:
+                # a step of a plan, or a second try: the request itself was taken as doable - the model stopped on its own words
+                live.step('모델이 정의를 쓰지 못하고 멈춤', proposal.get('reason', ''))
+                live.end_step('refused')
+                result.update(status='failed', stopped=proposal.get('reason', ''), flows=[f"모델이 정의를 쓰지 못하고 멈췄다: {proposal.get('reason', '')}"])
+                return result
             result.update(status='other', reason=proposal.get('reason', ''))
             return result
         if proposal['action'] == 'steps':
@@ -581,6 +587,8 @@ def say(result):
     elif status == 'needs_decision':
         lines.append('적용하지 않았습니다. 먼저 정해야 할 것:')
         lines += ['  - ' + item for item in result['needs_decision']]
+    elif status == 'failed' and result.get('stopped') and not result.get('failed'):
+        lines.append(f"모델이 정의를 쓰지 못하고 멈춰 적용하지 않았습니다: {result['stopped']}")
     elif status == 'failed' and result.get('unmet') and not result.get('failed'):
         lines.append(f"요청대로 되지 않아 적용하지 않았습니다: {result['unmet']}")
     elif status == 'failed':
