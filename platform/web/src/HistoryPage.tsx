@@ -76,7 +76,8 @@ export default function HistoryPage({ token, busy, onOpenJob }: { token: string;
       {busy && <Text color="secondary">AI 작업이 진행 중이라 기록·취소는 작업이 끝난 뒤 할 수 있습니다.</Text>}
       {error && <Text role="alert">{error}</Text>}
       {notice && <Text role="status">{notice}</Text>}
-      {status && loose.length > 0 && <div className="history-unrecorded" data-ui="history-unrecorded">
+      {status && loose.length > 0 && busy && <Text color="secondary">진행 중인 요청이 바꾸고 있는 것이 있습니다 ({loose.slice(0, 4).join(", ")}). 요청이 끝나면 함께 기록됩니다.</Text>}
+      {status && loose.length > 0 && !busy && <div className="history-unrecorded" data-ui="history-unrecorded">
         <VStack gap={3}>
           <Text weight="bold">아직 기록되지 않은 변경 {loose.length}개</Text>
           <Text color="secondary">요청 밖에서 바뀐 것입니다 (관리자 화면에서 고친 화면·메뉴 편성·공통 코드, 직접 고친 파일): {loose.slice(0, 8).join(", ")}{loose.length > 8 ? " …" : ""}. 기록해 두면 나중에 이 시점과 비교하거나 되돌릴 수 있습니다.</Text>
