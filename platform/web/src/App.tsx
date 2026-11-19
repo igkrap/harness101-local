@@ -402,13 +402,17 @@ export default function App() {
     [output, setOutput] = useState(""),
     [sourceOpened,setSourceOpened]=useState(false),
     [chatOpened,setChatOpened]=useState(false),
-    [firstRun,setFirstRun]=useState<string|null>(null);      // no project yet: the platform's token, for making the first one
+    [firstRun,setFirstRun]=useState<string|null>(null);
+  const loadedBuild = useRef<string>("");      // no project yet: the platform's token, for making the first one
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
     const controller = new AbortController();
     async function poll() {
       try {
         const next = await read<Snapshot>("/api/state", controller.signal);
+        // a new build of this page is out (the platform was updated): load it, so no browser shortcut is ever needed
+        const build = (next as { build?: string }).build;
+        if (build) { if (!loadedBuild.current) loadedBuild.current = build; else if (build !== loadedBuild.current) { window.location.reload(); return; } }
         if (next.no_projects) setFirstRun(next.token); else { setFirstRun(null); setData(next); }
         setOffline("");
       } catch (e) {

@@ -552,7 +552,7 @@ class Platform:
             if active:
                 active_events=self.events(active['id']);last=active_events[-1]['type'] if active_events else ''
                 phase='model' if last=='model.request' else 'check' if last=='check.started' else 'tool' if last=='tool.started' else 'running'
-            self.cache={'time':now(),'maintenance':(self.state/'maintenance.json').exists() or bool(self.coordinator and (self.coordinator.state/'maintenance.json').exists()),'project':{'name':self.metadata.get('name','Local Inventory'),'root':str(self.project),'preview_url':self.metadata.get('preview_url','http://127.0.0.1:5292'),'id':self.metadata.get('id','default'),'checks':self.available_checks()},'model':model,
+            self.cache={'build':page_build(),'time':now(),'maintenance':(self.state/'maintenance.json').exists() or bool(self.coordinator and (self.coordinator.state/'maintenance.json').exists()),'project':{'name':self.metadata.get('name','Local Inventory'),'root':str(self.project),'preview_url':self.metadata.get('preview_url','http://127.0.0.1:5292'),'id':self.metadata.get('id','default'),'checks':self.available_checks()},'model':model,
                         'jobs':jobs,'jobs_next':page['next'],'jobs_total':page['total'],'active':active,'phase':phase,'external':self.external(),'gates':list(gates.values()),'reports':reports,
                         'events':events,'event_total':recent['total'],'counts':dict(counts),'token':self.token,
                         'workspace_busy': bool(self.coordinator and self.coordinator.busy()),
@@ -803,6 +803,15 @@ class Handler(BaseHTTPRequestHandler):
         except RuntimeError as exc:self.send_json({'error':str(exc)},409)
         except (ValueError,OSError) as exc:self.send_json({'error':str(exc)},400)
 
+
+_build={'stamp':None,'id':''}
+def page_build():
+    """Which build of the platform's page is being served: an open page that sees another one reloads itself (no shortcut needed)."""
+    index=BASE/'web/dist/index.html'
+    try:stamp=index.stat().st_mtime_ns
+    except OSError:return ''
+    if stamp!=_build['stamp']:_build.update(stamp=stamp,id=hashlib.sha256(index.read_bytes()).hexdigest()[:12])
+    return _build['id']
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('--project',default=str(BASE.parent/'local-only'));p.add_argument('--state',default=str(BASE/'state'));p.add_argument('--port',type=int,default=5293);a=p.parse_args()
