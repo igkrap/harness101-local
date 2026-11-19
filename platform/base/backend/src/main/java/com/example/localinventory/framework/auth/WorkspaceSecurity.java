@@ -60,7 +60,7 @@ public class WorkspaceSecurity {
             if (!passwordHash.startsWith("{bcrypt}"))
                 throw new IllegalStateException("Set WORKSPACE_ADMIN_PASSWORD (or WORKSPACE_ADMIN_PASSWORD_HASH, {bcrypt} encoded) for the first administrator");
             users.save(new WorkspaceUser(username, passwordHash, "관리자",
-                    "workspace:admin,inventory:read,inventory:write,work-sites:read,work-sites:write"));
+                    "workspace:admin"));
             jdbc.update("INSERT INTO sys_user_roles (username, role_code) VALUES (?, 'ADMIN') ON CONFLICT DO NOTHING", username);
         };
     }
@@ -88,10 +88,6 @@ public class WorkspaceSecurity {
                 .requestMatchers("/api/auth/login", "/api/auth/signup", "/error").permitAll()
                 .requestMatchers("/api/specs/**").hasAuthority("workspace:admin")
                 .requestMatchers("/api/system/**").hasAnyAuthority("workspace:admin", "ROLE_ADMIN")
-                .requestMatchers(HttpMethod.GET, "/api/inventory", "/api/inventory/**").hasAuthority("inventory:read")
-                .requestMatchers("/api/inventory", "/api/inventory/**").hasAuthority("inventory:write")
-                .requestMatchers(HttpMethod.GET, "/api/work-sites", "/api/work-sites/**").hasAuthority("work-sites:read")
-                .requestMatchers("/api/work-sites", "/api/work-sites/**").hasAuthority("work-sites:write")
                 .requestMatchers("/api/**").authenticated()
                 // The built screens themselves (the page, its scripts and pictures), when this server is also the one that serves
                 // them (an operating copy started with spring.web.resources.static-locations): they hold nothing private.

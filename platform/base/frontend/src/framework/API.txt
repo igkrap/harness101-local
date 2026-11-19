@@ -214,6 +214,9 @@ RECORD GRID
    a row may also choose another record (a ref) in its cell. Its records are looked after on a work screen made for them.
    "kind": "master" | "work" - what the screen is to the work, as the model judged it (master data chosen from by the work, or records of the
    work piling up day by day). The 업무 안내서, the layers and the graph follow it; a definition without it is read off its parts.
+   Picking lists (GET /api/lookup/{key}, .../lines) answer only someone who may query a screen that picks from that screen - the screen
+   itself, one whose fields or lines point at it, or a work, take-over, summary, calendar or tree screen over such a screen (admins always): 403 else.
+   Definitions are read once and kept until the definition table changes (checked with one small query per request).
    GET /api/meta/graph(?drafts=true) - the screens as one graph, read off the definitions: nodes (entities keeping records: states, and the
    steps moving a record between them - action, from, to, the work screens taking it) and edges earlier -> later with how (from / take /
    limit / expand / create / choose, and label: the field that points, when one does); each node lists prev and next, dependsOn and usedBy

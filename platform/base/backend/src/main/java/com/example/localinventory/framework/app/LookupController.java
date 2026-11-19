@@ -22,7 +22,38 @@ public class LookupController {
     private final JdbcTemplate jdbc;
     private final ObjectMapper mapper = tools.jackson.databind.json.JsonMapper.builder().build();
     private final RecordStore store;
-    public LookupController(AppDefinitions definitions, JdbcTemplate jdbc, RecordStore store) { this.definitions = definitions; this.jdbc = jdbc; this.store = store; }
+    private final com.example.localinventory.framework.system.SystemAccessService access;
+    public LookupController(AppDefinitions definitions, JdbcTemplate jdbc, RecordStore store, com.example.localinventory.framework.system.SystemAccessService access) {
+        this.definitions = definitions; this.jdbc = jdbc; this.store = store; this.access = access; }
+
+    /** The records of a screen are listed for picking only to someone who may query a screen that picks from it: the screen itself, one
+     *  whose fields (or lines) point at it, or a work, take-over, summary, calendar or tree screen over a screen that does. Admins always. */
+    private void mayPick(String entity) {
+        org.springframework.security.core.Authentication who = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (who == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+        if (access.isAdmin(who.getName(), who.getAuthorities().stream().map(authority -> authority.getAuthority()).toList())) return;
+        Map<String, com.example.localinventory.framework.system.SystemAccessService.ProgramPermission> granted = access.programPermissions(who.getName());
+        java.util.Set<String> known = new java.util.HashSet<>();
+        for (AppDefinitions.Stored one : definitions.all()) known.add(one.definition().key());
+        for (AppDefinitions.Stored one : definitions.all()) {
+            var permission = one.programCode() == null ? null : granted.get(one.programCode());
+            if (permission == null || !permission.query()) continue;
+            AppDefinitions.Definition d = one.definition();
+            java.util.Set<String> over = new java.util.HashSet<>(java.util.List.of(d.key()));
+            if (d.over() != null) over.add(d.over().entity());
+            if (d.take() != null) { over.add(d.take().entity()); over.add(d.take().from()); }
+            if (d.summary() != null) over.add(d.summary().entity());
+            if (d.calendar() != null) over.add(d.calendar().entity());
+            if (d.tree() != null) over.add(d.tree().entity());
+            if (d.from() != null) over.add(d.from().entity());
+            if (over.contains(entity)) return;
+            for (String base : over) {
+                AppDefinitions.Stored stored = definitions.find(base);
+                if (stored != null && ProcessGraph.dependsOn(stored.definition(), known).stream().anyMatch(on -> entity.equals(on.get("key")))) return;
+            }
+        }
+        throw new ResponseStatusException(HttpStatus.FORBIDDEN, "이 자료를 고를 수 있는 화면의 권한이 없습니다.");
+    }
 
     /**
      * The first records (1,000 unless _limit says otherwise, at most 5,000). q narrows them to those whose text fields hold it
@@ -33,6 +64,7 @@ public class LookupController {
     @GetMapping("/api/lookup/{entity}/lines")
     public List<Map<String, Object>> lines(@PathVariable String entity, @org.springframework.web.bind.annotation.RequestParam(required = false) String field,
                                            @org.springframework.web.bind.annotation.RequestParam(required = false) String value, @org.springframework.web.bind.annotation.RequestParam(required = false) String ids) {
+        mayPick(entity);
         AppDefinitions.Stored stored = definitions.find(entity);
         if (stored == null || stored.definition().lines() == null) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "줄을 고를 수 있는 자료가 아닙니다: " + entity);
         java.util.List<Long> wanted = new java.util.ArrayList<>();
@@ -45,6 +77,7 @@ public class LookupController {
                                           @org.springframework.web.bind.annotation.RequestParam(required = false) String ids,
                                           @org.springframework.web.bind.annotation.RequestParam(name = "_limit", defaultValue = "1000") int limit,
                                           jakarta.servlet.http.HttpServletResponse response) {
+        mayPick(entity);
         AppDefinitions.Stored stored = definitions.find(entity);
         if (stored == null || stored.definition().fields().isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "고를 수 있는 자료가 아닙니다: " + entity);
         StringBuilder where = new StringBuilder(" FROM " + store.source(entity) + " app_records WHERE entity_key = ?");

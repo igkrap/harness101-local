@@ -291,7 +291,7 @@ public class AppDefinitions {
                 Map.of("type", "code", "description", "공통 코드에서 고르는 값", "needs", "codeGroup"),
                 Map.of("type", "ref", "description", "다른 자료에서 고르는 값 (그 자료의 id 를 저장). fill 로 고른 자료의 값을 다른 항목에 채울 수 있다", "needs", "ref.entity, ref.label"),
                 Map.of("type", "user", "description", "등록한 사람 (로그인한 계정이 저절로 들어가고 고칠 수 없다: 신청자, 예약자, 청구자). 업무 화면 over 에 \"mine\": true 를 적으면 그 사람 자신의 자료만 보이고 다룬다"),
-                Map.of("type", "serial", "description", "저장할 때 자동으로 매겨지는 번호 (머리 항목 전용)", "needs", "prefix (영문 대문자 1~6자)")));
+                Map.of("type", "serial", "description", "저장할 때 시스템이 차례로 매기는 번호 (머리 항목 전용: 주문 번호, 접수 번호). 사람이 정해 두고 쓰는 코드(사번, 품목 코드, 부서 코드)는 text 다", "needs", "prefix (영문 대문자 1~6자)")));
         out.put("builtInRules", List.of(
                 "필수 항목이 비면 저장을 거절한다 (400)",
                 "min, max 를 벗어난 숫자, unique 인데 이미 있는 값, 줄 수가 lines.min~max 를 벗어난 저장을 거절한다 (400)",
@@ -496,7 +496,40 @@ public class AppDefinitions {
             여기 없는 낱말은 쓸 수 없다. 적어도 동작하지 않으므로 거절된다.
             """;
 
-    public Stored find(String key) {
+    // Read definitions are kept until the table changes - by anyone: the framework's own saves, a release applied with SQL, a hand
+    // edit. One small query says whether it has (a digest of every row's key, revision, status and text), and only then is it read again.
+    private final Object held = new Object();
+    private volatile String heldStamp = null;
+    private volatile Map<String, Stored> heldDefinitions = Map.of();
+
+    private Map<String, Stored> current() {
+        String stamp = jdbc.queryForObject("SELECT COALESCE(md5(string_agg(entity_key || ':' || revision || ':' || status || ':' || md5(definition), ',' ORDER BY entity_key)), '') FROM app_definitions", String.class);
+        if (stamp.equals(heldStamp)) return heldDefinitions;
+        synchronized (held) {
+            if (stamp.equals(heldStamp)) return heldDefinitions;
+            filling.set(true);
+            try {
+            Map<String, Stored> read = new LinkedHashMap<>();
+            for (Map<String, Object> row : jdbc.queryForList("SELECT entity_key, definition, program_code, status, revision FROM app_definitions ORDER BY entity_key")) {
+                String key = (String) row.get("entity_key");
+                try {
+                    read.put(key, new Stored(parse(key, mapper.readTree((String) row.get("definition")), false), (String) row.get("program_code"),
+                            (String) row.get("status"), ((Number) row.get("revision")).intValue()));
+                } catch (RuntimeException broken) {      // a definition that no longer reads is left out rather than taking every screen down
+                    org.slf4j.LoggerFactory.getLogger(AppDefinitions.class).warn("definition {} does not read: {}", key, broken.getMessage());
+                }
+            }
+            heldDefinitions = java.util.Collections.unmodifiableMap(read);
+            heldStamp = stamp;
+            return heldDefinitions;
+            } finally { filling.set(false); }
+        }
+    }
+
+    private final ThreadLocal<Boolean> filling = ThreadLocal.withInitial(() -> false);
+
+    /** One definition straight from the table (what reading a definition looks up while the kept ones are being filled). */
+    private Stored readOne(String key) {
         List<Map<String, Object>> rows = jdbc.queryForList("SELECT definition, program_code, status, revision FROM app_definitions WHERE entity_key = ?", key);
         if (rows.isEmpty()) return null;
         Map<String, Object> row = rows.get(0);
@@ -504,11 +537,9 @@ public class AppDefinitions {
                 (String) row.get("status"), ((Number) row.get("revision")).intValue());
     }
 
-    public List<Stored> all() {
-        List<Stored> out = new ArrayList<>();
-        for (String key : jdbc.queryForList("SELECT entity_key FROM app_definitions ORDER BY entity_key", String.class)) out.add(find(key));
-        return out;
-    }
+    public Stored find(String key) { return filling.get() ? readOne(key) : current().get(key); }
+
+    public List<Stored> all() { return new ArrayList<>(current().values()); }
 
     public String json(Definition definition) { return mapper.writeValueAsString(definition); }
 
