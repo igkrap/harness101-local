@@ -8,10 +8,11 @@ import { DateInput as BlueprintDateInput, DateRangeInput as BlueprintDateRangeIn
 import '@blueprintjs/datetime/lib/css/blueprint-datetime.css';
 import { formatISO, parseISO } from 'date-fns';
 import { ko } from 'date-fns/locale';
-import { Alert, Button as BlueprintButton, Card as BlueprintCard, Dialog as BlueprintDialog, DialogBody, DialogFooter, Checkbox as BlueprintCheckbox, FocusStyleManager, FormGroup, Icon as BlueprintIcon, type IconName, H1, H2, H3, HTMLSelect, InputGroup, Menu as BlueprintMenu, MenuDivider as BlueprintMenuDivider, MenuItem as BlueprintMenuItem, Popover as BlueprintPopover,  Tag as BlueprintTag, TextArea as BlueprintTextArea,
+import { Alert, Button as BlueprintButton, Card as BlueprintCard, Dialog as BlueprintDialog, DialogBody, DialogFooter, Checkbox as BlueprintCheckbox, FocusStyleManager, FormGroup, Icon as BlueprintIcon, type IconName, H1, H2, H3, InputGroup, Menu as BlueprintMenu, MenuDivider as BlueprintMenuDivider, MenuItem as BlueprintMenuItem, Popover as BlueprintPopover,  Tag as BlueprintTag, TextArea as BlueprintTextArea,
   Tooltip as BlueprintTooltip, Tree as BlueprintTree, type TreeNodeInfo } from '@blueprintjs/core';
 import '@blueprintjs/core/lib/css/blueprint.css';
 import './ui.css';
+import { DropSelect } from './DropSelect';
 import { isDate, isTime, readNumber, showDate, showNumber, storeDate, storeTime } from '../format';
 
 // Focus frames belong to text inputs; buttons, tabs and rows show them only for keyboard (Tab) users.
@@ -199,8 +200,8 @@ export type SelectOption = { value: string; label: string };
 export function Select({ label, value, onChange, options, isDisabled, hideLabel }: { label: string; value: string; onChange: (value: string) => void;
   options: readonly SelectOption[]; isDisabled?: boolean; hideLabel?: boolean }) {
   const id = useId();
-  const control = <HTMLSelect id={id} fill value={value} disabled={isDisabled} aria-label={hideLabel ? label : undefined}
-    onChange={event => onChange(event.currentTarget.value)} options={options.map(option => ({ value: option.value, label: option.label }))} />;
+  const control = <DropSelect id={id} value={value} disabled={isDisabled} ariaLabel={hideLabel ? label : undefined} onChange={onChange}
+    options={options.map(option => ({ value: option.value, label: option.label }))} />;
   return hideLabel ? control : <FormGroup label={label} labelFor={id} disabled={isDisabled} className="fw-field">{control}</FormGroup>;
 }
 

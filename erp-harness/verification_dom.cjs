@@ -33,6 +33,8 @@ async function run(page, check) {
   // Visible to a user: non-empty box, not hidden by style, and not clipped away by an ancestor with
   // overflow hidden/clip (e.g. a control inside a panel collapsed to height 0).
   const reallyVisible = (el) => {
+    // the framework's drop-down: its native select is unseen under the box people see and click - the box is what must show
+    if (el.classList && el.classList.contains('fw-dropselect-native') && el.parentElement) el = el.parentElement.querySelector('.fw-dropselect-box') || el;
     let r = el.getBoundingClientRect();
     if (r.width <= 0 || r.height <= 0) return false;
     const st = getComputedStyle(el);

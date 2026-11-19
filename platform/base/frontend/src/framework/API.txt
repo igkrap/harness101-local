@@ -394,7 +394,8 @@ DOM FOR CHECKS
  [data-ui="record-grid"] [role="gridcell"]:has-text("...") and click that cell to select it.
  Editor = form[data-ui="record-editor"]; its tabs = [data-ui="tabbed-panel"] [role="tab"]. A field is an input
  named by its <label> (it has NO aria-label): select it as  form[data-ui="record-editor"] >> internal:label="회사명".
- A codeGroup field is a <select> found the same way. Query fields: form[data-ui="query-panel"] >> internal:label="...".
+ A codeGroup field (and a dropdown pick) is a <select> found the same way: it sits unseen under a Blueprint box whose list opens under it
+ in every browser; set the <select> (selectOption), the box follows. Query fields: form[data-ui="query-panel"] >> internal:label="...".
  One selector per check: a comma list (A, B) means "any of them" and matches several elements.
  Confirmation = [role="alertdialog"] with buttons 취소 and the action label.
 

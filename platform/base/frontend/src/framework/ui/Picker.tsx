@@ -7,7 +7,8 @@
  * Part of the design-system boundary: the only other file that imports Blueprint.
  */
 import { useEffect, useId, useMemo, useRef, useState, type JSX, type KeyboardEvent } from 'react';
-import { Button, Dialog, DialogBody, DialogFooter, FormGroup, HTMLSelect, InputGroup, Menu, MenuItem, Popover } from '@blueprintjs/core';
+import { Button, Dialog, DialogBody, DialogFooter, FormGroup, InputGroup, Menu, MenuItem, Popover } from '@blueprintjs/core';
+import { DropSelect } from './DropSelect';
 
 export type PickMode = 'dropdown' | 'search' | 'popup';
 export type PickOption = { value: string; label: string; /** Its code, shown before the name ('V-001 한빛상사'). */ code?: string;
@@ -72,8 +73,7 @@ export function Picker({ label, hideLabel, isRequired, isDisabled, mode = 'dropd
   if (mode === 'dropdown') {
     const list = [{ value: '', label: '선택' }, ...options.map(option => ({ value: option.value, label: both(option) })),
       ...(value && !current ? [{ value, label: value }] : [])];
-    return wrap(<HTMLSelect id={id} fill value={value} disabled={isDisabled} aria-label={hideLabel ? label : undefined}
-      onChange={event => onChange(event.currentTarget.value)} options={list} />);
+    return wrap(<DropSelect id={id} value={value} disabled={isDisabled} ariaLabel={hideLabel ? label : undefined} onChange={onChange} options={list} />);
   }
 
   const choose = (option: PickOption | null) => { onChange(option?.value ?? ''); setText(null); setOpen(false); setWindowOpen(false); };
