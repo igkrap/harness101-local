@@ -318,7 +318,9 @@ public class ProcessGuide {
         if (d.over() != null) return "업무 처리";
         if (d.calendar() != null) return "달력";
         if (d.tree() != null) return "트리";
-        if (flowOf.containsKey(key) || isWork(key)) return "업무";
+        if ("work".equals(d.kind())) return "업무";               // as the model judged it when it wrote the definition
+        if ("master".equals(d.kind())) return "기준 정보";
+        if (flowOf.containsKey(key) || isWork(key)) return "업무";       // an older definition that did not say: read off its parts
         return "기준 정보";
     }
     private int layer(String key, Map<String, Integer> layers, Map<String, List<String>> flowOf, Set<String> seen) {

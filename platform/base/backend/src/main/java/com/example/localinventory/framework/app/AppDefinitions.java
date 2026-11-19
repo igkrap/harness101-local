@@ -226,7 +226,17 @@ public class AppDefinitions {
                              List<NoOverlap> noOverlap,
                              /** Made from the records of an earlier entity, one each (a check-in from a visit request): what the framework
                               *  set up for it (the pointer, the once-limit, follows) and what its own screen takes over from the earlier list. */
-                             From from) {
+                             From from,
+                             /** What the screen is to the work, as the model judged it: master (기준 정보 - chosen from by the work) or work (업무 - records
+                              *  that pile up day by day); null: not said (an older definition), read off its parts. */
+                             String kind) {
+        public Definition(String key, String type, String title, List<String> keywords, List<Field> fields, Lines lines, Status status, List<Rule> rules, Summary summary, Print print, Dashboard dashboard, List<Check> checks, List<Limit> limits, List<Effect> effects, Over over, String period, Calendar calendar, Tree tree, List<LineSet> moreLines, Take take, Ledger ledger, List<List<String>> uniqueBy, NoCycle noCycle, LedgerView ledgerView, Effective effective, String follows, boolean dataOnly, List<Lookup> lookups, Lock lock, List<CodeGroup> codeGroups, List<NoOverlap> noOverlap, From from) {
+            this(key, type, title, keywords, fields, lines, status, rules, summary, print, dashboard, checks, limits, effects, over, period, calendar, tree, moreLines, take, ledger, uniqueBy, noCycle, ledgerView, effective, follows, dataOnly, lookups, lock, codeGroups, noOverlap, from, null);
+        }
+        /** The same definition, said to be master data or work. */
+        public Definition withKind(String said) {
+            return new Definition(key, type, title, keywords, fields, lines, status, rules, summary, print, dashboard, checks, limits, effects, over, period, calendar, tree, moreLines, take, ledger, uniqueBy, noCycle, ledgerView, effective, follows, dataOnly, lookups, lock, codeGroups, noOverlap, from, said);
+        }
         public Definition(String key, String type, String title, List<String> keywords, List<Field> fields, Lines lines, Status status, List<Rule> rules, Summary summary, Print print, Dashboard dashboard,
                           List<Check> checks, List<Limit> limits, List<Effect> effects, Over over, String period, Calendar calendar, Tree tree) {
             this(key, type, title, keywords, fields, lines, status, rules, summary, print, dashboard, checks, limits, effects, over, period, calendar, tree, List.of(), null, null, List.of(), null, null, null, null, false, List.of(), null, List.of(), List.of(), null);
@@ -316,6 +326,8 @@ public class AppDefinitions {
     private static final String GUIDE = """
             정의(definition)의 모양 - 필요한 부품만 적는다:
             {"title": "<화면 이름>", "keywords": ["<찾을 때 칠 낱말>"],
+             "kind": "master | work",                                      // 꼭 적는다: master = 기준 정보(업무가 골라 쓰는 바탕 자료: 사원, 품목, 거래처, 회의실),
+                                                                           //   work = 업무(날마다 쌓이는 기록: 출퇴근, 주문, 신청, 점검 기록). 날짜 항목이 있다고 업무가 아니다(사원의 입사일)
              "fields": [<항목>...],                                        // 꼭 있어야 한다
              "lines": {"label": "<줄 표 이름>", "fields": [<항목>...], "min": 1, "max": <최대 줄 수>},   // 선택: 한 건에 여러 줄이 딸릴 때. min 기본 1, max 를 안 적으면 제한 없음
              "moreLines": [{"name": "<영문 name, 예: steps>", "label": "<줄 표 이름>", "fields": [<항목>...], "min": 0, "max": <최대 줄 수>}],   // 선택: 줄 표가 둘 이상일 때 둘째 표부터 여기에 (예: 작업지시의 '투입 자재' 는 lines, '공정' 은 moreLines). lines 가 있어야 한다. min 기본 0
@@ -510,7 +522,23 @@ public class AppDefinitions {
         declared.get().clear();
         for (CodeGroup group : codeGroups(node.get("codeGroups"))) declared.get().put(group.code(), group.values().stream().map(CodeValue::code).toList());
         if (node.hasNonNull("from")) node = withFrom(key, node.deepCopy(), checkTargets);
-        try { return parsed(key, node, checkTargets); } finally { declared.get().clear(); declared.get().putAll(outer); }
+        // what the screen is to the work - master data or work - as the model judged it: kept as said, never guessed here
+        String kind = null;
+        if (node.hasNonNull("kind")) {
+            String said = node.get("kind").asString().trim();
+            kind = switch (said) { case "master", "기준 정보", "기준정보" -> "master"; case "work", "업무" -> "work";
+                default -> throw bad("kind 는 master(기준 정보: 업무가 골라 쓰는 바탕 자료) 또는 work(업무: 날마다 쌓이는 기록) 입니다 (받은 값: " + said + ")."); };
+            tools.jackson.databind.node.ObjectNode rest = (tools.jackson.databind.node.ObjectNode) node.deepCopy();
+            rest.remove("kind");
+            node = rest;
+        }
+        try {
+            Definition d = parsed(key, node, checkTargets);
+            // a screen that keeps records is master data or work - said by whoever writes it (a view of other records is neither)
+            if (kind == null && checkTargets && RecordStore.keeps(d))
+                throw bad("kind 를 적는다: \"master\"(기준 정보: 업무가 골라 쓰는 바탕 자료) 또는 \"work\"(업무: 날마다 쌓이는 기록) - 이 화면 \"" + d.title() + "\" 은 어느 쪽인가.");
+            return kind == null ? d : d.withKind(kind);
+        } finally { declared.get().clear(); declared.get().putAll(outer); }
     }
     private Definition parsed(String key, JsonNode node, boolean checkTargets) {
         if (checkTargets) {
