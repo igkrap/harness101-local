@@ -384,7 +384,7 @@ export default function App() {
     [rounds, setRounds] = useState(0),
     [checks, setChecks] = useState(["frontend", "framework", "backend"]),
     [thinking, setThinking] = useState(false),
-    [useQueue, setUseQueue] = useState(()=>localStorage.getItem('use-queue')!=='0'),
+    [useQueue, setUseQueue] = useState(true),      // requests always go through the queue (the definition route); the direct code run is gone
     [dismissedQueue, setDismissedQueue] = useState(()=>localStorage.getItem('queue-dismissed')||''),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -615,7 +615,7 @@ export default function App() {
             canStart={!disabled&&!!goal.trim()&&(useQueue||!!checks.length)&&!!data?.model.online&&!!effectiveModel} blockedReason={blockedReason} onStart={start}
             onOrder={async order => { await post("/api/queues", { goal: order, rounds, thinking, model: effectiveModel }); }}
             screens={data?.screens||[]} models={modelChoices} model={effectiveModel} setModel={value=>{setModel(value);localStorage.setItem("model:"+projectId,value);}}
-            useQueue={useQueue} setUseQueue={next=>{setUseQueue(next);localStorage.setItem('use-queue',next?'1':'0');}} thinking={thinking} setThinking={setThinking}
+            useQueue={useQueue} setUseQueue={setUseQueue} thinking={thinking} setThinking={setThinking}
             queue={data?.queue} active={data?.active||null} phase={data?.phase||"idle"} events={data?.events||[]} eventsJob={data?.jobs[0]?.id}
             onStopQueue={id=>void post(`/api/queues/${id}/stop`, {})} onResumeQueue={id=>void post(`/api/queues/${id}/resume`, {})} onStopJob={()=>void stop()}
             onOpenApp={()=>navigate("preview")} onOpenHistory={()=>navigate("history")} focusKey={focusKey}
@@ -648,7 +648,7 @@ export default function App() {
                     available={data?.project.checks||["frontend","framework","backend"]} checks={checks}
                     toggleCheck={mode=>setChecks(prev=>prev.includes(mode)?prev.filter(x=>x!==mode):[...prev,mode])}
                     rounds={rounds} setRounds={setRounds} thinking={thinking} setThinking={setThinking}
-                    useQueue={useQueue} setUseQueue={next=>{setUseQueue(next);localStorage.setItem('use-queue',next?'1':'0');}}
+                    useQueue={useQueue} setUseQueue={setUseQueue}
                     blockedReason={blockedReason} canStart={!disabled&&!!goal.trim()&&(useQueue||!!checks.length)&&!!data?.model.online&&!!effectiveModel}
                     onStart={start} screens={data?.screens||[]} running={!!data?.active} stopping={data?.active?.status==="stopping"} onStop={stop} busy={busy}/>
 

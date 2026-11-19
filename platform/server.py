@@ -227,6 +227,8 @@ class Platform:
         if kind == 'harness': checks = ['frontend']
         if not isinstance(checks,list) or not checks or any(not isinstance(x,str) or x not in MODES for x in checks): raise ValueError('올바른 검사 항목을 선택하세요.')
         if kind not in ('agent','checks','harness'): raise ValueError('알 수 없는 실행 종류입니다.')
+        if not getattr(self,'code_route',False):        # (tests of the old route turn it on; the platform does not)
+            raise ValueError('코드를 직접 쓰는 실행은 없어졌습니다. 요청은 만들기에서 보내면 화면 정의로 처리됩니다.')
         rounds = body.get('rounds',0)
         if type(rounds) is not int or not 0 <= rounds <= 64: raise ValueError('호출 횟수는 0(제한 없음) 또는 1~64로 입력하세요.')
         goal = body.get('goal','').strip() if isinstance(body.get('goal',''),str) else ''

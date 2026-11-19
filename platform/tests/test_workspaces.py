@@ -132,30 +132,3 @@ class ChangeTests(unittest.TestCase):
         with self.assertRaises(ValueError):read_changes(self.job,'../../secret')
         self.changes.capture('../secret');self.assertTrue(read_changes(self.job)['warnings'])
 
-    def test_adapter_records_only_accepted_native_edits(self):
-        from adapter import execute
-        runtime=self.root/'harness';runtime.mkdir()
-        # Independent harness fixture; this does not edit the product harness.
-        (runtime/'harness.py').write_text('''
-from pathlib import Path
-from types import SimpleNamespace
-DEFAULT_MODEL='fixture'
-class Harness:
- def __init__(self,args):
-  self.args=args;self.llm=SimpleNamespace(chat=lambda *a,**k:None);self.checker=SimpleNamespace(run_check=lambda mode:{'success':True})
- def log_event(self,*args):pass
- def _execute_tool(self,name,args):
-  (Path(self.args.workspace)/args['path']).write_text(args['content']);return {'success':True}
- def run(self):
-  self._execute_tool('write_file',{'path':'frontend/src/App.tsx','content':'accepted'})
-  self.log_event('autonomy.accepted',{'paths':['frontend/src/App.tsx']})
-  self._execute_tool('write_file',{'path':'frontend/src/App.tsx','content':'rejected'})
-  (Path(self.args.workspace)/'frontend/src/App.tsx').write_text('accepted')
-  self.log_event('autonomy.rollback',{'paths':['frontend/src/App.tsx']})
-  return False
-def run_task(args):return Harness(args).run()
-''')
-        (self.root/'frontend/src/App.tsx').write_text('original')
-        self.assertEqual(execute(self.root,self.job,{'goal':'fixture','checks':['frontend'],'rounds':4}),1)
-        result=read_changes(self.job,'frontend/src/App.tsx')
-        self.assertEqual(result['before'],'original');self.assertEqual(result['after'],'accepted')

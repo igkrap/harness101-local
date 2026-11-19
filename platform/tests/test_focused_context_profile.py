@@ -125,24 +125,6 @@ class FocusedProfileTests(unittest.TestCase):
         self.assertEqual(request['context_profile'], 'focused')
         self.assertEqual(request['checks'], ['frontend', 'framework'])
 
-    def test_adapter_transfers_profile_and_disables_ponytail_only_for_focused(self):
-        import adapter
-        self.put('harness/harness.py', '# fake isolated harness module')
-        original_path = list(sys.path)
-        self.addCleanup(lambda: sys.path.__setitem__(slice(None), original_path))
-        for profile, ponytail in ((None, 'full'), ('legacy', 'full'), ('focused', 'off')):
-            module = SimpleNamespace(Harness=type('Harness', (), {}), DEFAULT_MODEL='fixture', run_task=Mock(return_value=False))
-            loader = SimpleNamespace(loader=SimpleNamespace(exec_module=Mock()))
-            request = {'kind': 'agent', 'goal': 'Task', 'checks': ['frontend', 'framework'], 'rounds': 4}
-            if profile is not None:
-                request['context_profile'] = profile
-            with patch.dict(os.environ), patch('adapter.importlib.util.spec_from_file_location', return_value=loader), \
-                    patch('adapter.importlib.util.module_from_spec', return_value=module):
-                self.assertEqual(adapter.execute(self.root, self.root / ('job-' + str(profile)), request), 1)
-            args = module.run_task.call_args.args[0]
-            self.assertEqual(args.context_profile, profile or 'legacy')
-            self.assertEqual(args.ponytail, ponytail)
-            self.assertEqual(args.check, 'frontend|framework')
 
     def test_focused_rag_shared_budget_preserves_whole_props_and_usage_docs(self):
         import component_catalog

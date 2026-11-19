@@ -46,12 +46,6 @@ export function RunComposer(props: {
           onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); start(); } }} />
         <div className="composer-bar">
           <div className="composer-left">
-            <div className="composer-seg" role="radiogroup" aria-label="실행 방식">
-              <button type="button" role="radio" aria-checked={useQueue} className={useQueue ? "on" : ""} onClick={() => props.setUseQueue(true)}
-                title="모델이 요청을 작은 작업으로 나눠 순서대로 실행합니다">작업 분리 실행</button>
-              <button type="button" role="radio" aria-checked={!useQueue} className={!useQueue ? "on" : ""} onClick={() => props.setUseQueue(false)}
-                title="요청 전체를 한 번의 실행으로 처리합니다">단일 실행</button>
-            </div>
             <select className="composer-model" aria-label="모델" value={props.model} disabled={props.busy || props.running}
               onChange={e => props.setModel(e.target.value)}>
               {props.models.map(m => <option key={m.value} value={m.value} disabled={m.disabled}>{m.label}</option>)}
@@ -67,11 +61,6 @@ export function RunComposer(props: {
         </div>
       </div>
       {advanced && <div className="composer-advanced">
-        {!useQueue && <div className="composer-field">
-          <span className="composer-label">완료 조건</span>
-          <div className="composer-chips">{props.available.map(mode => <button key={mode} type="button" aria-pressed={props.checks.includes(mode)}
-            className={props.checks.includes(mode) ? "on" : ""} onClick={() => props.toggleCheck(mode)}>{checkLabels[mode] || mode}</button>)}</div>
-        </div>}
         <div className="composer-field">
           <span className="composer-label">{useQueue ? "작업당 모델 호출 한도" : "모델 호출 한도"}</span>
           <div className="composer-chips">{[0, 16, 32, 64].map(n => <button key={n} type="button" aria-pressed={props.rounds === n}

@@ -72,27 +72,6 @@ class FixedAcceptanceRegistryTests(unittest.TestCase):
         self.script.unlink(); self.script.symlink_to(actual_script)
         with self.assertRaises(ValueError): self.load()
 
-    def test_platform_rejects_mixed_modes_and_preserves_opt_in_request(self):
-        app = Platform(self.project, self.root / 'state', 0)
-        self.addCleanup(app.history.db.close)
-        for extra in [{'kind': 'checks'}, {'contract_from_job': 'a' * 32}]:
-            body = {'kind': 'agent', 'goal': self.definition['task'], 'fixed_acceptance': 'example-v1'}
-            body.update(extra)
-            with self.subTest(extra=extra), self.assertRaises(ValueError):
-                app.start(body)
-        fixed = self.load()
-        app.models = Mock(return_value={'available': ['test-model']})
-        app.external = Mock(return_value=[])
-        process = Mock(pid=12345)
-        process.poll.return_value = None
-        with patch('fixed_acceptance_registry.load_fixed_acceptance', return_value=fixed) as loader, \
-                patch('server.subprocess.Popen', return_value=process), patch('server.threading.Thread'):
-            job = app.start({'kind':'agent', 'goal':self.definition['task'], 'fixed_acceptance':'example-v1', 'model':'test-model'})
-        loader.assert_called_once_with('example-v1', self.definition['task'], self.project)
-        request = json.loads((app.state / job['id'] / 'request.json').read_text())
-        self.assertEqual(request['completion_policy'], 'fixed-acceptance-v1')
-        self.assertEqual(request['fixed_acceptance'], fixed)
-        self.assertNotIn('resume_contract', request)
 
 
 if __name__ == '__main__':

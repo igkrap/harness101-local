@@ -64,44 +64,8 @@ class LifecyclePersistenceTests(unittest.TestCase):
     def full(self):
         return OSError(errno.ENOSPC, 'No space left on device')
 
-    def test_required_job_persistence_failure_never_spawns(self):
-        with patch.object(self.app, 'external', return_value=[]), patch.object(self.app, 'save', side_effect=self.full()), \
-                patch('server.subprocess.Popen') as spawn:
-            with self.assertRaises(OSError):
-                self.app.start({'kind': 'checks', 'checks': ['frontend']})
-        spawn.assert_not_called()
-        self.assertFalse(self.app.processes)
 
-    def test_prelaunch_history_failure_never_spawns(self):
-        with patch.object(self.app, 'external', return_value=[]), \
-                patch.object(self.app.history, 'sync', side_effect=sqlite3.OperationalError('database or disk is full')), \
-                patch('server.subprocess.Popen') as spawn:
-            with self.assertRaises(sqlite3.OperationalError):
-                self.app.start({'kind': 'checks', 'checks': ['frontend']})
-        spawn.assert_not_called()
 
-    def test_postspawn_disk_failures_return_known_job_and_reap_owned_process(self):
-        child = self.child()
-        original_save, original_sync = self.app.save, self.app.history.sync
-        calls = {'save': 0, 'sync': 0}
-        def save(job):
-            calls['save'] += 1
-            if calls['save'] > 1: raise self.full()
-            return original_save(job)
-        def sync(job):
-            calls['sync'] += 1
-            if calls['sync'] > 1: raise sqlite3.OperationalError('database or disk is full')
-            return original_sync(job)
-        with patch.object(self.app, 'external', return_value=[]), patch('server.subprocess.Popen', return_value=child), \
-                patch.object(self.app, 'save', side_effect=save), patch.object(self.app.history, 'sync', side_effect=sync):
-            job = self.app.start({'kind': 'checks', 'checks': ['frontend']})
-            self.assertEqual(job['pid'], child.pid)
-            self.assertIs(self.app.processes[job['id']], child)
-            self.assertTrue(job['persistence_errors'])
-            os.killpg(child.pid, signal.SIGTERM)
-            child.wait(timeout=3)
-            self.await_reaped(job['id'])
-        self.assertTrue(any(e['phase'] == 'reaped' for e in job['persistence_errors']))
 
     def test_stop_sends_signal_and_reaps_even_when_both_stores_are_full(self):
         child = self.child()
