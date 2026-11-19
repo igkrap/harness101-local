@@ -1,24 +1,58 @@
-import { useId, type ComponentProps } from "react";
+import { useEffect, useId, useRef, useState, type ComponentProps } from "react";
 import { Selector as LibrarySelector } from "@astryxdesign/core/Selector";
 
 type Option = { value: string; label: string; disabled?: boolean; description?: string };
 type Props = { label: string; isLabelHidden?: boolean; value: string; options: Option[]; onChange: (value: string) => void; isDisabled?: boolean;
   size?: "sm" | "md" | "lg"; placement?: ComponentProps<typeof LibrarySelector>["placement"] };
 
-/** The library's dropdown places its list with CSS anchor positioning, which Safari has only from 26: there (Safari 18 opened the list
- *  at the top-left corner of the page) the browser's own dropdown is used, which every browser places at its box. */
-const anchored = typeof CSS !== "undefined" && CSS.supports?.("anchor-name: --a");
+/** The library's dropdown places its list with CSS anchor positioning, which Safari has only from 26 (Safari 18 opened the list at the
+ *  top-left corner of the page; the Mac's own pop-up menu opens over its box). Without it, a plain list is hung right under the box. */
+const anchored = typeof CSS !== "undefined" && CSS.supports?.("anchor-name: --a") && !window.location.search.includes("plainselect");      // (plainselect: to see the plain list anywhere)
 
 export function Selector(props: Props) {
-  const id = useId();
   if (anchored) return <LibrarySelector {...(props as ComponentProps<typeof LibrarySelector>)} />;
-  const height = props.size === "sm" ? 28 : 34;
-  return <div style={{ display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
+  return <PlainSelector {...props} />;
+}
+
+function PlainSelector(props: Props) {
+  const id = useId(), box = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false), [at, setAt] = useState(-1);
+  const height = props.size === "sm" ? 28 : 34, chosen = props.options.find(option => option.value === props.value);
+  useEffect(() => {
+    if (!open) return;
+    const away = (event: MouseEvent) => { if (box.current && !box.current.contains(event.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", away);
+    return () => document.removeEventListener("mousedown", away);
+  }, [open]);
+  const pick = (option: Option) => { if (option.disabled) return; setOpen(false); if (option.value !== props.value) props.onChange(option.value); };
+  const key = (event: React.KeyboardEvent) => {
+    if (event.key === "Escape") { setOpen(false); return; }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault(); if (!open) { setOpen(true); setAt(props.options.findIndex(option => option.value === props.value)); return; }
+      setAt(index => Math.max(0, Math.min(props.options.length - 1, index + (event.key === "ArrowDown" ? 1 : -1))));
+    }
+    if ((event.key === "Enter" || event.key === " ") && open && props.options[at]) { event.preventDefault(); pick(props.options[at]); }
+  };
+  return <div ref={box} style={{ position: "relative", display: "flex", flexDirection: "column", gap: 4, minWidth: 0 }}>
     {!props.isLabelHidden && <label htmlFor={id} style={{ fontSize: 12, color: "var(--color-text-secondary)" }}>{props.label}</label>}
-    <select id={id} aria-label={props.label} value={props.value} disabled={props.isDisabled} onChange={e => props.onChange(e.target.value)}
-      style={{ height, padding: "0 8px", borderRadius: 6, border: "1px solid var(--color-border-emphasized, var(--color-border))", background: "var(--color-background-surface)",
-        color: "var(--color-text-primary)", font: "inherit", fontSize: props.size === "sm" ? 13 : 14, width: "100%", minWidth: 0 }}>
-      {props.options.map(option => <option key={option.value} value={option.value} disabled={option.disabled}>{option.label}</option>)}
-    </select>
+    <button id={id} type="button" aria-haspopup="listbox" aria-expanded={open} aria-label={props.label} disabled={props.isDisabled}
+      onClick={() => { setOpen(value => !value); setAt(props.options.findIndex(option => option.value === props.value)); }} onKeyDown={key}
+      style={{ height, padding: "0 28px 0 8px", borderRadius: 6, border: "1px solid var(--color-border-emphasized, var(--color-border))", background: "var(--color-background-surface)",
+        color: "var(--color-text-primary)", font: "inherit", fontSize: props.size === "sm" ? 13 : 14, width: "100%", textAlign: "left", cursor: "pointer", position: "relative",
+        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+      {chosen?.label ?? ""}
+      <svg aria-hidden width="12" height="12" viewBox="0 0 12 12" style={{ position: "absolute", right: 9, top: "50%", transform: `translateY(-50%) rotate(${open ? 180 : 0}deg)` }}>
+        <path d="M2.5 4.5 6 8l3.5-3.5" fill="none" stroke="var(--color-text-secondary)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+    </button>
+    {open && <ul role="listbox" aria-label={props.label}
+      style={{ position: "absolute", top: "100%", left: 0, right: 0, marginTop: 4, zIndex: 1000, listStyle: "none", padding: 4, maxHeight: 280, overflowY: "auto",
+        background: "var(--color-background-surface)", border: "1px solid var(--color-border-emphasized, var(--color-border))", borderRadius: 8, boxShadow: "0 8px 24px rgba(0,0,0,.25)" }}>
+      {props.options.map((option, index) => <li key={option.value} role="option" aria-selected={option.value === props.value} aria-disabled={option.disabled}
+        onMouseEnter={() => setAt(index)} onMouseDown={event => { event.preventDefault(); pick(option); }}
+        style={{ padding: "6px 8px", borderRadius: 5, fontSize: 13, display: "flex", justifyContent: "space-between", gap: 8, cursor: option.disabled ? "default" : "pointer",
+          opacity: option.disabled ? 0.45 : 1, background: index === at ? "var(--color-background-muted, rgba(127,127,127,.15))" : "transparent", color: "var(--color-text-primary)" }}>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{option.label}</span>{option.value === props.value && <span aria-hidden>✓</span>}
+      </li>)}
+    </ul>}
   </div>;
 }
