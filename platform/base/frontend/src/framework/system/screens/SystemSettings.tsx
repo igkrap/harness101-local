@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ScreenTitle } from '../../ScreenTitle';
 import { AsyncFeedback } from '../../AsyncFeedback';
-import { Button, Select, TextInput } from '../../ui';
+import { Button, ColorChoice, Select, TextInput } from '../../ui';
 import { loadBranding, type Branding } from '../branding';
 import { useBranding } from '../useBranding';
 import { adminApi } from '../adminApi';
@@ -84,8 +84,7 @@ export default function SystemSettings() {
       <div className="sys-muted">회원가입, 본인 비밀번호 변경, 관리자의 비밀번호 초기화에 모두 적용됩니다. 이미 쓰고 있는 비밀번호는 바뀌지 않습니다.</div></section>
     <section className="sys-card bp6-card" aria-label="테마"><h3>테마</h3>
       <div className="sys-form">
-        <label style={{ display: 'grid', gap: 4, fontSize: 13 }}>강조색
-          <input type="color" aria-label="강조색" value={draft.themeColor} onChange={event => change({ themeColor: event.target.value })} style={{ width: 80, height: 32, padding: 0, border: '1px solid var(--fw-border)', borderRadius: 6 }} /></label>
+        <ColorChoice label="강조색" value={draft.themeColor} onChange={value => change({ themeColor: value })} />
         <Select label="화면 스타일" value={draft.themeStyle} onChange={value => change({ themeStyle: value === 'plain' || value === 'tint' ? value : 'solid' })}
           options={[{ value: 'solid', label: '기본 (회색 머리줄, 둥근 모서리)' }, { value: 'tint', label: '옅은 색' }, { value: 'plain', label: '회색 (색 없음)' }]} />
         <Select label="화면 모드" value={draft.themeMode} onChange={value => change({ themeMode: value === 'dark' ? 'dark' : 'light' })}

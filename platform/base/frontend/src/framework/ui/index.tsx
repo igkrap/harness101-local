@@ -8,7 +8,7 @@ import { DateInput as BlueprintDateInput, DateRangeInput as BlueprintDateRangeIn
 import '@blueprintjs/datetime/lib/css/blueprint-datetime.css';
 import { formatISO, parseISO } from 'date-fns';
 import { ko } from 'date-fns/locale';
-import { Alert, Button as BlueprintButton, Card as BlueprintCard, Dialog as BlueprintDialog, DialogBody, DialogFooter, Checkbox as BlueprintCheckbox, FocusStyleManager, FormGroup, Icon as BlueprintIcon, type IconName, H1, H2, H3, InputGroup, Menu as BlueprintMenu, MenuDivider as BlueprintMenuDivider, MenuItem as BlueprintMenuItem, Popover as BlueprintPopover,  Tag as BlueprintTag, TextArea as BlueprintTextArea,
+import { Alert, Button as BlueprintButton, Card as BlueprintCard, Dialog as BlueprintDialog, DialogBody, DialogFooter, Checkbox as BlueprintCheckbox, FocusStyleManager, FormGroup, Icon as BlueprintIcon, type IconName, H1, H2, H3, InputGroup, Colors, Menu as BlueprintMenu, MenuDivider as BlueprintMenuDivider, MenuItem as BlueprintMenuItem, Popover as BlueprintPopover,  Tag as BlueprintTag, TextArea as BlueprintTextArea,
   Tooltip as BlueprintTooltip, Tree as BlueprintTree, type TreeNodeInfo } from '@blueprintjs/core';
 import '@blueprintjs/core/lib/css/blueprint.css';
 import './ui.css';
@@ -203,6 +203,26 @@ export function Select({ label, value, onChange, options, isDisabled, hideLabel 
   const control = <DropSelect id={id} value={value} disabled={isDisabled} ariaLabel={hideLabel ? label : undefined} onChange={onChange}
     options={options.map(option => ({ value: option.value, label: option.label }))} />;
   return hideLabel ? control : <FormGroup label={label} labelFor={id} disabled={isDisabled} className="fw-field">{control}</FormGroup>;
+}
+
+/** A colour: Blueprint's palette as buttons, and the code of any other colour typed in (Blueprint has no colour picker; the browser's
+ *  own one is a system window). */
+const PALETTE: readonly [string, string][] = [['파랑', Colors.BLUE3], ['하늘', Colors.CERULEAN3], ['청록', Colors.TURQUOISE3], ['초록', Colors.GREEN3], ['숲', Colors.FOREST3],
+  ['금색', Colors.GOLD3], ['주황', Colors.ORANGE3], ['빨강', Colors.RED3], ['장미', Colors.ROSE3], ['보라', Colors.VIOLET3], ['남색', Colors.INDIGO3], ['갈색', Colors.SEPIA3]];
+export function ColorChoice({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  const id = useId();
+  const [typed, setTyped] = useState<string | null>(null);
+  const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
+  return <FormGroup label={label} labelFor={id} className="fw-field">
+    <div role="radiogroup" aria-label={label} style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
+      {PALETTE.map(([name, color]) => <BlueprintButton key={color} small role="radio" aria-checked={same(value, color)} aria-label={name} title={name}
+        onClick={() => { setTyped(null); onChange(color); }} active={same(value, color)}
+        style={{ width: 24, minWidth: 24, height: 24, padding: 0, background: color, boxShadow: same(value, color) ? `0 0 0 2px var(--fw-bg, #fff), 0 0 0 4px ${color}` : undefined }} />)}
+      <InputGroup id={id} small aria-label={`${label} 코드`} style={{ width: 96 }} value={typed ?? value} placeholder="#2D72D2"
+        leftElement={<span style={{ display: 'inline-block', width: 12, height: 12, margin: '6px 4px 0 6px', borderRadius: 2, background: value }} />}
+        onValueChange={text => { setTyped(text); if (/^#[0-9a-fA-F]{6}$/.test(text)) onChange(text); }} onBlur={() => setTyped(null)} />
+    </div>
+  </FormGroup>;
 }
 
 /** A check box with its label (pass hideLabel for grids where the column header names it). */

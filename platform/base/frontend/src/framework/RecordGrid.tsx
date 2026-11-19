@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { Cell, Column, ColumnHeaderCell, Grid, Regions, RenderMode, SelectionModes, Table2 } from '@blueprintjs/table';
+import { InputGroup } from '@blueprintjs/core';
 import '@blueprintjs/table/lib/css/table.css';
 import './RecordGrid.css';
 import { useGridDock } from './toolbarContext';
@@ -209,8 +210,8 @@ export function RecordGrid<T extends Record<string, unknown>>({ rows: source, co
 
   function cellContent(column: GridColumn<T>, row: T, r: number, c: number): ReactNode {
     if (editing && editing.row === r && editing.col === c) {
-      return <input aria-label={column.label} autoFocus defaultValue={editing.seed ?? String(row[column.key] ?? '')}
-        className="fw-grid-input bp6-input bp6-small"
+      return <InputGroup aria-label={column.label} autoFocus defaultValue={editing.seed ?? String(row[column.key] ?? '')} small
+        className="fw-grid-input"
         onBlur={event => commitEdit(r, c, event.currentTarget.value)}
         onKeyDown={event => {
           if (event.key === 'Enter') { event.preventDefault(); commitEdit(r, c, event.currentTarget.value, [r + 1, c]); }
