@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { VStack, HStack } from '@astryxdesign/core/Layout';
 import { Heading, Text } from '@astryxdesign/core/Text';
 import { TextInput } from '@astryxdesign/core/TextInput';
-import { Selector } from '@astryxdesign/core/Selector';
+import { Selector } from './Select';
 import { Button } from '@astryxdesign/core/Button';
 import { Card } from '@astryxdesign/core/Card';
 import { Collapsible } from '@astryxdesign/core/Collapsible';

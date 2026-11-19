@@ -13,7 +13,7 @@ import FlowMapPage from "./FlowMapPage";
 import MonitorPage from "./MonitorPage";
 import HomePage from "./HomePage";
 import DevTools from "./DevTools";
-import { Selector } from "@astryxdesign/core/Selector";
+import { Selector } from "./Select";
 import ProjectManager, { ProjectPicker, EnvironmentCheck } from "./ProjectManager";
 import ModelManager, {type ModelConfig} from "./ModelManager";
 import ChatPanel from "./ChatPanel";
