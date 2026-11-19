@@ -51,7 +51,7 @@ def definition(extra=()):
     base = [{'name': 'itemCode', 'label': '품목 코드', 'type': 'text', 'required': True, 'unique': True, 'search': True},
             {'name': 'itemName', 'label': '품목명', 'type': 'text', 'required': True, 'search': True},
             {'name': 'price', 'label': '단가', 'type': 'number', 'min': 0}]
-    return {'action': 'create', 'key': 'check_item', 'definition': {'title': '점검 품목 등록', 'keywords': ['점검'], 'fields': base + list(extra)}}
+    return {'action': 'create', 'key': 'check_item', 'definition': {'title': '점검 품목 등록', 'kind': 'master', 'keywords': ['점검'], 'fields': base + list(extra)}}
 
 
 def main():
