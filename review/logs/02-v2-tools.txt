@@ -1,9 +1,0 @@
-$ cd work/v2 && HARNESS_WORKDIR=. python3.13 ../../review/tools/feed.py ../../harness/v2_tools.py ../../tasks/turns/v2.txt
-
-you> 이 폴더에 어떤 파일이 있는지 확인한 다음, 마크다운 메모 파일을 읽고 세 줄로 요약해 줘.
-
-[tool] run_command({"command": "ls"})
-
-you> /quit
-[local_llm] calls=2 max_prompt=182/32,768 prompt=333 cached=156 out=36 time=3s (12.4 out-tok/s)
-[exit 0]
