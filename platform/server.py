@@ -697,6 +697,14 @@ class Handler(BaseHTTPRequestHandler):
             if match:
                 job=match.group(1)
                 if job not in app.jobs: raise ValueError('실행 기록이 없습니다.')
+                record=app.jobs[job];sha=record.get('commit')
+                if not sha and record.get('route')=='definition' and (record.get('queue') or {}).get('id'):      # older runs: their request knows the commit
+                    try:sha=((app.queues.get(record['queue']['id']).get('definition_result')) or {}).get('commit')
+                    except Exception:sha=None
+                if sha:                          # a definition run changed what it recorded in git: that commit, file by file
+                    import project_git as vcs
+                    path=query.get('path',[None])[0]
+                    self.send_json(vcs.commit_file(app.project,sha,path) if path else {'recorded':True,'files':vcs.commit_files(app.project,sha),'warnings':[]});return
                 from changes import read_changes
                 self.send_json(read_changes(app.state/job,query.get('path',[None])[0],app.project));return
             if parsed.path.startswith('/api/'):

@@ -426,28 +426,62 @@ class QueueManager:
                    'queue': {'id': queue_id, 'index': 1, 'total': 1}, 'project_id': (getattr(self.app, 'metadata', None) or {}).get('id', 'default'),
                    'status': 'succeeded' if ok else 'failed', 'started_at': started.isoformat(), 'finished_at': finished.isoformat(),
                    'exit_code': 0 if ok else 1, 'detail': said, 'run_folder': str(folder)}
-            events, clock = [], started
+            job['commit'] = result.get('commit')            # what the run recorded in git: the 변경 파일 tab shows it
+            events = []
 
-            def event(kind, data, seconds=0.0):
-                nonlocal clock
-                clock = min(finished, clock + timedelta(seconds=seconds))
-                events.append({'seq': len(events) + 1, 'time': clock.isoformat(), 'type': kind, 'data': data})
-            event('run.started', {'goal': queue['goal'], 'checks': ['definition'], 'round_budget': 0, 'thinking': False})
-            for path in sorted((folder / '1-define').glob('define-*.json')) if folder.name else []:
-                call = json.loads(path.read_text(encoding='utf-8'))
-                job.setdefault('model', (call.get('request') or {}).get('model'))
-                event('model.request', {'model': (call.get('request') or {}).get('model'), 'estimated_input_tokens': (call.get('usage') or {}).get('prompt_tokens')})
-                event('model.response', {'text': call.get('answer', ''), 'seconds': call.get('seconds')}, float(call.get('seconds') or 0))
-            results = folder / '2-check' / 'results.json'
-            if folder.name and results.exists():
-                checks = json.loads(results.read_text(encoding='utf-8'))
-                failed = [item for item in checks if not item['passed']]
-                event('check.started', {'mode': 'definition', 'attempt': 1})
-                event('check.finished', {'mode': 'definition', 'attempt': 1, 'success': not failed, 'passed': len(checks) - len(failed), 'total': len(checks),
-                                         'error': '\n'.join(f"{item['description']}: {item['detail']}" for item in failed),
-                                         'stdout': '\n'.join(('O ' if item['passed'] else 'X ') + item['description'] for item in checks)})
-            clock = finished
-            event('run.finished', {'success': ok, 'detail': said, 'error': '' if ok else said})
+            def event(kind, data, at):
+                events.append({'time': datetime.fromtimestamp(at, timezone.utc).isoformat() if isinstance(at, (int, float)) else at.isoformat(), 'type': kind, 'data': data, '_at': at if isinstance(at, (int, float)) else at.timestamp()})
+            event('run.started', {'goal': queue['goal'], 'checks': ['definition'], 'round_budget': 0, 'thinking': False}, started)
+            # every folder the run worked in: the plan, each step, and the first try when it was tried again
+            folders = [folder] if folder.name else []
+            folders += [Path(item['folder']) for item in result.get('steps') or [] if item.get('folder')]
+            if (result.get('first_try') or {}).get('folder'):
+                folders.insert(0, Path(result['first_try']['folder']))
+            checks_seen = []
+            for where in folders:
+                for path in sorted((where / '1-define').glob('*.json'), key=lambda p: p.stat().st_mtime):
+                    if path.name in ('accepted.json', 'steps.json'):
+                        continue
+                    try:
+                        call = json.loads(path.read_text(encoding='utf-8'))
+                    except (OSError, ValueError):
+                        continue
+                    request, usage = call.get('request') or {}, call.get('usage') or {}
+                    if not request:
+                        continue
+                    job.setdefault('model', request.get('model'))
+                    asked = [item for item in request.get('messages') or [] if item.get('role') != 'system']
+                    end = path.stat().st_mtime
+                    event('model.request', {'model': request.get('model'), 'name': path.stem, 'estimated_input_tokens': usage.get('prompt_tokens'),
+                                            'cached_tokens': (usage.get('prompt_tokens_details') or {}).get('cached_tokens'),
+                                            'prompt': '\n\n'.join(f"[{item.get('role')}]\n{item.get('content')}" for item in asked)[-12000:]}, end - float(call.get('seconds') or 0))
+                    event('model.response', {'text': call.get('answer', ''), 'seconds': call.get('seconds'), 'usage': usage, 'name': path.stem}, end)
+                results = where / '2-check' / 'results.json'
+                if results.exists():
+                    try:
+                        checks = json.loads(results.read_text(encoding='utf-8'))
+                    except (OSError, ValueError):
+                        checks = []
+                    failed = [item for item in checks if not item['passed']]
+                    at = results.stat().st_mtime
+                    event('check.started', {'mode': 'definition', 'attempt': 1}, at - 1)
+                    event('check.finished', {'mode': 'definition', 'attempt': 1, 'success': not failed, 'passed': len(checks) - len(failed), 'total': len(checks),
+                                             'error': '\n'.join(f"{item['description']}: {item['detail']}" for item in failed),
+                                             'stdout': '\n'.join(('O ' if item['passed'] else 'X ') + item['description'] for item in checks)}, at)
+            try:                # the steps as the monitor showed them
+                import live, sites
+                watched = live.snapshot(sites.of_app(self.app).slug) or {}
+                if watched.get('goal') == queue['goal']:
+                    for step in watched.get('steps') or []:
+                        event('definition.step', {'title': step['title'], 'detail': step.get('detail', ''), 'state': step['state'],
+                                                  'seconds': round((step.get('ended') or step['started']) - step['started'], 1)}, step['started'])
+            except Exception:
+                pass
+            events.sort(key=lambda item: item['_at'])
+            for index, item in enumerate(events, 1):
+                item['seq'] = index
+                item.pop('_at')
+            events.append({'seq': len(events) + 1, 'time': finished.isoformat(), 'type': 'run.finished', 'data': {'success': ok, 'detail': said, 'error': '' if ok else said}})
             directory = self.app.state / job['id']
             directory.mkdir(parents=True, exist_ok=True)
             (directory / 'events.jsonl').write_text(''.join(json.dumps(item, ensure_ascii=False) + '\n' for item in events), encoding='utf-8')

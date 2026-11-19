@@ -11,6 +11,7 @@ export function detailText(event:FlowEvent):string{
  if(event.type==='autonomy.stage_verified')sections.push(`단계 조건 검사\n${pretty(d.results)}`);
  if(event.type==='autonomy.handoff')sections.push(`다음 단계에 전달한 검증 결과\n${pretty({changed_paths:d.changed_paths,source_hashes:d.source_hashes,verified_results:d.verified_results})}`);
  if(d.stage_id)sections.push(`담당 단계: ${d.stage_id}`);
+ if(event.type==='definition.step'){sections.push(`${d.title}${d.state==='refused'?' (받아들여지지 않음)':''}${d.seconds!=null?` · ${d.seconds}초`:''}`);if(d.detail)sections.push(String(d.detail));}
  if(event.type==='model.response'){
   if(d.text)sections.push(`모델 메시지\n${d.text}`);
   const calls=Array.isArray(d.tool_calls)?d.tool_calls:[];
@@ -18,9 +19,11 @@ export function detailText(event:FlowEvent):string{
   if(!d.text)sections.push('이 응답에는 도구 선택 이유에 대한 별도 설명이 없습니다.');
   if(d.finish_reason)sections.push(`응답 종료 사유: ${d.finish_reason}`);
   if(d.usage)sections.push(`토큰 사용량\n${pretty(d.usage)}`);
+  if(d.seconds)sections.push(`걸린 시간: ${d.seconds}초`);
  }else if(event.type==='model.request'){
   if(d.model)sections.push(`요청 모델: ${d.model}`);
-  if(d.estimated_input_tokens)sections.push(`예상 입력 토큰: ${d.estimated_input_tokens}`);
+  if(d.estimated_input_tokens)sections.push(`입력 토큰: ${d.estimated_input_tokens}${d.cached_tokens?` (그중 ${d.cached_tokens}은 앞서 읽어 둔 것을 다시 씀)`:''}`);
+  if(d.prompt)sections.push(`모델에게 준 것 (매번 같은 부품 설명은 빼고)\n${d.prompt}`);
   if(d.timeout_policy)sections.push(`연결·응답 대기 설정\n${pretty(d.timeout_policy)}`);
  }else if(event.type.startsWith('tool.')){
   if(d.text)sections.push(`입력\n${d.text}`);

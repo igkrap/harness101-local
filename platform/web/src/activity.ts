@@ -14,6 +14,7 @@ function line(e: RunEvent): Omit<Activity, "key" | "state" | "time"> | null {
   const d = e.data || {};
   switch (e.type) {
     case "run.started": return { text: "작업 시작", detail: String(d.goal || "") };
+    case "definition.step": return { text: String(d.title || "단계"), detail: `${d.seconds != null ? `${d.seconds}초` : ""}${d.detail ? ` · ${String(d.detail).slice(0, 200)}` : ""}` };
     case "model.request": return { text: "AI가 생각하는 중", detail: "" };
     case "tool.started": {
       const name = String(d.name || "");
