@@ -24,8 +24,10 @@ async function verify(input) {
       await require('./trusted_auth.cjs').ensureAuthenticated(context.request, preview_url);
     }
 
+    let unreachable = null;      // the screen could not be opened even after waiting and trying again: the rest of its checks fail at once
     for (const c of criteria) {
       const res = { id: c.id, status: 'unverified', reason: 'not call api/dom', evidence: {} };
+      if (unreachable && c.check.op !== 'api' && c.check.page !== 'login') { res.status = 'failed'; res.reason = unreachable; report.results.push(res); continue; }
       try {
         if (c.check.op === 'api') {
           const apiRes = await api.run(c.check, api_url, allow_api_writes);
@@ -100,6 +102,7 @@ async function verify(input) {
           } catch (e) {
             res.status = 'failed';
             res.reason = e.message;
+            if (String(e.message).includes('could not be opened from the menu')) unreachable = e.message;
           } finally {
             await page.close();
             if (loginPage) await pageContext.close();

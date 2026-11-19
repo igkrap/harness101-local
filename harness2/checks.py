@@ -2218,8 +2218,12 @@ def screen_checks(title, definition, record_to, app):
     # The browser signs in to the project in hand: its addresses and its own checking account.
     from framework import site
     env = dict(os.environ, HARNESS_AUTH_ORIGINS=f'{app},{site().api_url}', HARNESS_LOGIN_CREDENTIALS=str(site().credentials))
-    done = subprocess.run(['node', str(HARNESS / 'react_layout_inspector.cjs')], input=json.dumps(data), text=True, capture_output=True, timeout=240, env=env)
     report = Report()
+    try:      # (time grows with the checks; a check that runs out of time is a failed check, not a broken run)
+        done = subprocess.run(['node', str(HARNESS / 'react_layout_inspector.cjs')], input=json.dumps(data), text=True, capture_output=True, timeout=240 + 8 * len(criteria), env=env)
+    except subprocess.TimeoutExpired:
+        report.add('화면: 화면 점검이 시간 안에 끝난다', False, f'{240 + 8 * len(criteria)}초 안에 끝나지 않았다 - 화면이 열리지 않거나 아주 느리다')
+        return report
     try:
         results = {result['id']: result for result in json.loads(done.stdout).get('results', [])}
     except ValueError:
