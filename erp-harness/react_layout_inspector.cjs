@@ -56,7 +56,12 @@ async function verify(input) {
             await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 30000 }); await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
             if (input.open_screen && !loginPage) {
               // The deep link opens the task's screen whatever module holds it; apps without it fall back to the menu.
-              const opened = await page.getByRole('tabpanel', { name: input.open_screen, exact: true }).first().waitFor({ state: 'visible', timeout: 12000 }).then(() => true, () => false);   // the app reads its screen definitions first; with many screens that takes a few seconds
+              const panel = () => page.getByRole('tabpanel', { name: input.open_screen, exact: true }).first().waitFor({ state: 'visible', timeout: 20000 }).then(() => true, () => false);   // the app reads its screen definitions first; with many screens that takes a few seconds
+              let opened = await panel();
+              if (!opened) {      // a slow first load (the app recompiling after a framework update): the link once more before the menu
+                await page.goto(target, { waitUntil: 'domcontentloaded', timeout: 30000 }); await page.waitForLoadState('networkidle', { timeout: 30000 }).catch(() => {});
+                opened = await panel();
+              }
               if (!opened) {
                 const entry = page.locator('nav').getByText(input.open_screen, { exact: true }).first();
                 await entry.click({ timeout: 5000 }).catch(() => { throw new Error(`target screen '${input.open_screen}' could not be opened from the menu`); });
