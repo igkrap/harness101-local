@@ -68,23 +68,23 @@ def impact(framework, key, old, new):
     return notes, blocking
 
 
-def run(request=None, definition_file=None, dry=False, force=False, part_of=None):
+def run(request=None, definition_file=None, dry=False, force=False, part_of=None, strict=False):
     """One request. When what the model made fails the business flows (everything was taken back), the model is told why and tries once more."""
     try:
-        return _run_once_more(request, definition_file, dry, force, part_of)
+        return _run_once_more(request, definition_file, dry, force, part_of, strict)
     except live.Stopped as stopped:        # stopped between the tries: the first one left nothing behind
         return {'request': request, 'status': 'error', 'error': str(stopped)}
 
 
-def _run_once_more(request, definition_file, dry, force, part_of):
-    result = _run(request, definition_file, dry, force, part_of)
+def _run_once_more(request, definition_file, dry, force, part_of, strict=False):
+    result = _run(request, definition_file, dry, force, part_of, strict=strict)
     said = [line for line in result.get('flows') or [] if line]
     stuck = _stuck_step(result)
     if result.get('status') == 'failed' and (said or stuck) and request and not definition_file and not dry and part_of is None:
         time.sleep(1.1)                                   # run folders are named by the second
         feedback = ('업무 흐름 판정에서 떨어져 모두 되돌렸다: ' + ' / '.join(said)) if said else stuck
         live.step('처음 것이 떨어져서 이유를 들고 다시 만듦', feedback[:300])
-        again = _run(request, None, dry, force, part_of, feedback=feedback[:1500])
+        again = _run(request, None, dry, force, part_of, feedback=feedback[:1500], strict=strict)
         again['first_try'] = {'folder': result.get('folder'), 'flows': said or [stuck]}
         return again
     return result
@@ -122,13 +122,13 @@ def _stuck_step(result):
     last = steps[-1] if steps else None
     if not last or last.get('status') in ('applied', 'checked', 'unchanged'):
         return ''
-    why = last.get('reason') if last.get('status') == 'other' else last.get('error') or '; '.join(f"{item['description']}: {str(item['detail'])[:150]}" for item in (last.get('failed') or [])[:3])
+    why = last.get('reason') if last.get('status') == 'other' else last.get('unmet') and ('단계 문장대로 되지 않았다: ' + last['unmet']) or last.get('error') or '; '.join(f"{item['description']}: {str(item['detail'])[:150]}" for item in (last.get('failed') or [])[:3])
     return (f"{last.get('step')}단계 \"{last.get('request', '')}\" 에서 멈춰 모두 되돌렸다: {why}"
             + ' - 단계 문장에는 요청에 있는 것만 적고(요청에 없는 조건·전파·자동 처리를 덧붙이지 않는다), 이 이유를 감안해 다시 나눈다') if why else ''
 
 
 
-def _run(request=None, definition_file=None, dry=False, force=False, part_of=None, feedback=None):
+def _run(request=None, definition_file=None, dry=False, force=False, part_of=None, feedback=None, strict=False):
     folder = RUNS / time.strftime('%Y%m%d-%H%M%S')
     folder.mkdir(parents=True)
     framework = Framework()
@@ -160,7 +160,7 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
                                                             + ' - 이것을 감안해 끝까지 맞게 다시 정한다. 요청에 없는 것은 덧붙이지 않는다.)')
             (folder / 'request.txt').write_text(asked, encoding='utf-8')
             try:
-                proposal = define.write(asked, framework, folder / '1-define', TRIAL, allow_steps=part_of is None)
+                proposal = define.write(asked, framework, folder / '1-define', TRIAL, allow_steps=part_of is None, strict=strict)
             except define.Unmet as unmet:          # what the request said is still not in it: not applied; told once more by run()
                 live.step('요청대로 안 돼서 적용하지 않음', str(unmet))
                 live.end_step('refused')
@@ -201,11 +201,15 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
                 # the step is told which screens the other steps make, so it makes its own screen only (not split again into them)
                 others = [_screen_named(other) for number, other in enumerate(plan) if number != index and _screen_named(other)]
                 told = step + ('\n\n(전체 요청의 한 단계다. 이 화면만 만든다. 다른 단계에서 만드는 화면: ' + ', '.join(others) + ' - 여기서 만들지 않는다.)' if others else '')
-                outcome = run(told, dry=dry, force=force, part_of=request)
+                # a stage of a flow's shape must be what its sentence says (a state or a button left out breaks the stages after it)
+                outcome = run(told, dry=dry, force=force, part_of=request, strict=bool(proposal.get('pattern')))
                 if outcome.get('status') == 'split':
                     # parts that are screens the plan makes in another step already are not made twice
                     later = {_screen_named(other) for number, other in enumerate(plan) if number != index}
                     outcome['parts'] = [part for part in outcome['parts'] if not _screen_named(part) or _screen_named(part) not in later or _screen_named(part) == _screen_named(step)]
+                    own = _screen_named(step)
+                    if own and not any(own in part for part in outcome['parts']):
+                        outcome['parts'].append(step)       # split into what has to come first only: the step's own screen still follows them
                 if outcome.get('status') == 'split' and split < 2 and len(plan) - 1 + len(outcome['parts']) <= 8:
                     plan[index:index + 1] = outcome['parts']      # a step that needed more than one screen: its parts take its place (twice at most;
                     split += 1                                     #  a part already done is found unchanged and passed)

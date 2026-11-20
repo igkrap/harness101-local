@@ -502,7 +502,7 @@ def _unasked(request, lost, record_to, after=None):
     return [item for index, item in enumerate(lost, 1) if verdict.get(str(index)) is not True]
 
 
-def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True):
+def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True, strict=False):
     """Returns {'action', 'key', 'definition'} that the framework has accepted (as a trial draft).
 
     A change is written from the current definition itself, not from the summary: the model first says which
@@ -621,10 +621,10 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
             taken = accepted(saved, definition)
             doubt = _mismatch(request, key, taken, stored.get(key) if action == 'change' else None, record_to, messages + [{'role': 'assistant', 'content': answer}])
             undone = doubt.startswith(UNMET)
-            if doubt and (compared < (2 if undone and allow_steps else 1)):
+            if doubt and (compared < (2 if undone and (allow_steps or strict) else 1)):
                 compared += 1
                 raise ValueError('요청과 다르다: ' + doubt.removeprefix(UNMET) + '\n요청의 말 그대로 되게 고친다 (요청이 맞고 이 지적이 틀렸다고 보면 그대로 다시 답한다)')
-            if undone and allow_steps:          # the person's own request (not a step of a plan): applied only with what it said
+            if undone and (allow_steps or strict):          # the person's own request, or a stage of a flow's shape: applied only with what it said
                 for other in trials:
                     framework.delete_definition(other, force=True)
                 raise Unmet(doubt.removeprefix(UNMET))
