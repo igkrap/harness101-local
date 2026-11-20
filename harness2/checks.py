@@ -1183,6 +1183,8 @@ def record_checks(key, definition, framework):
                 if action['to'] in status.get('locked', []):
                     code, answer = framework.call('PUT', f"{api}/{fresh['id']}", new_body())
                     report.add(f"{names.get(action['to'], action['to'])} 상태의 자료는 수정이 거절된다", code == 409, f'{code} {answer}')
+        if not more:
+            _import_checks(report, key, definition, new_body, framework, made)
         for field in [item for item in plain if item.get('type') == 'ref']:
             code, answer = framework.call('DELETE', f"/api/data/{field['ref']['entity']}/{changed[field['name']]}")
             report.add(f"{field['label']}: 쓰이고 있는 대상 자료는 삭제가 거절된다", code == 409, f'{code} {answer}')
@@ -1196,6 +1198,105 @@ def record_checks(key, definition, framework):
     finally:
         report.leftover = sweep(framework, made)
     return report
+
+
+def _as_sheet(field, value, framework):
+    """A stored value as a person types it into the upload sheet; None when it cannot be said for sure (a name two records share)."""
+    kind = field.get('type', 'text')
+    if value is None or value == '':
+        return ''
+    if kind == 'date':
+        return str(value).replace('-', '/')
+    if kind == 'time':
+        return str(value)[:5]
+    if kind == 'yesno':
+        return '예' if value else '아니오'
+    if kind == 'number':
+        return f'{value:,}' if isinstance(value, int) and abs(value) >= 1000 else str(value)
+    if kind == 'ref':
+        entity, label = field['ref']['entity'], field['ref']['label']
+        code, target = framework.call('GET', f'/api/data/{entity}/{value}')
+        code2, others = framework.call('GET', f'/api/data/{entity}')
+        if code != 200 or code2 != 200:
+            return None
+        # by its name, or - when two records share the name - by its code (the target's first text field, as the server reads it)
+        tag = field['ref'].get('code')
+        if not tag:
+            fields = next((item['definition'].get('fields') or [] for item in framework.definitions() if item['key'] == entity), [])
+            tag = fields[0]['name'] if fields and fields[0]['name'] != label and fields[0].get('type', 'text') in ('text', 'serial') else None
+        for name in [label] + ([tag] if tag else []):
+            said = target.get(name)
+            if said not in (None, '') and sum(1 for item in others if item.get(name) == said) == 1:
+                return str(said)
+        return None
+    return str(value)
+
+
+def _import_checks(report, key, definition, new_body, framework, made):
+    """The upload of many records at once (엑셀 올리기), as a person uses it: the sheet the screen gives (labels on the first row),
+    filled the way people type (a date as 2026/01/15, 예/아니오, a thousands comma, a record pointed at by its name); and a sheet
+    with a bad row among good ones - the row is named and nothing is stored."""
+    api = f'/api/data/{key}'
+    fields = [field for field in definition['fields'] if not _computed(field) and field.get('type') not in ('user', 'serial')]
+    lines = definition.get('lines')
+    line_fields = [field for field in (lines or {}).get('fields', []) if not field.get('formula')]
+    head_labels = {field['label'] for field in definition['fields']}
+
+    def rows_of(body):
+        head = {}
+        for field in fields:
+            value = _as_sheet(field, body.get(field['name']), framework)
+            if value is None:
+                return None
+            if value != '':
+                head[field['label']] = value
+        if not lines:
+            return [head]
+        out = []
+        for line in body.get('lines') or []:
+            row = dict(head)
+            for field in line_fields:
+                value = _as_sheet(field, line.get(field['name']), framework)
+                if value is None:
+                    return None
+                if value != '':
+                    row[f"{lines['label']} {field['label']}" if field['label'] in head_labels else field['label']] = value
+            out.append(row)
+        return out
+
+    def ids():
+        code, rows = framework.call('GET', api)
+        return {item['id'] for item in rows} if code == 200 else None
+
+    known = ids()
+    body = new_body()
+    rows = rows_of(body)
+    if known is None or not rows:
+        return
+    code, answer = framework.call('POST', f'{api}/import', {'rows': rows})
+    new = (ids() or set()) - known
+    made += [(key, one) for one in new]
+    stored = code == 200 and answer.get('stored') == 1 and not answer.get('problems') and len(new) == 1
+    if not report.add('엑셀 올리기: 받은 양식 그대로 적은 한 건(날짜 2026/01/15, 예/아니오, 천 단위 쉼표, 이름으로 고른 자료)이 올라간다', stored, f'{code} {answer}'):
+        return
+    code, row = framework.call('GET', f'{api}/{next(iter(new))}')
+    wrong = [field['label'] for field in fields if body.get(field['name']) is not None and row.get(field['name']) != body[field['name']]]
+    report.add('엑셀 올리기: 올린 값이 항목마다 그대로 저장된다', code == 200 and not wrong, f'다르게 저장된 항목: {wrong}')
+    required = [field for field in fields if field.get('required')]
+    if not required:
+        return
+    good, bad = rows_of(new_body()), rows_of(new_body())
+    if not good or not bad:
+        return
+    for one in bad:
+        one.pop(required[0]['label'], None)
+    before = ids() or set()
+    code, answer = framework.call('POST', f'{api}/import', {'rows': good + bad})
+    extra = (ids() or set()) - before
+    made += [(key, one) for one in extra]
+    named = any(problem.get('row') == len(good) + 1 for problem in answer.get('problems') or [])
+    report.add(f"엑셀 올리기: 틀린 줄({required[0]['label']} 이(가) 빈 줄)이 섞이면 그 줄을 말하고 하나도 저장하지 않는다",
+               code == 200 and answer.get('stored') == 0 and not extra and named, f'{code} {answer}')
 
 
 def _summary(part, source, rows):
