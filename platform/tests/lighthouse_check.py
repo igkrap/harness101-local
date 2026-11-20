@@ -33,7 +33,7 @@ def chrome():
 
 
 def kind(definition):
-    for part, word in (('take', '이어받기'), ('ledgerView', '원장 보기'), ('summary', '집계'), ('dashboard', '현황판'), ('over', '업무 화면'), ('calendar', '달력'), ('tree', '트리')):
+    for part, word in (('take', '연계'), ('ledgerView', '원장 보기'), ('summary', '집계'), ('dashboard', '현황판'), ('over', '업무 화면'), ('calendar', '달력'), ('tree', '트리')):
         if definition.get(part):
             return word
     return '마스터-디테일' if definition.get('lines') else '업무(번호·상태)' if definition.get('status') or any(f.get('type') == 'serial' for f in definition.get('fields', [])) else '기준 정보'

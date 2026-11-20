@@ -278,7 +278,7 @@ public class AppDefinitions {
                 Map.of("part", "ledgerView", "description", "원장 보기 화면: 수량 원장의 현재 수량·묶음·들고 난 내역을 보여 준다 (저장하는 자료 없음). fields 대신 ledgerView 만 적는다"),
                 Map.of("part", "effective", "description", "적용 기간: 적용 시작일·종료일이 있는 기준 정보 (같은 품목·같은 요금제의 기간은 겹치지 않음). 펼치거나 고를 때 그날 유효한 것을 쓴다"),
                 Map.of("part", "ledger", "description", "수량 원장: 이 화면의 자료가 무언가(thing)의 수량을 어느 위치(place)에서 들이고(in) 빼고(out) 옮기고(move) 센다(count). 묶음(LOT)별 단가, 먼저 들어온 것부터 꺼냄"),
-                Map.of("part", "take", "description", "이어받기 화면: 앞 단계 자료(수주, 신청, 대여)에서 아직 남은 것을 목록으로 조회해, 줄을 고르고 수량만 고쳐 저장하면 다음 단계 자료(출하, 발급, 반납)가 만들어진다. 입력 폼이 없다. fields 대신 take 만 적는다"),
+                Map.of("part", "take", "description", "연계 화면: 앞 단계 자료(수주, 신청, 대여)에서 아직 남은 것을 목록으로 조회해, 줄을 고르고 수량만 고쳐 저장하면 다음 단계 자료(출하, 발급, 반납)가 만들어진다. 입력 폼이 없다. fields 대신 take 만 적는다"),
                 Map.of("part", "dashboard", "description", "현황판: 표 없이 차트 패널만 놓는 화면. 패널마다 이미 있는 집계 화면 하나의 차트를 그린다. fields 대신 dashboard 만 적는다"),
                 Map.of("part", "summary", "description", "집계 화면: 이미 있는 자료를 묶어서(월별, 거래처별 ...) 합계·건수 등을 표와 차트로 보여 준다. 자료를 저장하지 않으므로 fields 대신 summary 만 적는다")));
         out.put("fieldTypes", List.of(
@@ -326,8 +326,8 @@ public class AppDefinitions {
     private static final String GUIDE = """
             정의(definition)의 모양 - 필요한 부품만 적는다:
             {"title": "<화면 이름>", "keywords": ["<찾을 때 칠 낱말>"],
-             "kind": "master | work",                                      // 꼭 적는다: master = 기준 정보(업무가 골라 쓰는 바탕 자료: 사원, 품목, 거래처, 회의실),
-                                                                           //   work = 업무(날마다 쌓이는 기록: 출퇴근, 주문, 신청, 점검 기록). 날짜 항목이 있다고 업무가 아니다(사원의 입사일)
+             "kind": "master | work",                                      // 꼭 적는다: master = 기준 정보(업무가 선택해 쓰는 바탕 자료: 사원, 품목, 거래처, 회의실),
+                                                                           //   work = 업무(날마다 누적되는 기록: 출퇴근, 주문, 신청, 점검 기록). 날짜 항목이 있다고 업무가 아니다(사원의 입사일)
              "fields": [<항목>...],                                        // 꼭 있어야 한다
              "lines": {"label": "<줄 표 이름>", "fields": [<항목>...], "min": 1, "max": <최대 줄 수>},   // 선택: 한 건에 여러 줄이 딸릴 때. min 기본 1, max 를 안 적으면 제한 없음
              "moreLines": [{"name": "<영문 name, 예: steps>", "label": "<줄 표 이름>", "fields": [<항목>...], "min": 0, "max": <최대 줄 수>}],   // 선택: 줄 표가 둘 이상일 때 둘째 표부터 여기에 (예: 작업지시의 '투입 자재' 는 lines, '공정' 은 moreLines). lines 가 있어야 한다. min 기본 0
@@ -360,7 +360,7 @@ public class AppDefinitions {
               건수로 셀 때 (정원·보유 수량만큼만: 교육 정원, 책 권수): field 를 적지 않고 entityField 에 그쪽 숫자 항목을 적는다 - 이 자료 한 건이 1로 세어진다.
                 반납·취소처럼 끝난 건은 "ignore" 에 그 상태 code 를 적으면 세지 않는다 (돌려받으면 다시 빌릴 수 있다).
               수량 없이 앞 자료 한 건에 한 번만 이어질 때 (민원 하나에 처리 지시 하나, 신청 하나에 심사 하나): field 와 entityField 를 적지 않는다 -
-                {"by": ["<앞 자료를 가리키는 ref 항목>"], "entity": "<앞 자료 key>", "entityBy": ["id"], "message": "..."}. 이어받기 화면에서는 수량 칸 없이 고르기만 한다.
+                {"by": ["<앞 자료를 가리키는 ref 항목>"], "entity": "<앞 자료 key>", "entityBy": ["id"], "message": "..."}. 연계 화면에서는 수량 칸 없이 고르기만 한다.
                 앞 자료에 "처리됨" 같은 상태를 따로 두지 않는다: 이미 이어진 것은 이 한도가 안다.
             따라 일어나는 일: "effects": [{"on": "create | <status action name>", "create": {"entity": "<만들 자료 key>", "set": {"<만들 자료의 항목>": "<이 자료의 항목 | id | today>"}, "lines": {"set": {"<만들 자료의 줄 항목>": "<이 자료의 줄 항목>"}}}},
                                          {"on": "create | <action name>", "act": {"via": "<이 자료의 ref 항목>", "action": "<그 ref 가 가리키는 자료의 action name>"}}]
@@ -376,14 +376,14 @@ public class AppDefinitions {
               다 차면 상태 바꾸기: {"on": "create", "fill": {"entity": "<한도가 되는 앞 단계 자료 key>", "action": "<그 자료의 action name>"}}
               아래로 전파: {"on": "<이 자료의 action name>", "cascade": {"entity": "<이 자료를 가리키는 다음 단계 자료 key>", "via": "<그 자료에서 이 자료를 가리키는 ref 항목>", "action": "<그 자료의 action name>"}}
                 - 이 자료가 그 동작을 하면 이 자료를 가리키는 그 자료들 중 그 동작을 할 수 있는 상태인 것도 그 동작을 한다 (행사를 취소하면 그 참가 신청도 취소, 다시 열면 다시 연다).
-              끝난 상태(status.closed): 지시가 마감·취소·완료되어 더 이어지지 않는 상태. 끝난 자료는 이어받기 목록에서 빠지고, 그것을 한도로 가리키는 다음 단계 자료를 새로 등록할 수 없다.
+              끝난 상태(status.closed): 지시가 마감·취소·완료되어 더 이어지지 않는 상태. 끝난 자료는 연계 목록에서 빠지고, 그것을 한도로 가리키는 다음 단계 자료를 새로 등록할 수 없다.
                 잠금(locked)과 다르다: 확정처럼 잠가도 다음 단계는 이어지는 상태는 locked 에만, 마감·취소·완료처럼 끝난 상태는 closed 에(대개 locked 에도) 넣는다.
             기준 정보에서 찾아 채우기 (선택): "lookups": [{"from": "<기준 정보 key>", "match": {"<그 자료의 항목>": "<이 자료의 항목>", ...}, "at": "<이 자료의 날짜 항목>", "set": {"<이 자료의 항목>": "<그 자료의 항목>"}}]
               // 저장할 때 비어 있는 칸을, match 가 같고 at 날짜에 유효한(적용 기간이 있으면) 기준 정보 한 건의 값으로 채운다 (거래처·품목별 단가 → 수주 단가, 요금제 → 이용 요금). 화면에서도 고르는 즉시 채워진다.
               // 같은 칸에 여러 개를 적으면 적은 순서대로 먼저 찾은 값을 쓴다 (거래처 단가 → 없으면 품목 기본 단가). 직접 적은 값은 그대로 둔다. 필수 칸인데 찾지 못하면 저장이 거절된다.
-            화면 없는 데이터 (선택): "screen": false   // 다른 업무가 저절로 만들고 바꾸기만 하는 자료(다른 등록이 저절로 만드는 예정·내역 자료 ...). 프로그램·메뉴가 없고 사람이 직접 등록·수정하지 않는다. 다른 화면에서 고르거나 이어받기 목록으로 읽는다.
+            화면 없는 데이터 (선택): "screen": false   // 다른 업무가 저절로 만들고 바꾸기만 하는 자료(다른 등록이 저절로 만드는 예정·내역 자료 ...). 프로그램·메뉴가 없고 사람이 직접 등록·수정하지 않는다. 다른 화면에서 고르거나 연계 목록으로 읽는다.
             후행 자료 (선택, 흐름의 두 번째 단계부터):
-              "follows": "<앞 단계 자료를 가리키는 ref 항목 name>"   // 이 자료는 앞 단계를 이어받아서만 생긴다(이어받기 화면, 자동 처리). 자기 화면에서는 신규 등록이 없다.
+              "follows": "<앞 단계 자료를 가리키는 ref 항목 name>"   // 이 자료는 앞 단계를 연계해서만 생긴다(연계 화면, 자동 처리). 자기 화면에서는 신규 등록이 없다.
                 - 그 ref 항목은 required 로 두지 않는다. 앞 단계 없이 따로 등록해야 하면 기타 화면을 만든다: over {"entity": "<이 자료 key>", "create": true}, title "기타 <이름>" (예: 기타 발급). 기타 화면에서는 앞 단계 항목이 비어 있다.
                 이 자료를 등록해서 앞 단계 자료의 수량이 모두 채워지면(남은 것이 없으면) 그 자료의 상태 버튼을 대신 누른다. 예: 반납이 대여 수량을 다 채우면 대여가 '반납 완료'가 된다.
                 이 자료에 그 앞 단계를 한도로 하는 limits (entityBy 에 id) 가 있어야 한다.
@@ -426,7 +426,7 @@ public class AppDefinitions {
               이 기준 정보를 펼치는 업무 자료는 expand 에 "at": "<업무 자료의 날짜 항목, 예: workDate>" 를 적으면 그날 유효한 것을 쓴다 (안 적으면 오늘).
             앞 자료에서 이어 만드는 자료 (방문 신청 → 방문 확인, 대출 → 반납, 지원 → 면접처럼 앞 자료 한 건마다 하나): "from": {"entity": "<앞 자료 key>", "statuses": ["<가져올 앞 자료의 상태 code>"](선택)}
               앞 자료를 가리키는 ref 항목, 앞 자료 한 건에 한 번만 이어지는 한도, follows 가 저절로 붙는다 (따로 적지 않는다). 앞 자료와 같은 name·같은 type 의 항목은 그 값을 넘겨받고,
-              나머지 항목(글자·숫자·날짜·시각·예/아니오)은 이어받기 목록의 줄에서 적는다.
+              나머지 항목(글자·숫자·날짜·시각·예/아니오)은 연계 목록의 줄에서 적는다.
             겹침 금지 (같은 대상의 시간·기간이 겹치면 안 될 때: 회의실 예약, 장비 대여, 휴가): "noOverlap": [{"from": "<시작 항목>", "to": "<끝 항목>", "by": ["<같으면 겹치면 안 되는 항목>"], "ignore": ["<세지 않을 상태 code, 예: 취소>"], "message": "<겹칠 때 안내>"}]
               from·to 는 둘 다 필수인 date 항목이거나 time 항목이다. time 이면 그 날짜 항목을 by 에 넣는다 (같은 날끼리만 견준다). time 은 끝과 시작이 맞닿아도 된다 (10:00~11:00, 11:00~12:00). 끝이 시작보다 앞서도 거절된다.
             조회 (등록·업무 화면, 선택):
@@ -439,7 +439,7 @@ public class AppDefinitions {
             달력 화면의 모양 - fields 없이 calendar 만 적는다 (자료는 그 등록 화면에서 넣는다):
             {"title": "<화면 이름, 예: 회의실 예약 현황>", "keywords": [...],
              "calendar": {"entity": "<자료 key>", "date": "<날짜 항목 name>", "end": "<끝 날짜 항목 name (기간일 때만)>", "label": "<칸에 보일 항목 name (안 적으면 첫 항목)>"}}
-            이어받기 화면의 모양 - fields 없이 take 만 적는다 (여러 건을 목록에서 한꺼번에 다음 단계로 넘기는 화면. 예: 수주를 조회해 출하 등록, 신청을 조회해 발급 등록):
+            연계 화면의 모양 - fields 없이 take 만 적는다 (여러 건을 목록에서 한꺼번에 다음 단계로 넘기는 화면. 예: 수주를 조회해 출하 등록, 신청을 조회해 발급 등록):
             {"title": "<화면 이름, 예: 수주 기준 출하 등록>", "keywords": [...],
              "take": {"entity": "<만들 자료 key, 예: shipment>", "from": "<앞 단계 자료 key, 예: sales_order>",
                       "statuses": ["<목록에 보일 앞 단계 상태 코드>", ...],                 // 선택: 안 적으면 모든 상태
@@ -558,7 +558,7 @@ public class AppDefinitions {
         if (node.hasNonNull("kind")) {
             String said = node.get("kind").asString().trim();
             kind = switch (said) { case "master", "기준 정보", "기준정보" -> "master"; case "work", "업무" -> "work";
-                default -> throw bad("kind 는 master(기준 정보: 업무가 골라 쓰는 바탕 자료) 또는 work(업무: 날마다 쌓이는 기록) 입니다 (받은 값: " + said + ")."); };
+                default -> throw bad("kind 는 master(기준 정보: 업무가 선택해 쓰는 바탕 자료) 또는 work(업무: 날마다 누적되는 기록) 입니다 (받은 값: " + said + ")."); };
             tools.jackson.databind.node.ObjectNode rest = (tools.jackson.databind.node.ObjectNode) node.deepCopy();
             rest.remove("kind");
             node = rest;
@@ -567,7 +567,7 @@ public class AppDefinitions {
             Definition d = parsed(key, node, checkTargets);
             // a screen that keeps records is master data or work - said by whoever writes it (a view of other records is neither)
             if (kind == null && checkTargets && RecordStore.keeps(d))
-                throw bad("kind 를 적는다: \"master\"(기준 정보: 업무가 골라 쓰는 바탕 자료) 또는 \"work\"(업무: 날마다 쌓이는 기록) - 이 화면 \"" + d.title() + "\" 은 어느 쪽인가.");
+                throw bad("kind 를 적는다: \"master\"(기준 정보: 업무가 선택해 쓰는 바탕 자료) 또는 \"work\"(업무: 날마다 누적되는 기록) - 이 화면 \"" + d.title() + "\" 은 어느 쪽인가.");
             return kind == null ? d : d.withKind(kind);
         } finally { declared.get().clear(); declared.get().putAll(outer); }
     }
@@ -854,7 +854,7 @@ public class AppDefinitions {
                         + "(예: {\"field\": \"quantity\", \"lines\": true, \"by\": [\"<" + from + " 을(를) 가리키는 ref 항목>\", \"itemId\"], \"entity\": \"" + from + "\", \"entityField\": \"quantity\", \"entityLines\": true, \"entityBy\": [\"id\", \"itemId\"], \"message\": \"...\"}).");
             if (group.equals("same") && !combinable(target, limit))
                 throw bad("take.group same: " + entity + " 은(는) " + from + " 을(를) 가리키는 항목이 위쪽에 있어 한 건이 앞 단계 한 건에만 속합니다. 여러 건을 한 건으로 묶으려면 " + entity + " 등록 화면에서 그 항목을 줄 표로 옮겨야 합니다 (한도의 by 는 그대로).");
-            if (limit.lines() && !limit.entityLines()) throw bad("take: " + entity + " 의 한도가 줄 수량을 " + from + " 의 위쪽 수량에 견줍니다. 이 모양은 이어받기 화면으로 만들 수 없습니다.");
+            if (limit.lines() && !limit.entityLines()) throw bad("take: " + entity + " 의 한도가 줄 수량을 " + from + " 의 위쪽 수량에 견줍니다. 이 모양은 연계 화면으로 만들 수 없습니다.");
             if (!statuses.isEmpty() && earlier.status() == null) throw bad("take.statuses 는 상태가 있는 자료에만 씁니다 (" + from + " 에는 상태가 없습니다).");
             for (String code : statuses) if (earlier.status().values().stream().noneMatch(value -> value.code().equals(code)))
                 throw bad("take.statuses: " + from + " 에 " + code + " 상태가 없습니다. 있는 상태: " + earlier.status().values().stream().map(value -> value.code() + "=" + value.label()).toList());
@@ -1430,7 +1430,7 @@ public class AppDefinitions {
         String name = text(node, "follows");
         Field field = fields.stream().filter(candidate -> candidate.name().equals(name)).findFirst().orElse(null);
         if (field == null || field.ref() == null) throw bad("follows 는 이 자료의 위쪽 항목 중 앞 단계 자료를 가리키는 ref 항목 name 입니다 (" + name + ").");
-        if (field.required()) throw bad("follows 항목(" + name + ")은 required 로 두지 않는다: 기타 화면에서 앞 단계 없이 등록할 때 비어 있다. 이어받기로 생기는 자료에는 언제나 채워진다.");
+        if (field.required()) throw bad("follows 항목(" + name + ")은 required 로 두지 않는다: 기타 화면에서 앞 단계 없이 등록할 때 비어 있다. 연계로 생기는 자료에는 언제나 채워진다.");
         return name;
     }
     private Status status(JsonNode node) {

@@ -45,7 +45,7 @@ public class ProcessGuide {
         Map<String, Map<String, List<String>>> steps = new LinkedHashMap<>();
         for (AppDefinitions.Definition d : known.values()) {
             if (d.take() != null && known.containsKey(d.take().from()) && known.containsKey(d.take().entity()))
-                step(steps, d.take().from(), d.take().entity(), "「" + d.title() + "」 화면에서 " + q(d.take().from()) + " 중 아직 넘기지 않은 것을 골라 수량을 적어 한꺼번에 넘긴다 (손으로)"
+                step(steps, d.take().from(), d.take().entity(), "「" + d.title() + "」 화면에서 " + q(d.take().from()) + " 중 아직 넘기지 않은 것을 선택해 수량을 적어 한꺼번에 넘긴다 (손으로)"
                         + (d.take().statuses().isEmpty() ? "" : " - " + statusWords(d.take().from(), d.take().statuses()) + " 상태인 건만"));
             for (AppDefinitions.Effect effect : d.effects()) {
                 if (effect.create() != null && known.containsKey(effect.create().entity()))
@@ -225,7 +225,7 @@ public class ProcessGuide {
         if (d.take() != null) {
             AppDefinitions.Take take = d.take();
             out.add(q(take.from()) + " 중 아직 다 넘기지 않은 건을 목록으로 보여 준다" + (take.statuses().isEmpty() ? "" : " (" + statusWords(take.from(), take.statuses()) + " 상태인 건만)")
-                    + ". 줄을 골라 이번 수량" + (take.ask() == null || take.ask().isEmpty() ? "" : "과 " + String.join(", ", take.ask().stream().map(name -> label(known.get(take.entity()), name)).toList()))
+                    + ". 줄을 선택해 이번 수량" + (take.ask() == null || take.ask().isEmpty() ? "" : "과 " + String.join(", ", take.ask().stream().map(name -> label(known.get(take.entity()), name)).toList()))
                     + "을(를) 적고 저장하면 고른 줄마다 " + q(take.entity()) + "이(가) 만들어진다. 편집 패널 없이 표에서 처리한다.");
         }
         if (d.ledgerView() != null) out.add((d.ledgerView().thing() == null ? "수량 원장 전체" : q(d.ledgerView().thing()) + "의 수량") + "을 보여 주기만 하는 화면이다: "
@@ -249,9 +249,9 @@ public class ProcessGuide {
                     + String.join("·", lookup.match().values().stream().map(name -> label(d, name)).toList()) + "이(가) 같은 것"
                     + (lookup.at() != null ? "(" + label(d, lookup.at()) + " 기준)" : "") + "을 찾아 채운다.");
         if (d.dataOnly()) out.add("화면 없이 데이터로만 있다: 다른 업무에서 저절로 만들어지고 바뀌며, 사람이 직접 등록하거나 고치지 않는다.");
-        if (d.follows() != null) out.add(label(d, d.follows()) + "이(가) 가리키는 앞 단계를 이어받아서만 생긴다 (이어받기 화면에서 등록, 이 화면에서는 신규 등록 없음). 앞 단계 없이 등록하는 것은 기타 화면에서 한다.");
+        if (d.follows() != null) out.add(label(d, d.follows()) + "이(가) 가리키는 앞 단계를 연계해서만 생긴다 (연계 화면에서 등록, 이 화면에서는 신규 등록 없음). 앞 단계 없이 등록하는 것은 기타 화면에서 한다.");
         if (d.status() != null && d.status().closed() != null && !d.status().closed().isEmpty())
-            out.add(statusWords(d.key(), d.status().closed()) + " 상태가 되면 끝난 것이다: 다음 단계로 더 이어지지 않는다 (남은 것은 이어받기 목록에서 빠지고, 새로 이어서 등록할 수 없다).");
+            out.add(statusWords(d.key(), d.status().closed()) + " 상태가 되면 끝난 것이다: 다음 단계로 더 이어지지 않는다 (남은 것은 연계 목록에서 빠지고, 새로 이어서 등록할 수 없다).");
         if (d.effective() != null) out.add("적용 기간(" + label(d, d.effective().from()) + " ~ " + (d.effective().to() == null ? "계속" : label(d, d.effective().to())) + ")이 있다"
                 + (d.effective().by().isEmpty() ? "." : ". " + String.join("·", d.effective().by().stream().map(name -> label(d, name)).toList()) + "이(가) 같은 것끼리 기간이 겹칠 수 없다."));
         for (AppDefinitions.NoOverlap span : d.noOverlap() == null ? List.<AppDefinitions.NoOverlap>of() : d.noOverlap())
@@ -311,7 +311,7 @@ public class ProcessGuide {
     private String kind(String key, Map<String, List<String>> flowOf) {
         AppDefinitions.Definition d = known.get(key);
         if (d.dataOnly()) return "데이터";
-        if (d.take() != null) return "이어받기";
+        if (d.take() != null) return "연계";
         if (d.ledgerView() != null) return "원장 보기";
         if (d.summary() != null) return "집계";
         if (d.dashboard() != null) return "현황판";

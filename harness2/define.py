@@ -29,7 +29,7 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
   먼저 있어야 하는 것부터 차례로 적는다(가리킬 자료 → 그것을 쓰는 화면, 집계 화면 → 그것을 담는 현황판, 상태·동작 추가 → 그 동작을 쓰는 자동 처리). 각 문장은 화면 하나에 대한 것이고, 앞뒤 문장 없이도 뜻이 통하게 화면 이름과 할 일을 다 적는다.
 - 현황·합계·통계·차트처럼 이미 있는 자료를 모아서 보는 요청은 새 자료를 만들지 말고 집계 화면(summary)으로 한다. 모을 자료는 이미 있어야 한다.
 - 승인 화면·처리 화면·대기 목록·조회 전용 화면처럼 이미 있는 자료를 다른 화면으로 여는 요청은 새 자료를 만들지 말고 over 로 한다. 권한은 화면 단위이므로 "팀장만 승인"은 승인 화면을 따로 만드는 것으로 푼다(누구에게 그 화면을 줄지는 사람이 정한다). 그 동작을 등록 화면에서는 못 하게 하려면 steps 로: 먼저 그 자료의 등록 화면에서 동작에 separate 를 붙이고(없는 상태·동작이면 추가하고), 다음에 업무 화면을 만든다.
-- 앞 단계 자료를 조회해서 다음 단계를 등록하는 요청("주문을 조회해서 출하 등록", "점검 지시에서 골라 점검 결과 등록", "~에서 골라서 한꺼번에 ~ 등록")은 새 등록 화면을 만들지 말고 이어받기 화면(take)으로 한다. 여러 건을 목록에서 고르고 수량만 고쳐 저장하는 화면이며 입력 폼이 없다. 만들 자료와 앞 단계 자료는 이미 있어야 하고, 만들 자료에 앞 단계를 한도로 하는 limits 가 있어야 한다(없으면 steps 로 그 한도부터 넣는다).
+- 앞 단계 자료를 조회해서 다음 단계를 등록하는 요청("주문을 조회해서 출하 등록", "점검 지시에서 선택해 점검 결과 등록", "~에서 선택해서 한꺼번에 ~ 등록")은 새 등록 화면을 만들지 말고 연계 화면(take)으로 한다. 여러 건을 목록에서 고르고 수량만 고쳐 저장하는 화면이며 입력 폼이 없다. 만들 자료와 앞 단계 자료는 이미 있어야 하고, 만들 자료에 앞 단계를 한도로 하는 limits 가 있어야 한다(없으면 steps 로 그 한도부터 넣는다).
 - 현황판·대시보드처럼 차트만 모아 보는 요청은 dashboard 로 한다. 패널은 이미 있는 집계 화면만 가리킬 수 있으므로, 맞는 집계 화면이 있으면 그것을 쓰고, 없으면 steps 로 필요한 집계 화면들을 먼저 만들고 마지막에 현황판을 만든다.
 - 수량 원장(ledger)으로 들고 나는 것의 남은 수량·현재 수량을 보는 화면은 집계로 빼지 말고 원장 보기(ledgerView)로 하고, thing 에 그 대상 자료 key 를 적는다 (재고 현황 → item, 장비 보관 현황 → equipment).
 - 잔량·미처리·남은 수량처럼 한 자료에서 다른 자료를 뺀 나머지(원장이 아닌 것)는 compare minus 로, 처리 기간·소요 일수는 values 의 between 으로, 누계는 cumulative 로 한다.
@@ -47,7 +47,7 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 - 한 건 안에서 두 값을 견주는 조건(날짜 순서 등)은 checks 로, 다른 자료의 수량을 넘지 못하게 하는 것(지시보다 많이 처리하기 방지)은 limits 로, "~하면 자동으로 ~된다/만들어진다"는 effects 로 적는다. 그 규칙은 저장이 거절되어야 하는 자료, 일이 시작되는 자료의 정의에 붙인다(출하 수량 제한은 출하에, 수주 확정 시 출하 생성은 수주에).
 - id, 상태, 등록·수정자/일시는 프레임워크가 관리하므로 항목으로 넣지 않는다(상태는 definition.status 로).
 - 이미 있는 자료의 건마다 그 뒤에 일어난 일을 남기는 화면(요청이 "~에서 생성한 데이터 기반으로", "~한 것 중", "~한 사람 중", "~한 건을", "~에 대해"처럼 앞의 자료를 가리킬 때)은 따로 적는 자료로 만들지 않고 "from": {"entity": "<앞 자료 key>"} 를 적는다 - 앞 자료를 가리키는 항목, 한 건에 한 번만, 같은 이름 항목 넘겨받기, 를 프레임워크가 갖춘다. 화면 하나로 끝나므로 steps 로 나누지 않는다. 앞 자료와 같은 이름·같은 종류의 항목을 두면 그 값이 넘어온다.
-- 요청이 업무 흐름 속 화면을 만들거나 고치는 것이면 그 흐름 전체를 보고 정한다: 앞뒤 단계를 잇는 길(이어받기 화면, 자동 처리, 한도)이 끊기지 않게, 같은 수량이 두 길로 두 번 처리되지 않게 한다. '판정하는 흐름'은 적용 전에 하네스가 끝까지 돌려 본다.
+- 요청이 업무 흐름 속 화면을 만들거나 고치는 것이면 그 흐름 전체를 보고 정한다: 앞뒤 단계를 잇는 길(연계 화면, 자동 처리, 한도)이 끊기지 않게, 같은 수량이 두 길로 두 번 처리되지 않게 한다. '판정하는 흐름'은 적용 전에 하네스가 끝까지 돌려 본다.
 - 정의로 할 수 없는 요청이면 {"action": "other", "reason": "<이유 한 줄>"} 로만 답한다. 해당하는 경우: 아래 '코드로 만든 화면'을 고치는 요청, 로그인·메뉴·권한·디자인 같은 시스템 요청, 프레임워크 안내에 없는 동작.
 
 %(fixed_end)s이 프로젝트의 공통 코드 그룹 (codeGroups - 있으면 쓴다):
@@ -142,7 +142,7 @@ def describe(key, definition):
     if definition.get('lookups'):
         text += ' / 찾아 채우기: ' + '; '.join(f"{', '.join(item['set'])} ← {item['from']} ({', '.join(f'{theirs}={mine}' for theirs, mine in item['match'].items())}" + (f", {item['at']} 날짜 기준" if item.get('at') else '') + ')' for item in definition['lookups'])
     if definition.get('follows'):
-        text += f" / 후행 자료: {definition['follows']} 이(가) 가리키는 앞 단계를 이어받아서만 생긴다 (자기 화면에서 신규 등록 없음, 앞 단계 없이는 기타 화면에서)"
+        text += f" / 후행 자료: {definition['follows']} 이(가) 가리키는 앞 단계를 연계해서만 생긴다 (자기 화면에서 신규 등록 없음, 앞 단계 없이는 기타 화면에서)"
     if (definition.get('status') or {}).get('closed'):
         text += ' / 끝난 상태(더 이어지지 않음): ' + ', '.join(definition['status']['closed'])
     if definition.get('effects'):
@@ -157,7 +157,7 @@ def describe(key, definition):
         part = definition['take']
         typed = part.get('ask') or (part.get('lines') or {}).get('ask') or []
         carried = list((part.get('set') or {}).keys()) + list((part.get('lineSet') or (part.get('lines') or {}).get('set') or {}).keys())
-        text = (f"- key {key} / 화면 이름 {definition['title']} / 이어받기 화면: {part['from']} 에서 아직 남은 것을 목록으로 보여 주고, 줄을 여러 개 골라 "
+        text = (f"- key {key} / 화면 이름 {definition['title']} / 연계 화면: {part['from']} 에서 아직 남은 것을 목록으로 보여 주고, 줄을 여러 개 선택해 "
                 f"이번 수량(줄마다 직접 적음)" + (f"과 {', '.join(typed)}(줄마다 직접 적음)" if typed else '') + f" 을(를) 적어 한꺼번에 저장하면 고른 줄마다 {part['entity']} 이(가) 한 건씩 만들어진다"
                 + (f" / 앞 단계에서 함께 넘기는 값: {', '.join(carried)}" if carried else '') + (f" / 상태 {', '.join(part['statuses'])} 인 건만" if part.get('statuses') else ''))
     for kind, word in (('calendar', '달력 화면'), ('tree', '트리 화면')):
@@ -353,7 +353,7 @@ def differences(old, new):
                 note(f'패널이 생기거나 바뀜: {panel}')
         if was != now and sorted(was) == sorted(now):
             note('패널 순서가 바뀜')
-    for part, word in (('calendar', '달력 화면'), ('tree', '트리 화면'), ('take', '이어받기 화면'), ('ledgerView', '원장 보기 화면'), ('ledger', '수량 원장'), ('uniqueBy', '겹치면 안 되는 조합'), ('effective', '적용 기간'), ('noOverlap', '겹침 금지'), ('noCycle', '순환 금지'), ('period', '처음 조회 기간')):
+    for part, word in (('calendar', '달력 화면'), ('tree', '트리 화면'), ('take', '연계 화면'), ('ledgerView', '원장 보기 화면'), ('ledger', '수량 원장'), ('uniqueBy', '겹치면 안 되는 조합'), ('effective', '적용 기간'), ('noOverlap', '겹침 금지'), ('noCycle', '순환 금지'), ('period', '처음 조회 기간')):
         if (old.get(part) or None) != (new.get(part) or None):
             note(f"{word}: {json.dumps(old.get(part), ensure_ascii=False)} → {json.dumps(new.get(part), ensure_ascii=False)}", bool(old.get(part)) and not new.get(part))
     only = lambda definition: bool(definition.get('dataOnly') or definition.get('screen') is False)
@@ -366,7 +366,7 @@ def differences(old, new):
     if (old.get('lookups') or []) != (new.get('lookups') or []):
         note(f"찾아 채우기: {json.dumps(old.get('lookups') or [], ensure_ascii=False)} → {json.dumps(new.get('lookups') or [], ensure_ascii=False)}", len(new.get('lookups') or []) < len(old.get('lookups') or []))
     if (old.get('follows') or None) != (new.get('follows') or None):
-        note(f"후행 자료(앞 단계를 이어받아서만 생김): {old.get('follows')} → {new.get('follows')}", bool(old.get('follows')) and not new.get('follows'))
+        note(f"후행 자료(앞 단계를 연계해서만 생김): {old.get('follows')} → {new.get('follows')}", bool(old.get('follows')) and not new.get('follows'))
     if (old.get('over') or None) != (new.get('over') or None):
         note(f"업무 화면: {json.dumps(old.get('over'), ensure_ascii=False)} → {json.dumps(new.get('over'), ensure_ascii=False)}")
     if (old.get('print') or None) != (new.get('print') or None):

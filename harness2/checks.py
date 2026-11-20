@@ -1086,13 +1086,13 @@ def record_checks(key, definition, framework):
             if not limit.get('field'):      # followed once: a second record pointing at the same earlier one is refused
                 once = new_body()
                 code, answer = post(once)
-                report.add(f"한도: {limit['entity']} 한 건을 처음 이어받으면 저장된다", code == 201, f'{code} {answer}')
+                report.add(f"한도: {limit['entity']} 한 건을 처음 연계하면 저장된다", code == 201, f'{code} {answer}')
                 again = new_body()
                 for name in limit['by']:
                     holder = again['lines'][0] if limit.get('lines') and name in again['lines'][0] else again
                     holder[name] = (once['lines'][0] if limit.get('lines') and name in once['lines'][0] else once).get(name)
                 code, answer = post(again)
-                report.add(f"한도: 같은 {limit['entity']} 을(를) 한 번 더 이어받으면 거절된다 ({limit['message']})",
+                report.add(f"한도: 같은 {limit['entity']} 을(를) 한 번 더 연계하면 거절된다 ({limit['message']})",
                            code == 400 and str((answer or {}).get('detail', '')).startswith(limit['message']), f'{code} {answer}')
                 continue
             over = new_body()
@@ -1437,7 +1437,7 @@ def take_checks(key, definition, framework):
             names = {value['code']: value['label'] for value in status.get('values', [])}
             now = framework.ok('GET', f"/api/data/{part['from']}/{source['id']}").get('status')
             if now in (status.get('closed') or []):
-                why = (f"앞 단계 자료가 {names.get(now, now)} 상태인데, {names.get(now, now)} 은(는) {earlier.get('title')} 의 끝난 상태(status.closed)라서 이어받기 목록에서 빠진다 "
+                why = (f"앞 단계 자료가 {names.get(now, now)} 상태인데, {names.get(now, now)} 은(는) {earlier.get('title')} 의 끝난 상태(status.closed)라서 연계 목록에서 빠진다 "
                        f"- 다음 단계로 이어져야 하는 상태는 끝난 상태에 넣지 않는다 ({earlier.get('title')} 의 status.closed 에서 빼야 한다)")
             elif part.get('statuses') and now not in part['statuses']:
                 why = f"앞 단계 자료가 {names.get(now, now)} 상태인데, 이 목록은 {', '.join(names.get(code, code) for code in part['statuses'])} 상태만 보이고 그 상태로 가는 동작이 없다"
@@ -1460,7 +1460,7 @@ def take_checks(key, definition, framework):
         ok = code in (200, 201) and isinstance(answer, dict) and answer.get('count') == 1
         for item in (answer.get('created') or []) if isinstance(answer, dict) else []:
             made.append((part['entity'], item['id']))
-        if not report.add(f"줄을 골라 일부({part_quantity:g})만 넘기면 {target['title']} 자료 한 건이 만들어진다", ok, f'{code} {answer}'):
+        if not report.add(f"줄을 선택해 일부({part_quantity:g})만 넘기면 {target['title']} 자료 한 건이 만들어진다", ok, f'{code} {answer}'):
             return report
         new = framework.ok('GET', f"/api/data/{part['entity']}/{answer['created'][0]['id']}")
         limit = next(item for item in target.get('limits') or [] if item['entity'] == part['from'])
@@ -1469,14 +1469,14 @@ def take_checks(key, definition, framework):
             report.add('만들어진 자료에 넘긴 수량이 들어 있다', holder.get(limit['field']) == part_quantity, f"{holder.get(limit['field'])}")
         elif limit.get('entityField'):         # counted against a number: one fewer is left
             after_one = [row for row in mine(framework.ok('GET', api)) if row['line'] == first['line']]
-            report.add(f"이어받으면 남은 수가 하나 줄어든다 ({first['remaining']:g} → {first['remaining'] - 1:g})",
+            report.add(f"연계하면 남은 수가 하나 줄어든다 ({first['remaining']:g} → {first['remaining'] - 1:g})",
                        (not after_one and first['remaining'] <= 1) or (bool(after_one) and after_one[0]['remaining'] == first['remaining'] - 1), f'{after_one}')
         else:
-            report.add('이어받은 것은 목록에서 빠진다', not [row for row in mine(framework.ok('GET', api)) if row['line'] == first['line']], '')
+            report.add('연계한 것은 목록에서 빠진다', not [row for row in mine(framework.ok('GET', api)) if row['line'] == first['line']], '')
             code, answer2 = framework.call('POST', api, supplied({'values': values, 'rows': [{'sourceId': first['sourceId'], 'line': first['line'], 'quantity': 1, 'values': typed}]}))
             for item in (answer2.get('created') or []) if isinstance(answer2, dict) else []:
                 made.append((part['entity'], item['id']))
-            report.add('이미 이어받은 것을 또 넘기면 거절된다', code == 400, f'{code} {answer2}')
+            report.add('이미 연계한 것을 또 넘기면 거절된다', code == 400, f'{code} {answer2}')
         pointer = next((mine_name for mine_name, theirs in zip(limit['by'], limit['entityBy']) if theirs == 'id'), None)
         if pointer:
             where = holder if pointer in holder else new
@@ -2135,7 +2135,7 @@ def closed_checks(key, definition, framework):
             return report
         for take_key, take in takes:
             listed = [item for item in framework.ok('GET', f'/api/take/{take_key}') if item.get('sourceId') == row['id']]
-            report.add(f"끝난 상태: {names.get(ending['to'])} 인 자료는 이어받기 화면({known[take_key]['title']}) 목록에 나오지 않는다", not listed, f'{len(listed)}줄이 남아 있음')
+            report.add(f"끝난 상태: {names.get(ending['to'])} 인 자료는 연계 화면({known[take_key]['title']}) 목록에 나오지 않는다", not listed, f'{len(listed)}줄이 남아 있음')
         for other, one, limit in followers[:2]:
             pointer = limit['by'][limit['entityBy'].index('id')]
             follow = fit({field['name']: sample(field, framework, made) for field in one['fields'] if not _computed(field)}, one, framework, made)
@@ -2146,14 +2146,14 @@ def closed_checks(key, definition, framework):
             if code == 201:
                 made.append((other, answer['id']))
             said = str((answer or {}).get('detail'))
-            if code != 201 and '이어서 등록할 수 없' not in said and '마감' not in said and '이어받기' in said:
+            if code != 201 and '이어서 등록할 수 없' not in said and '마감' not in said and '연계' in said:
                 continue             # the next stage is registered only through its take-over screen: that list was checked above
             report.add(f"끝난 상태: {names.get(ending['to'])} 인 자료를 가리키는 {one['title']} 은(는) 새로 등록할 수 없다", code in (400, 409) and '이어서 등록할 수 없' in said, f'{code} {answer}')
         back = next((item for item in status['actions'] if ending['to'] in item['from'] and item['to'] not in closed), None)
         if back and takes:
             code, answer = framework.call('POST', f"{api}/{row['id']}/actions/{back['name']}")
             listed = [item for item in framework.ok('GET', f'/api/take/{takes[0][0]}') if item.get('sourceId') == row['id']]
-            report.add(f"끝난 상태: {back['label']} 하면 다시 이어받기 목록에 나온다", code == 200 and bool(listed), f'{code} {answer if code != 200 else ""} / {len(listed)}줄')
+            report.add(f"끝난 상태: {back['label']} 하면 다시 연계 목록에 나온다", code == 200 and bool(listed), f'{code} {answer if code != 200 else ""} / {len(listed)}줄')
     finally:
         report.leftover = sweep(framework, made)
     return report
@@ -2178,7 +2178,7 @@ def document_screen_criteria(definition):
     for label in ('조회', '저장', '삭제') if definition.get('follows') else ('조회', '신규', '저장', '삭제'):
         items.append((f'공통 버튼 {label} 이(가) 있다', {'op': 'visible', 'selector': f'{toolbar} >> role=button[name="{label}"]'}))
     if definition.get('follows'):         # made from the earlier stage only: its own screen offers no 신규
-        items.append(('앞 단계에서 이어받아 만드는 자료라 신규 버튼이 없다', {'op': 'absent', 'selector': f'{toolbar} >> role=button[name="신규"]'}))
+        items.append(('앞 단계에서 연계해 만드는 자료라 신규 버튼이 없다', {'op': 'absent', 'selector': f'{toolbar} >> role=button[name="신규"]'}))
     for field in definition['fields']:
         if field['type'] == 'serial':
             pass                                  # numbered when saved: an empty form has no number to show (the list's column is checked below)

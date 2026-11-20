@@ -29,8 +29,8 @@ export default function GuidePage() {
   const laterStages = new Set((guide?.flows ?? []).flatMap(flow => flow.stages.slice(1)));
   const category = (screen: Screen) => screen.layer !== undefined ? `기준 정보 · Layer ${screen.layer}`
     : screen.kind === "업무" ? (firstStages.has(screen.key) && !laterStages.has(screen.key) ? "업무 · 지시" : laterStages.has(screen.key) ? "업무 · 실적" : "업무")
-    : ["이어받기", "업무 처리"].includes(screen.kind) ? "이어받기·처리 화면" : "조회 화면";
-  const order = (name: string) => name.startsWith("기준 정보") ? `0${name}` : name === "업무 · 지시" ? "1" : name === "업무 · 실적" ? "2" : name === "업무" ? "3" : name === "이어받기·처리 화면" ? "4" : "5";
+    : ["연계", "업무 처리"].includes(screen.kind) ? "연계·처리 화면" : "조회 화면";
+  const order = (name: string) => name.startsWith("기준 정보") ? `0${name}` : name === "업무 · 지시" ? "1" : name === "업무 · 실적" ? "2" : name === "업무" ? "3" : name === "연계·처리 화면" ? "4" : "5";
   const flowTitle = (flow: Flow) => flow.title ?? `${name(flow.stages[0]).replace(/\s*(등록|관리|입력)$/, "")} - ${name(flow.stages[flow.stages.length - 1]).replace(/\s*(등록|관리|입력)$/, "")}`;
   const flowScreens = (flow: Flow) => (flow.screens ?? flow.stages).filter(key => byKey.has(key));
   const inFlows = new Set((guide?.flows ?? []).flatMap(flowScreens));

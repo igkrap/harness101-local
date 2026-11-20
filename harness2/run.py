@@ -278,7 +278,7 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
                 + (f" / 넘겨받는 값: {', '.join(part.get('carry') or [])}" if part.get('carry') else '') + (f" / 줄에서 적는 값: {', '.join(part.get('ask') or [])}" if part.get('ask') else '')
         if definition.get('take'):
             part = definition['take']
-            result['view'] = f"이어받기 화면 - {part['from']} 에서 아직 남은 것을 목록으로 조회해, 고른 줄로 {part['entity']} 을(를) 만든다 (입력 폼 없이 목록에서 처리)" \
+            result['view'] = f"연계 화면 - {part['from']} 에서 아직 남은 것을 목록으로 조회해, 고른 줄로 {part['entity']} 을(를) 만든다 (입력 폼 없이 목록에서 처리)" \
                 + (f" / 상태 {', '.join(part['statuses'])} 인 건만" if part.get('statuses') else '') + (f" / 줄에서 직접 적는 값: {', '.join(part.get('ask') or (part.get('lines') or {}).get('ask') or [])}" if part.get('ask') or (part.get('lines') or {}).get('ask') else '') + (f" / 함께 넘기는 값: {', '.join(list(part.get('set') or {}) + list(part.get('lineSet') or (part.get('lines') or {}).get('set') or {}))}" if part.get('set') or part.get('lineSet') or part.get('lines') else '')
         if definition.get('tree'):
             part = definition['tree']
@@ -338,7 +338,7 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
         live.step('자료 점검 (시험용 사본에서 저장·조회·규칙)', trial_title)
         data = (checks.ledger_view_checks if definition.get('ledgerView') else checks.take_checks if definition.get('take') else checks.view_checks if definition.get('calendar') or definition.get('tree') else checks.over_checks if definition.get('over') else checks.dashboard_checks if definition.get('dashboard') else checks.summary_checks if definition.get('summary') else checks.record_checks)(trial_key, checked, framework)
         if definition.get('from'):          # made from an earlier list: its own screen takes over from it, tried like a take-over screen
-            live.step('이어받기 점검 (앞 단계에서 골라 넘기기)')
+            live.step('연계 점검 (앞 단계에서 선택해 넘기기)')
             taking = checks.take_checks(trial_key, dict(checked, take=checks.take_of(checked, trial_key)), framework)
             data.results += taking.results
         if definition.get('screen') is not False:

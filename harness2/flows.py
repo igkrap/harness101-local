@@ -335,16 +335,16 @@ def simulate(flow, framework):
                         now = framework.ok('GET', f"/api/data/{previous}/{one['id']}").get('status')
                         if now in (status.get('closed') or []):
                             reasons.append(f"{title(previous)} 이(가) {names.get(now, now)} 상태인데, {names.get(now, now)} 은(는) {title(previous)} 의 끝난 상태(status.closed)라서 "
-                                           f"이어받기 목록에서 빠진다 - 다음 단계로 이어져야 하는 상태는 끝난 상태에 넣지 않는다")
+                                           f"연계 목록에서 빠진다 - 다음 단계로 이어져야 하는 상태는 끝난 상태에 넣지 않는다")
                         elif listed_only and now not in listed_only:
-                            reasons.append(f"{title(previous)} 이(가) {names.get(now, now)} 상태인데, 이어받기 목록은 {', '.join(names.get(code, code) for code in listed_only)} 상태만 보인다")
+                            reasons.append(f"{title(previous)} 이(가) {names.get(now, now)} 상태인데, 연계 목록은 {', '.join(names.get(code, code) for code in listed_only)} 상태만 보인다")
                         else:
-                            reasons.append(f"{title(previous)} ({names.get(now, now)} 상태) 이(가) 이어받기 목록에 없다 (이미 다 이어졌거나 한도가 0)")
+                            reasons.append(f"{title(previous)} ({names.get(now, now)} 상태) 이(가) 연계 목록에 없다 (이미 다 이어졌거나 한도가 0)")
                     why = '앞 단계 자료가 목록에 없다: ' + '; '.join(dict.fromkeys(reasons))
-                if not report.add(f"{title(previous)} → {title(later)}: 이어받기 화면({known[take]['title']})으로 넘긴다", code == 200 and rows, why):
+                if not report.add(f"{title(previous)} → {title(later)}: 연계 화면({known[take]['title']})으로 넘긴다", code == 200 and rows, why):
                     return report
-                existing, route = mine(), '이어받기'
-            if not report.add(f"{title(previous)} → {title(later)}: 넘어가는 길이 있다", bool(existing), '자동 처리도 이어받기 화면도 없습니다 - 흐름이 여기서 끊깁니다'):
+                existing, route = mine(), '연계'
+            if not report.add(f"{title(previous)} → {title(later)}: 넘어가는 길이 있다", bool(existing), '자동 처리도 연계 화면도 없습니다 - 흐름이 여기서 끊깁니다'):
                 return report
             for one in existing:
                 made.append((later, one['id']))
@@ -357,7 +357,7 @@ def simulate(flow, framework):
                 report.add(f"{title(later)}: {title(previous)} 의 수량({want:g})이 그대로 넘어온다 ({route})", abs(total - want) < 1e-9, f'넘어온 수량 {total:g}')
             if take:          # nothing left behind, and no second way: the take-over list shows nothing more for these records
                 still = [row for row in framework.ok('GET', f'/api/take/{take}') if row['sourceId'] in ids]
-                report.add(f"{title(previous)} → {title(later)}: 넘긴 뒤 이어받기 목록에 남은 것이 없다" + (' (자동으로 만들어졌는데 손으로 또 넘길 길이 열려 있으면 두 번 처리됩니다)' if route == '자동 처리' else ''),
+                report.add(f"{title(previous)} → {title(later)}: 넘긴 뒤 연계 목록에 남은 것이 없다" + (' (자동으로 만들어졌는데 손으로 또 넘길 길이 열려 있으면 두 번 처리됩니다)' if route == '자동 처리' else ''),
                            not still, f"남은 줄 {[(row['sourceId'], row['remaining']) for row in still]}")
             part = known[later].get('ledger')
             if part:
@@ -413,7 +413,7 @@ def simulate(flow, framework):
                     left += [f"{known[take]['title']}: {title(stages[0])} {row['sourceId']}" for row in framework.ok('GET', f'/api/take/{take}') if row.get('sourceId') == again['id']]
                 if source == stages[1] and target in stages and children:
                     left += [f"{known[take]['title']}: {title(stages[1])} {row['sourceId']}" for row in framework.ok('GET', f'/api/take/{take}') if row.get('sourceId') in children]
-            report.add(f"{title(stages[0])} 을(를) {ending['label']} 하면 그 뒤 단계로 더 이어지지 않는다 (이어받기 목록에서 빠진다)", not left,
+            report.add(f"{title(stages[0])} 을(를) {ending['label']} 하면 그 뒤 단계로 더 이어지지 않는다 (연계 목록에서 빠진다)", not left,
                        '아직 넘길 수 있게 남은 것: ' + ', '.join(left[:5]))
     except Exception as problem:
         report.add('흐름을 끝까지 돌린다', False, str(problem)[:300])
@@ -481,7 +481,7 @@ def handle(request, framework):
     if masters:
         rest = [name for name, key in zip(names, keys) if name not in masters]
         return {'status': 'flow', 'ok': False, 'masters': masters,
-                'lines': [f"{', '.join(f'「{name}」' for name in masters)} 은(는) 업무에서 골라 쓰는 기준 정보라서 업무 흐름의 단계가 아닙니다."
+                'lines': [f"{', '.join(f'「{name}」' for name in masters)} 은(는) 업무에서 선택해 쓰는 기준 정보라서 업무 흐름의 단계가 아닙니다."
                           + (f" 흐름은 {' → '.join(rest)} 입니다." if len(rest) >= 2 else ''), '등록하지 않았습니다.']}
     flow = {'name': ' → '.join(names), 'stages': keys}
     report = simulate(flow, framework)

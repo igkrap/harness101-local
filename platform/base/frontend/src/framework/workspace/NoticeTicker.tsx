@@ -42,9 +42,9 @@ export function NoticeTicker() {
     const timer = window.setInterval(() => setIndex(value => (value + 1) % notices.length), STEP_MS);
     return () => window.clearInterval(timer);
   }, [paused, notices.length]);
-  if (!notices.length) return <div className="home-hint">화면 이름이나 초성을 입력하고 ↑↓ 로 골라 Enter 로 엽니다</div>;
+  if (!notices.length) return <div className="home-hint">화면 이름이나 초성을 입력하고 ↑↓ 로 선택해 Enter 로 엽니다</div>;
   const shown = notices.filter(notice => notice.published !== false);
-  if (!shown.length) return <div className="home-hint">화면 이름이나 초성을 입력하고 ↑↓ 로 골라 Enter 로 엽니다</div>;
+  if (!shown.length) return <div className="home-hint">화면 이름이나 초성을 입력하고 ↑↓ 로 선택해 Enter 로 엽니다</div>;
   const current = shown[index % shown.length];
   const canOpenScreen = Boolean(nav?.groups.some(group => hasProgram(group.nodes)));
   async function open(notice: Notice) {
