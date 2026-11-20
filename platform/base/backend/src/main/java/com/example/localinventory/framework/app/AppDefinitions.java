@@ -278,7 +278,7 @@ public class AppDefinitions {
                 Map.of("part", "ledgerView", "description", "원장 보기 화면: 수량 원장의 현재 수량·묶음·들고 난 내역을 보여 준다 (저장하는 자료 없음). fields 대신 ledgerView 만 적는다"),
                 Map.of("part", "effective", "description", "적용 기간: 적용 시작일·종료일이 있는 기준 정보 (같은 품목·같은 요금제의 기간은 겹치지 않음). 펼치거나 고를 때 그날 유효한 것을 쓴다"),
                 Map.of("part", "ledger", "description", "수량 원장: 이 화면의 자료가 무언가(thing)의 수량을 어느 위치(place)에서 들이고(in) 빼고(out) 옮기고(move) 센다(count). 묶음(LOT)별 단가, 먼저 들어온 것부터 꺼냄"),
-                Map.of("part", "take", "description", "연계 화면: 앞 단계 자료(수주, 신청, 대여)에서 아직 남은 것을 목록으로 조회해, 줄을 고르고 수량만 고쳐 저장하면 다음 단계 자료(출하, 발급, 반납)가 만들어진다. 입력 폼이 없다. fields 대신 take 만 적는다"),
+                Map.of("part", "take", "description", "연계 화면: 앞 단계 자료(수주, 신청, 대여)에서 아직 남은 것을 목록으로 조회해, 줄을 선택하고 수량만 고쳐 저장하면 다음 단계 자료(출하, 발급, 반납)가 만들어진다. 입력 폼이 없다. fields 대신 take 만 적는다"),
                 Map.of("part", "dashboard", "description", "현황판: 표 없이 차트 패널만 놓는 화면. 패널마다 이미 있는 집계 화면 하나의 차트를 그린다. fields 대신 dashboard 만 적는다"),
                 Map.of("part", "summary", "description", "집계 화면: 이미 있는 자료를 묶어서(월별, 거래처별 ...) 합계·건수 등을 표와 차트로 보여 준다. 자료를 저장하지 않으므로 fields 대신 summary 만 적는다")));
         out.put("fieldTypes", List.of(
