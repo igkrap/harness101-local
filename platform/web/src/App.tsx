@@ -13,6 +13,8 @@ import FlowMapPage from "./FlowMapPage";
 import MonitorPage from "./MonitorPage";
 import HomePage from "./HomePage";
 import DevTools from "./DevTools";
+import PartRequestsPage from "./PartRequestsPage";
+import BenchmarksPage from "./BenchmarksPage";
 import { Selector } from "./Select";
 import ProjectManager, { ProjectPicker, EnvironmentCheck } from "./ProjectManager";
 import ModelManager, {type ModelConfig} from "./ModelManager";
@@ -188,6 +190,8 @@ function Mark({ kind }: { kind: string }) {
   const paths: Record<string, string> = {
     overview: "M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z",
     run: "m8 5 11 7-11 7z",
+    parts: "M4 7h6V4h4v3h6v6h-3a2 2 0 1 0 0 4h3v4H4v-5h3a2 2 0 1 0 0-4H4z",
+    bench: "M4 20V10 M10 20V4 M16 20v-7 M22 20H2",
     checks: "m4 12 5 5L20 6",
     source: "m8 5-6 7 6 7 M16 5l6 7-6 7",
     preview: "M3 4h18v15H3z M3 8h18",
@@ -523,7 +527,7 @@ export default function App() {
   const navGroups: [string, string[][]][] = [
     ["업무", [["home", "만들기"], ["monitor", "실시간 보기"], ["preview", "앱 보기"], ["guide", "업무 안내서"], ["flowmap", "업무 흐름도"], ["history", "변경 이력"]]],
     ["설정", [["projects", "프로젝트"], ["environment", "개발 환경"], ["models", "AI 모델"]]],
-    ["개발자 도구", [["tools", "화면 정의·자료·서버"], ["run", "실행 기록"], ["overview", "통계"], ["source", "프로젝트 소스"], ["chat", "채팅"]]],
+    ["개발자 도구", [["tools", "화면 정의·자료·서버"], ["run", "실행 기록"], ["overview", "통계"], ["parts", "부품 요청"], ["bench", "측정"], ["source", "프로젝트 소스"], ["chat", "채팅"]]],
   ];
   const navigation = navGroups.flatMap(([, items]) => items);
   const disabled =
@@ -684,6 +688,8 @@ export default function App() {
             </div>
           </>}
           {page === "tools" && <DevTools/>}
+          {page === "parts" && <PartRequestsPage token={data?.token||""}/>}
+          {page === "bench" && <BenchmarksPage token={data?.token||""}/>}
           {page === "projects" && <ProjectManager token={data?.token||""}/>}
           {page === "models" && <ModelManager token={data?.token||""}/>}
           {page === "environment" && <EnvironmentCheck token={data?.token||""}/>}

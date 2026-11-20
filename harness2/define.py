@@ -26,6 +26,7 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 - 새 자료면 action 은 "create" 이고 key 는 이미 있는 key 와 겹치지 않게 한다.
 - 정의 하나는 화면 하나다. 요청을 다 하려면 화면을 둘 이상 만들거나 고쳐야 할 때는 정의를 쓰지 말고 {"action": "steps", "steps": ["<첫 화면에 대한 요청 문장>", "<다음 화면에 대한 요청 문장>", ...]} 로만 답한다.
   요청의 말을 바꾸지 않는다("등록하면"을 "확정하면"으로 바꾸지 않는다). 요청에 없는 조건을 덧붙이지 않는다.
+  여러 단계를 거쳐 이어지는 업무(신청 → 승인, 지시 → 실적, 대여 → 반납 ...)를 만드는 요청이면 단계를 지어내지 말고 flowPatterns 에서 요청에 맞는 모양을 하나 고른다: {"action": "steps", "pattern": "<pattern>", "stages": ["<단계 화면의 title>", ...], "steps": [...]}. stages 는 그 모양의 단계 순서대로 각 단계 화면의 title 이고, steps 에서 그 화면들을 그 역할(is)대로 만든다(먼저 있어야 할 기준 정보 화면이 있으면 그 앞에). 요청에 없는 단계가 생기는 모양(요청에 승인이 없는데 신청-승인)은 고르지 않는다. 맞는 모양이 없으면 pattern 을 적지 않는다. 업무 흐름 등록은 따로 적지 않는다(모양에서 저절로 등록된다).
   먼저 있어야 하는 것부터 차례로 적는다(가리킬 자료 → 그것을 쓰는 화면, 집계 화면 → 그것을 담는 현황판, 상태·동작 추가 → 그 동작을 쓰는 자동 처리). 각 문장은 화면 하나에 대한 것이고, 앞뒤 문장 없이도 뜻이 통하게 화면 이름과 할 일을 다 적는다.
 - 현황·합계·통계·차트처럼 이미 있는 자료를 모아서 보는 요청은 새 자료를 만들지 말고 집계 화면(summary)으로 한다. 모을 자료는 이미 있어야 한다.
 - 승인 화면·처리 화면·대기 목록·조회 전용 화면처럼 이미 있는 자료를 다른 화면으로 여는 요청은 새 자료를 만들지 말고 over 로 한다. 권한은 화면 단위이므로 "팀장만 승인"은 승인 화면을 따로 만드는 것으로 푼다(누구에게 그 화면을 줄지는 사람이 정한다). 그 동작을 등록 화면에서는 못 하게 하려면 steps 로: 먼저 그 자료의 등록 화면에서 동작에 separate 를 붙이고(없는 상태·동작이면 추가하고), 다음에 업무 화면을 만든다.
@@ -48,7 +49,8 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 - id, 상태, 등록·수정자/일시는 프레임워크가 관리하므로 항목으로 넣지 않는다(상태는 definition.status 로).
 - 이미 있는 자료의 건마다 그 뒤에 일어난 일을 남기는 화면(요청이 "~에서 생성한 데이터 기반으로", "~한 것 중", "~한 사람 중", "~한 건을", "~에 대해"처럼 앞의 자료를 가리킬 때)은 따로 적는 자료로 만들지 않고 "from": {"entity": "<앞 자료 key>"} 를 적는다 - 앞 자료를 가리키는 항목, 한 건에 한 번만, 같은 이름 항목 넘겨받기, 를 프레임워크가 갖춘다. 화면 하나로 끝나므로 steps 로 나누지 않는다. 앞 자료와 같은 이름·같은 종류의 항목을 두면 그 값이 넘어온다.
 - 요청이 업무 흐름 속 화면을 만들거나 고치는 것이면 그 흐름 전체를 보고 정한다: 앞뒤 단계를 잇는 길(연계 화면, 자동 처리, 한도)이 끊기지 않게, 같은 수량이 두 길로 두 번 처리되지 않게 한다. '판정하는 흐름'은 적용 전에 하네스가 끝까지 돌려 본다.
-- 정의로 할 수 없는 요청이면 {"action": "other", "reason": "<이유 한 줄>"} 로만 답한다. 해당하는 경우: 아래 '코드로 만든 화면'을 고치는 요청, 로그인·메뉴·권한·디자인 같은 시스템 요청, 프레임워크 안내에 없는 동작.
+- 정의로 할 수 없는 요청이면 {"action": "other", "reason": "<이유 한 줄>"} 로만 답한다. 해당하는 경우: 아래 '코드로 만든 화면'을 고치는 요청, 로그인·메뉴·권한·디자인 같은 시스템 요청.
+- 요청이 말한 동작을 해 줄 부품이 위 부품 목록에 없으면, 가장 비슷한 부품으로 억지로 맞추지 말고 {"action": "needs-part", "part": "<필요한 부품을 업무 말 없이 기능으로 한 줄>", "why": "<요청의 어느 말이 지금 부품으로 안 되는지 한 줄>"} 로만 답한다. 요청이 정해 주지 않은 세부를 위한 부품은 필요한 부품이 아니다.
 
 %(fixed_end)s이 프로젝트의 공통 코드 그룹 (codeGroups - 있으면 쓴다):
 %(code_groups)s
@@ -476,11 +478,13 @@ def unmet(request, keys, framework, record_to):
                 + '\n\n화면들:\n' + made + '''
 
 없는 것으로 보는 것: 요청이 말한 조건·제한·때·대상·숫자가 어느 화면에도 없거나 다른 것으로 바뀌었다 (예: "자리가 다 찼으면 더 받으면 안 돼" 인데 정원을 넘겨도 받아진다).
-없는 것이 아닌 것: 요청이 정해 주지 않은 세부를 알아서 정한 것, 요청에 없는 것을 덧붙인 것.
-형식: {"ok": true} 또는 {"ok": false, "problem": "<요청의 어느 말이 어떻게 빠졌는지 한 줄>"}''')
+없는 것이 아닌 것: 요청이 정해 주지 않은 세부를 알아서 정한 것, 요청에 없는 것을 덧붙인 것(한도, 상태, 입력 방식 같은 세부가 더 있는 것).
+형식: {"ok": true} 또는 {"ok": false, "kind": "빠짐" | "바뀜" | "덧붙임", "problem": "<요청의 어느 말이 어떻게 빠졌거나 바뀌었는지 한 줄>"}''')
     verdict = _asked_twice(lambda: _json(llm.ask([{'role': 'system', 'content': 'JSON only'}, {'role': 'user', 'content': question}], record_to,
                                                  'request-as-a-whole', max_tokens=200)), '요청 전체와 맞춰 보지')
-    return '' if verdict.get('ok') is not False else str(verdict.get('problem') or '요청의 일부가 빠졌다')[:300]
+    if verdict.get('ok') is not False or verdict.get('kind') == '덧붙임':
+        return ''                 # (something added beyond the request is not something missing from it: this check is for what is missing)
+    return str(verdict.get('problem') or '요청의 일부가 빠졌다')[:300]
 
 
 def _unasked(request, lost, record_to, after=None):
@@ -505,7 +509,7 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
     entity the request is about, then gets that definition whole. Whatever went missing without being asked
     for goes back to the model once, so a rule or a formula is never dropped silently."""
     capabilities = framework.capabilities()
-    shown = {key: capabilities[key] for key in ('parts', 'fieldTypes', 'builtInRules', 'ruleTypes') if key in capabilities}      # the same for every project and request
+    shown = {key: capabilities[key] for key in ('parts', 'fieldTypes', 'builtInRules', 'ruleTypes', 'flowPatterns') if key in capabilities}      # the same for every project and request
     groups = json.dumps(capabilities.get('codeGroups') or [], ensure_ascii=False, indent=1)      # this project's common codes: they change
     whole = PROMPT % {'guide': capabilities.get('guide', ''), 'capabilities': json.dumps(shown, ensure_ascii=False, indent=1), 'existing': _existing(framework), 'process': process(framework), 'principles': principles(), 'request': request, 'fixed_end': FIXED_END, 'code_groups': groups,
                       'code_screens': ', '.join(code_screens()) or '(없음)'}
@@ -527,6 +531,12 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
                 for other in trials:
                     framework.delete_definition(other, force=True)
                 return {'action': 'other', 'reason': str(proposal.get('reason') or '')[:300]}
+            if proposal.get('action') == 'needs-part':
+                if not str(proposal.get('part') or '').strip():
+                    raise ValueError('needs-part 에는 part(필요한 부품 한 줄)가 있어야 한다')
+                for other in trials:
+                    framework.delete_definition(other, force=True)
+                return {'action': 'needs-part', 'part': str(proposal['part'])[:200], 'why': str(proposal.get('why') or '')[:300]}
             if proposal.get('action') == 'steps':
                 steps = [str(step).strip() for step in proposal.get('steps') or [] if str(step).strip()]
                 if not 1 <= len(steps) <= 6:
@@ -545,11 +555,25 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
                     for other in trials:
                         framework.delete_definition(other, force=True)
                     return {'action': 'split', 'steps': steps}
+                pattern, stages = proposal.get('pattern'), proposal.get('stages')
+                if pattern:
+                    # the flow's shape is the framework's: the stages are named in its order, one screen each, made in the plan
+                    known_patterns = {item['pattern']: item for item in capabilities.get('flowPatterns') or []}
+                    shape = known_patterns.get(pattern)
+                    if not shape or not shape.get('stages'):
+                        raise ValueError(f'pattern "{pattern}" 은 flowPatterns 에 없다 (있는 것: {", ".join(name for name, item in known_patterns.items() if item.get("stages"))}). 맞는 모양이 없으면 pattern 을 적지 않는다')
+                    if not isinstance(stages, list) or len(stages) != len(shape['stages']) or not all(isinstance(title, str) and title.strip() for title in stages):
+                        raise ValueError(f'pattern "{pattern}" 의 stages 는 ' + ' → '.join(stage['role'] for stage in shape['stages']) + ' 순서로 단계 화면의 title 을 하나씩 적는다')
+                    plain = re.sub(r'\s+', '', ' '.join(steps))
+                    unnamed = [title for title in stages if re.sub(r'\s+', '', title) not in plain]
+                    if unnamed:
+                        raise ValueError('stages 의 화면이 steps 에서 만들어지지 않는다: ' + ', '.join(unnamed) + ' - steps 에 그 화면을 만드는 문장을 그 title 그대로 넣는다')
                 if not planned_checked:
                     # the plan read against the request, in the same conversation (what it read is reused): a step may not bring in a
                     # condition, rule, screen or word the person did not say - it goes back once to be split again in their words
                     planned_checked = True
-                    question = ('요청: ' + request + '\n\n이 요청을 나눈 단계 문장:\n' + '\n'.join(f'{index}. {step}' for index, step in enumerate(steps, 1)) + '''
+                    question = ('요청: ' + request + '\n\n이 요청을 나눈 단계 문장:\n' + '\n'.join(f'{index}. {step}' for index, step in enumerate(steps, 1))
+                                + (f'\n\n고른 업무 흐름 모양: {pattern} (' + ' → '.join(stages) + ') - 요청에 없는 단계(요청에 승인이 없는데 승인 단계)가 생기면 덧붙인 것이다.' if pattern else '') + '''
 
 단계 문장이 요청에 없는 것을 덧붙였는지 본다: 요청에 없는 조건·숫자·규칙(예: "09:00보다 늦으면 지각"), 요청에 없는 화면, 요청에 없는 새 낱말.
 요청을 하려면 꼭 있어야 하는 것(가리킬 기준 정보 화면 등)을 먼저 만드는 단계는 덧붙인 것이 아니다.
@@ -558,7 +582,8 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
                                            '계획을 요청과 맞춰 보지')
                     if verdict.get('ok') is False:
                         raise ValueError('단계 문장이 요청에 없는 것을 덧붙였다: ' + str(verdict.get('added') or '')[:300] + '\n요청에 있는 말만으로 단계를 다시 나눈다 (조건·규칙·화면·낱말을 지어내지 않는다).')
-                return {'action': 'steps', 'steps': steps}         # (one step only: that one request, done as a step)
+                return {'action': 'steps', 'steps': steps, **({'pattern': pattern, 'stages': [title.strip() for title in stages],
+                                                              'roles': known_patterns[pattern]['stages']} if pattern else {})}         # (one step only: that one request, done as a step)
             action, key, definition = proposal.get('action'), proposal.get('key'), proposal.get('definition')
             if action not in ('create', 'change') or not isinstance(key, str) or key.startswith(trial_prefix):
                 raise ValueError('action(create|change) 과 key 가 있어야 한다')

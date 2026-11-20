@@ -579,7 +579,7 @@ class Handler(BaseHTTPRequestHandler):
         hub = self.server.platform
         if hasattr(hub,'records') and not hub.records:return None        # no project yet: only the platform's own pages work
         return hub.resolve(query.get('project',[None])[0]) if hasattr(hub,'resolve') else hub
-    PLATFORM_PATHS=('/api/projects','/api/environment','/api/framework')
+    PLATFORM_PATHS=('/api/projects','/api/environment','/api/framework','/api/part-requests','/api/benchmarks')
     def do_GET(self):
         if not self.allowed():self.send_json({'error':'허용되지 않은 접근입니다.'},403);return
         parsed=urlsplit(self.path);query=parse_qs(parsed.query)
@@ -590,6 +590,12 @@ class Handler(BaseHTTPRequestHandler):
                 import environment;self.send_json({'items':environment.check(self.server.platform)});return
             if parsed.path=='/api/framework' and hasattr(self.server.platform,'catalog'):
                 import framework_update;self.send_json(framework_update.status(self.server.platform));return
+            if parsed.path=='/api/benchmarks':
+                import benchmarks;self.send_json(benchmarks.listing());return
+            if parsed.path=='/api/benchmarks/run':
+                import benchmarks;self.send_json(benchmarks.run_detail((query.get('id') or [''])[0]));return
+            if parsed.path=='/api/part-requests':
+                import part_requests;self.send_json({'items':part_requests.listing(),'states':list(part_requests.STATES)});return
             if parsed.path=='/api/projects/environment' and hasattr(self.server.platform,'catalog'):
                 import projects as _projects;self.send_json(_projects.environment(self.server.platform,(query.get('id') or [''])[0]));return
             if parsed.path=='/api/projects/ports' and hasattr(self.server.platform,'catalog'):
@@ -772,6 +778,16 @@ class Handler(BaseHTTPRequestHandler):
                 framework_update.apply(hub,record,force=True);import projects as _projects;self.send_json(_projects.environment(hub,record['id']));return
             if parsed.path=='/api/framework/update' and hasattr(hub,'catalog'):
                 import framework_update;framework_update.update_all(hub);self.send_json(framework_update.status(hub));return
+            if parsed.path=='/api/benchmarks/sets':
+                import benchmarks;self.send_json(benchmarks.save_set(body));return
+            if parsed.path=='/api/benchmarks/sets/delete':
+                import benchmarks;self.send_json(benchmarks.delete_set(str(body.get('id') or '')));return
+            if parsed.path=='/api/benchmarks/start' and hasattr(hub,'catalog'):
+                import benchmarks;self.send_json(benchmarks.start(hub,str(body.get('set') or '')));return
+            if parsed.path=='/api/benchmarks/stop':
+                import benchmarks;self.send_json(benchmarks.stop());return
+            if parsed.path=='/api/part-requests/decide':
+                import part_requests;self.send_json(part_requests.decide(str(body.get('id') or ''),str(body.get('state') or '')));return
             if parsed.path=='/api/environment/setup-all' and hasattr(hub,'catalog'):
                 import environment;self.send_json(environment.setup_all(hub,bool(body.get('sure'))));return
             if parsed.path=='/api/projects' and hasattr(hub,'add'):self.send_json(hub.add(body),201);return

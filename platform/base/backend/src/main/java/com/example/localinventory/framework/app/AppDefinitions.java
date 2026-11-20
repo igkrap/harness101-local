@@ -254,6 +254,26 @@ public class AppDefinitions {
     public record Stored(Definition definition, String programCode, String status, int revision) {}
 
     /** What the framework understands, with a guide for whoever writes definitions (the harness passes it on, it holds no copy). */
+    /** The shapes a business flow may take: a request that sets up a flow of several stages picks one and names its stages, instead of
+     *  inventing the steps. Each stage's role says which parts its screen must have ("has": status | over.actions | follows | take-into
+     *  = a 연계 screen makes its records); the harness checks them and registers the flow from the stage names. */
+    static final List<Map<String, Object>> FLOW_PATTERNS = List.of(
+            Map.of("pattern", "지시-실적", "when", "누가 할 일을 지시하고, 그 지시에서 아직 처리하지 않은 것을 선택해 처리 결과를 등록하는 업무",
+                    "stages", List.of(Map.of("role", "지시", "is", "지시를 등록하는 업무 기록 (status 로 진행·마감)", "has", List.of("status")),
+                                      Map.of("role", "실적", "is", "지시에서 연계(take)로 만드는 결과 기록 (follows 로 지시를 가리킴) + 그 연계 화면", "has", List.of("follows", "take-into")))),
+            Map.of("pattern", "신청-승인", "when", "누가 신청하고, 다른 사람이 승인하거나 반려하는 업무",
+                    "stages", List.of(Map.of("role", "신청", "is", "신청을 등록하는 업무 기록 (status 에 승인·반려 상태와 버튼)", "has", List.of("status")),
+                                      Map.of("role", "승인", "is", "신청을 여는 업무 화면(over) - 승인·반려 버튼만 있는 화면", "has", List.of("over.actions")))),
+            Map.of("pattern", "신청-승인-처리", "when", "신청하고 승인받은 뒤, 승인된 것을 처리(발급·지급·배정 ...)한 결과를 등록하는 업무",
+                    "stages", List.of(Map.of("role", "신청", "is", "신청을 등록하는 업무 기록 (status 에 승인·반려 상태와 버튼)", "has", List.of("status")),
+                                      Map.of("role", "승인", "is", "신청을 여는 업무 화면(over) - 승인·반려 버튼만 있는 화면", "has", List.of("over.actions")),
+                                      Map.of("role", "처리", "is", "승인된 신청에서 연계(take)로 만드는 처리 기록 (follows 로 신청을 가리킴) + 그 연계 화면", "has", List.of("follows", "take-into")))),
+            Map.of("pattern", "대여-반납", "when", "무언가를 빌려주고(대여), 빌려 간 것 가운데 아직 돌아오지 않은 것을 선택해 반납을 등록하는 업무",
+                    "stages", List.of(Map.of("role", "대여", "is", "대여를 등록하는 업무 기록", "has", List.of()),
+                                      Map.of("role", "반납", "is", "대여에서 연계(take)로 만드는 반납 기록 (follows 로 대여를 가리킴) + 그 연계 화면", "has", List.of("follows", "take-into")))),
+            Map.of("pattern", "단일 기록", "when", "단계가 이어지지 않는 기록 하나 (흐름 없음) - 이 모양이면 pattern 을 적지 않는다",
+                    "stages", List.of()));
+
     public Map<String, Object> capabilities() {
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("parts", List.of(
@@ -307,6 +327,7 @@ public class AppDefinitions {
         out.put("ruleTypes", List.of(Map.of("type", "blockWhenReferenced",
                 "description", "다른 자료(entity)의 줄들이 field 로 이 자료를 가리키고 있으면 action(delete, update 또는 status 의 action 이름)을 거절한다",
                 "needs", "action, entity, field, message")));
+        out.put("flowPatterns", FLOW_PATTERNS);
         out.put("guide", GUIDE);
         out.put("limits", Map.of("fields", 30, "keyPattern", KEY, "fieldNamePattern", NAME));
         List<Map<String, Object>> entities = new ArrayList<>();

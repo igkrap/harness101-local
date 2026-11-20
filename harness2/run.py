@@ -169,6 +169,19 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
         if proposal['action'] == 'split':          # (only ever inside a step: the plan it belongs to takes its parts in its place)
             result.update(status='split', parts=proposal['steps'])
             return result
+        if proposal['action'] == 'needs-part':
+            # a behaviour no part offers: not forced into the nearest part - the part is asked for, and nothing is made
+            live.step('필요한 부품이 없어 만들지 않음', proposal['part'])
+            live.end_step('refused')
+            result.update(status='needs-part', part=proposal['part'], why=proposal.get('why', ''))
+            if part_of is None and not dry:
+                try:
+                    import part_requests
+                    from sites import site
+                    part_requests.add(proposal['part'], proposal.get('why', ''), request or '', getattr(site(), 'title', '') or getattr(site(), 'slug', ''))
+                except Exception as problem:
+                    result['part_note'] = '부품 요청 목록에 올리지 못했습니다: ' + str(problem)[:200]
+            return result
         if proposal['action'] == 'other':
             if part_of is not None or feedback:
                 # a step of a plan, or a second try: the request itself was taken as doable - the model stopped on its own words
@@ -185,7 +198,14 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
             while index < len(plan):
                 step = plan[index]
                 time.sleep(1.1)                                   # run folders are named by the second
-                outcome = run(step, dry=dry, force=force, part_of=request)
+                # the step is told which screens the other steps make, so it makes its own screen only (not split again into them)
+                others = [_screen_named(other) for number, other in enumerate(plan) if number != index and _screen_named(other)]
+                told = step + ('\n\n(전체 요청의 한 단계다. 이 화면만 만든다. 다른 단계에서 만드는 화면: ' + ', '.join(others) + ' - 여기서 만들지 않는다.)' if others else '')
+                outcome = run(told, dry=dry, force=force, part_of=request)
+                if outcome.get('status') == 'split':
+                    # parts that are screens the plan makes in another step already are not made twice
+                    later = {_screen_named(other) for number, other in enumerate(plan) if number != index}
+                    outcome['parts'] = [part for part in outcome['parts'] if not _screen_named(part) or _screen_named(part) not in later or _screen_named(part) == _screen_named(step)]
                 if outcome.get('status') == 'split' and split < 2 and len(plan) - 1 + len(outcome['parts']) <= 8:
                     plan[index:index + 1] = outcome['parts']      # a step that needed more than one screen: its parts take its place (twice at most;
                     split += 1                                     #  a part already done is found unchanged and passed)
@@ -199,14 +219,36 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
             if finished and not dry:          # a change in several steps is judged by the business flows as a whole, at its end
                 passed, flowed, said = flows.judge([item['key'] for item in done if item.get('key')], framework)
                 if not passed:
-                    undo({'planned': proposal['steps'], 'steps': done, '_inner': True})
+                    done_back, said_back = undo({'planned': proposal['steps'], 'steps': done, '_inner': True})
+                    result['rolled_back'] = said_back if done_back else ['앞 단계를 되돌리지 못했습니다: '] + said_back
                     result.update(planned=proposal['steps'], steps=done, status='failed', flows=said, failed=[item for item in flowed if not item['passed']])
                     return result
+                flows_before = None
+                if proposal.get('pattern'):
+                    # the flow's shape: every stage's screen has what its role needs, and the flow is registered from the stage names
+                    # (run end to end by the registration) - nothing for the person to type afterwards
+                    live.step('업무 흐름 모양 확인과 등록', f"{proposal['pattern']}: " + ' → '.join(proposal['stages']))
+                    problem = _pattern_problems(proposal, framework)
+                    registered = None if problem else flows.handle('업무 흐름 등록: ' + ' → '.join(proposal['stages']), framework)
+                    if problem or not registered.get('ok'):
+                        said = [problem] if problem else [line.strip() for line in registered.get('lines', [])[2:] if line.strip().startswith('✗')][:4] or registered.get('lines', [])[:3]
+                        live.end_step('refused', ' / '.join(said)[:300])
+                        done_back, said_back = undo({'planned': proposal['steps'], 'steps': done, '_inner': True})
+                        result['rolled_back'] = said_back if done_back else ['앞 단계를 되돌리지 못했습니다: '] + said_back
+                        result.update(planned=proposal['steps'], steps=done, status='failed', flows=[f"업무 흐름({proposal['pattern']})이 맞게 이어지지 않는다: " + ' / '.join(said)],
+                                      failed=[item for item in (registered or {}).get('results') or [] if not item['passed']])
+                        return result
+                    flows_before = [one for one in flows.load() if one['name'] != ' → '.join(proposal['stages'])]
+                    result['flow'] = registered.get('lines', [])[:2]
+                    result['registered_flow'] = ' → '.join(proposal['stages'])      # taken away again when this request is undone
                 live.step('요청 전체를 사용자의 말과 다시 맞춰 봄')
                 missing = define.unmet(request, [item['key'] for item in done if item.get('key')], framework, folder / '1-define')
                 if missing:                       # every step passed, but the request as the person said it is not all there
                     live.end_step('refused', missing)
-                    undo({'planned': proposal['steps'], 'steps': done, '_inner': True})
+                    if flows_before is not None:
+                        flows.save(flows_before)          # the flow registered above goes with the screens
+                    done_back, said_back = undo({'planned': proposal['steps'], 'steps': done, '_inner': True})
+                    result['rolled_back'] = said_back if done_back else ['앞 단계를 되돌리지 못했습니다: '] + said_back
                     result.update(planned=proposal['steps'], steps=done, status='failed', flows=[f'요청대로 되지 않았다: {missing}'], unmet=missing)
                     return result
                 result['status'] = 'applied'
@@ -215,6 +257,18 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
                 # A request either succeeds whole or leaves nothing behind (the user's rule): the steps already applied are taken back.
                 done_back, said_back = undo({'planned': proposal['steps'], 'steps': done, '_inner': True})
                 result['rolled_back'] = said_back if done_back else ['앞 단계를 되돌리지 못했습니다: '] + said_back
+            if not finished and done and done[-1].get('status') == 'needs-part':
+                # a step needs a part there is not: the request as a whole does (what the steps before it applied was taken back above)
+                result.update(part=done[-1].get('part', ''), why=done[-1].get('why', ''))
+                if part_of is None and not dry:
+                    try:
+                        import part_requests
+                        from sites import site
+                        part_requests.add(result['part'], result['why'], request or '', getattr(site(), 'title', ''))
+                    except Exception as problem:
+                        result['part_note'] = '부품 요청 목록에 올리지 못했습니다: ' + str(problem)[:200]
+                result.update(status='needs-part', steps=done, planned=proposal['steps'])
+                return result
             result.update(status=('checked' if dry else 'applied') if finished else 'failed' if not dry else 'partial', steps=done, planned=proposal['steps'],
                           checks=sum(item.get('checks') or 0 for item in done), title=' → '.join(item.get('title') or '?' for item in done if item.get('title')))
             return result
@@ -442,6 +496,32 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
         (folder / 'result.json').write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding='utf-8')
 
 
+def _screen_named(step):
+    """The screen a step sentence asks for, by the words before '화면' in its first clause ('증명서 승인 업무 화면을 만들어줘' -> '증명서 승인')."""
+    found = re.match(r'\s*(.+?)\s*(?:기준\s*정보\s*|업무\s*|연계\s*|등록\s*)*화면', str(step).split('\n')[0])
+    return re.sub(r'\s+', ' ', found.group(1)).strip() if found and len(found.group(1)) <= 30 else ''
+
+
+def _pattern_problems(proposal, framework):
+    """What the stages' screens lack for their roles in the flow's shape ('' when nothing): a stage's screen is found by its title."""
+    keys, problems = flows.resolve(proposal['stages'], framework)
+    if problems:
+        return '단계 화면을 찾지 못했다: ' + '; '.join(problems)
+    known = {item['key']: item['definition'] for item in framework.definitions() if not item['key'].startswith(TRIAL)}
+    taken_into = {(one.get('take') or {}).get('entity') for one in known.values() if one.get('take')}
+    lacks = []
+    for title, key, role in zip(proposal['stages'], keys, proposal.get('roles') or []):
+        key = key.split(':')[1] if key.startswith('state:') else key
+        one = known.get(key) or {}
+        for need in role.get('has') or []:
+            have = {'status': bool(one.get('status')), 'over.actions': bool((one.get('over') or {}).get('actions')), 'follows': bool(one.get('follows')),
+                    'take-into': key in taken_into}.get(need, True)
+            if not have:
+                lacks.append(f"「{title}」은(는) '{role['role']}' 단계라서 " + {'status': '진행 상태(status)가', 'over.actions': '승인·반려 같은 버튼이 있는 업무 화면(over.actions)이',
+                                                                          'follows': '앞 단계를 가리키는 항목(follows)이', 'take-into': '앞 단계에서 선택해 만드는 연계 화면(take)이'}[need] + ' 있어야 한다')
+    return '; '.join(lacks)
+
+
 def undo(result):
     """Take back what a request applied: a changed screen gets its earlier definition again, a new screen is removed.
     Steps are undone last first. Refused (with the reason) when the screen was changed again afterwards, or when a new
@@ -475,6 +555,12 @@ def undo(result):
             break
     if not lines:
         lines, done = ['되돌릴 것이 없습니다 (적용된 것이 없는 요청입니다).'], False
+    flows_kept = None
+    if done and not result.get('_inner') and result.get('registered_flow'):
+        # the flow this request registered from its shape goes with its screens (else it would hold screens that are gone)
+        flows_kept = flows.load()
+        flows.save([one for one in flows_kept if one['name'] != result['registered_flow']])
+        lines.append(f"업무 흐름 '{result['registered_flow']}' 도 지웠습니다.")
     if done and not result.get('_inner'):      # undoing is a change too: the business flows it touches must still run end to end
         keys = [part['key'] for part in parts if part.get('status') == 'applied' and part.get('key')]
         passed, _, said = flows.judge(keys, framework)
@@ -484,6 +570,8 @@ def undo(result):
                 if published.exists():
                     again = json.loads(published.read_text(encoding='utf-8'))
                     framework.save_definition(item['key'], define.clean(again['definition']), again.get('status', 'PUBLISHED'))
+            if flows_kept is not None:
+                flows.save(flows_kept)
             return False, lines + said + ['되돌리면 업무 흐름이 깨져서, 되돌린 것을 다시 원래대로 해 두었습니다. 흐름을 바꾸려면 업무 흐름도 함께 바꿔야 합니다.']
     if done and not result.get('_inner'):
         noted = commit({}, '되돌림: ' + str(result.get('request') or result.get('title') or '')[:60], model=False)
@@ -499,6 +587,11 @@ def say(result):
     if result.get('first_try') and result.get('status') in ('applied', 'checked'):       # passed on the second try: said, with why the first fell
         rest = {key: value for key, value in result.items() if key != 'first_try'}
         return '처음 시도가 떨어져 이유를 들려주고 다시 만들었습니다: ' + ' / '.join(result['first_try'].get('flows') or [])[:400] + '\n\n' + say(rest)
+    if result.get('status') == 'needs-part':          # (also when a step of a plan needed it: the steps before were taken back)
+        return ('이 요청은 지금 부품으로는 만들 수 없어 아무것도 만들지 않았습니다. 필요한 것: ' + result.get('part', '')
+                + (f" ({result['why']})" if result.get('why') else '') + '. '
+                + (result['part_note'] if result.get('part_note') else '부품 요청 목록에 올렸습니다.')
+                + ('\n기록: ' + result['folder'] if result.get('folder') else ''))
     if result.get('status') == 'flow':
         return '\n'.join(result.get('lines', [])) + (f"\n깃에 기록했습니다 ({result['commit'][:7]})." if result.get('commit') else '')
     if result.get('planned'):
@@ -506,6 +599,7 @@ def say(result):
         applied = [item for item in steps if item.get('status') in ('applied', 'checked')]
         lines = [f"{len(planned)}단계로 나눠 처리했습니다." if result['status'] in ('applied', 'checked')
                  else f"{len(planned)}단계를 모두 마쳤지만 요청대로 되지 않아 적용하지 않았습니다: {result['unmet']}" if result.get('unmet')
+                 else f"{len(planned)}단계를 모두 마쳤지만 적용하지 않았습니다: " + ' / '.join(result.get('flows') or []) if len(applied) == len(planned) and result.get('flows')
                  else f"{len(planned)}단계 중 {len(applied)}단계까지 됐고, {len(applied) + 1}단계에서 멈췄습니다."]
         for index, text in enumerate(planned, 1):
             item = next((one for one in steps if one['step'] == index), None)
@@ -513,6 +607,8 @@ def say(result):
             lines.append(f'\n[{index}단계: {mark}] {text}')
             if item is not None:
                 lines += ['  ' + line for line in say(item).split('\n') if line and not line.startswith('기록:')]
+        if result.get('registered_flow') and result['status'] in ('applied', 'checked'):
+            lines.append(f"\n업무 흐름을 등록했습니다: {result['registered_flow']} (끝까지 돌려 본 뒤 등록했고, 이 흐름에 든 화면이 바뀔 때마다 다시 돌려 봅니다)")
         if result.get('rolled_back'):
             lines.append('\n요청 전체가 끝나지 않아 앞 단계에서 적용한 것도 되돌렸습니다 (실패한 요청은 아무것도 남기지 않습니다).')
         lines.append(f"\n기록: {result['folder']}")
@@ -604,6 +700,10 @@ def say(result):
         lines += ['  ' + line for line in result.get('flows') or []]
     elif status == 'other':
         lines.append('정의로 처리할 수 없는 요청입니다: ' + result.get('reason', ''))
+    elif status == 'needs-part':
+        lines.append('이 요청은 지금 부품으로는 만들 수 없습니다. 필요한 것: ' + result.get('part', '')
+                     + (f" ({result['why']})" if result.get('why') else '') + '. '
+                     + (result['part_note'] if result.get('part_note') else '부품 요청 목록에 올렸습니다.'))
     elif status == 'split':
         lines.append('이 단계가 다시 여러 화면으로 나뉘어 멈췄습니다: ' + ' / '.join(result.get('parts') or []))
     else:
