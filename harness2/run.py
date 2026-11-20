@@ -70,6 +70,13 @@ def impact(framework, key, old, new):
 
 def run(request=None, definition_file=None, dry=False, force=False, part_of=None):
     """One request. When what the model made fails the business flows (everything was taken back), the model is told why and tries once more."""
+    try:
+        return _run_once_more(request, definition_file, dry, force, part_of)
+    except live.Stopped as stopped:        # stopped between the tries: the first one left nothing behind
+        return {'request': request, 'status': 'error', 'error': str(stopped)}
+
+
+def _run_once_more(request, definition_file, dry, force, part_of):
     result = _run(request, definition_file, dry, force, part_of)
     said = [line for line in result.get('flows') or [] if line]
     stuck = _stuck_step(result)
@@ -396,7 +403,7 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
         result.update(status='applied', program=saved['programCode'], revision=saved['revision'], created=current is None)
         published = None
         return result
-    except Exception as problem:
+    except (Exception, live.Stopped) as problem:      # (a stop: what was applied is taken back the same way)
         result.update(status='error', error=str(problem)[:600])
         if published:                       # published, then a check broke off: the screen goes back to what it was (or away)
             back_key, before = published

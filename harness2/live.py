@@ -26,8 +26,10 @@ def begin(goal, queue=None):
         _runs[_slug()] = {'goal': goal, 'queue': queue, 'started': time.time(), 'ended': None, 'ok': None, 'said': '', 'steps': [], 'model': None, 'checks': [], 'calls': 0, 'tokens': 0}
 
 
-class Stopped(Exception):
-    """The person pressed stop: the run ends where it is (what it applied is taken back like any failure)."""
+class Stopped(BaseException):
+    """The person pressed stop: the run ends where it is (what it applied is taken back like any failure). Not an Exception: the
+    `except Exception` on the way (a refusal sent back to the model, a check that could not be asked) must not swallow it - it was
+    raised once only, so a swallowed stop was a stop lost and the run went on (and could apply). run.py catches it at the top."""
 
 
 def stop(slug=None):

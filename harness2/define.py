@@ -432,10 +432,7 @@ def _mismatch(request, key, definition, before, record_to, after=None):
 - 요청에 없는 조건이나 동작을 덧붙였다.
 어긋남이 아닌 것: 요청이 정해 주지 않은 세부(항목 구성, 이름, 조회 조건, 차트 모양 등)를 알아서 정한 것, 요청과 무관하게 원래 있던 것.
 형식: {"ok": true} 또는 {"ok": false, "kind": "빠짐" | "바뀜" | "덧붙임", "problem": "<무엇이 어떻게 다른지 한 줄>"}''')
-    try:
-        verdict = _follow_up(question, record_to, 'matches-request', after)
-    except Exception:
-        return ''
+    verdict = _asked_twice(lambda: _follow_up(question, record_to, 'matches-request', after), '요청과 맞춰 보지')
     if verdict.get('ok') is not False:
         return ''
     problem = str(verdict.get('problem') or '요청과 다른 점이 있다')[:300]
@@ -447,6 +444,25 @@ UNMET = '[요청대로 안 됨] '          # a difference that leaves something 
 
 class Unmet(Exception):
     """What the request said is still not done after the model was told twice: the request fails rather than being applied without it."""
+
+
+class CannotCheck(Exception):
+    """A reading against the request could not be done (the model's answer could not be had or read, twice): the request is not
+    applied - an unasked check is not a passed one."""
+
+
+def _asked_twice(ask, what):
+    """A check put to the model: asked again once if its answer cannot be had or read; still none - CannotCheck (never a pass)."""
+    last = None
+    for _ in range(2):
+        try:
+            verdict = ask()
+            if isinstance(verdict, dict):
+                return verdict
+            last = ValueError('JSON 객체가 아닌 답')
+        except Exception as problem:
+            last = problem
+    raise CannotCheck(f'{what} 못해 적용하지 않았다 (모델의 답을 받지 못함: {str(last)[:200]})')
 
 
 def unmet(request, keys, framework, record_to):
@@ -462,10 +478,8 @@ def unmet(request, keys, framework, record_to):
 없는 것으로 보는 것: 요청이 말한 조건·제한·때·대상·숫자가 어느 화면에도 없거나 다른 것으로 바뀌었다 (예: "자리가 다 찼으면 더 받으면 안 돼" 인데 정원을 넘겨도 받아진다).
 없는 것이 아닌 것: 요청이 정해 주지 않은 세부를 알아서 정한 것, 요청에 없는 것을 덧붙인 것.
 형식: {"ok": true} 또는 {"ok": false, "problem": "<요청의 어느 말이 어떻게 빠졌는지 한 줄>"}''')
-    try:
-        verdict = _json(llm.ask([{'role': 'system', 'content': 'JSON only'}, {'role': 'user', 'content': question}], record_to, 'request-as-a-whole', max_tokens=200))
-    except Exception:
-        return ''
+    verdict = _asked_twice(lambda: _json(llm.ask([{'role': 'system', 'content': 'JSON only'}, {'role': 'user', 'content': question}], record_to,
+                                                 'request-as-a-whole', max_tokens=200)), '요청 전체와 맞춰 보지')
     return '' if verdict.get('ok') is not False else str(verdict.get('problem') or '요청의 일부가 빠졌다')[:300]
 
 
@@ -540,10 +554,8 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
 단계 문장이 요청에 없는 것을 덧붙였는지 본다: 요청에 없는 조건·숫자·규칙(예: "09:00보다 늦으면 지각"), 요청에 없는 화면, 요청에 없는 새 낱말.
 요청을 하려면 꼭 있어야 하는 것(가리킬 기준 정보 화면 등)을 먼저 만드는 단계는 덧붙인 것이 아니다.
 형식: {"ok": true} 또는 {"ok": false, "added": "<덧붙인 것 한 줄>"}''')
-                    try:
-                        verdict = _follow_up(question, record_to, 'plan-matches-request', messages + [{'role': 'assistant', 'content': answer}])
-                    except Exception:
-                        verdict = {}
+                    verdict = _asked_twice(lambda: _follow_up(question, record_to, 'plan-matches-request', messages + [{'role': 'assistant', 'content': answer}]),
+                                           '계획을 요청과 맞춰 보지')
                     if verdict.get('ok') is False:
                         raise ValueError('단계 문장이 요청에 없는 것을 덧붙였다: ' + str(verdict.get('added') or '')[:300] + '\n요청에 있는 말만으로 단계를 다시 나눈다 (조건·규칙·화면·낱말을 지어내지 않는다).')
                 return {'action': 'steps', 'steps': steps}         # (one step only: that one request, done as a step)
@@ -596,7 +608,9 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
                 framework.delete_definition(other, force=True)
             live.end_step('done', '받아들임' + (f' (의문: {doubt[:200]})' if doubt else ''))
             return {'action': action, 'key': key, 'definition': taken, 'doubt': doubt}
-        except Unmet:
+        except (Unmet, CannotCheck):
+            for other in trials:          # not applied: no trial copy stays behind
+                framework.delete_definition(other, force=True)
             raise
         except Exception as problem:  # a refusal of any kind goes back to the model once more
             error = str(problem)
