@@ -26,7 +26,7 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
 - 새 자료면 action 은 "create" 이고 key 는 이미 있는 key 와 겹치지 않게 한다.
 - 정의 하나는 화면 하나다. 요청을 다 하려면 화면을 둘 이상 만들거나 고쳐야 할 때는 정의를 쓰지 말고 {"action": "steps", "steps": ["<첫 화면에 대한 요청 문장>", "<다음 화면에 대한 요청 문장>", ...]} 로만 답한다.
   요청의 말을 바꾸지 않는다("등록하면"을 "확정하면"으로 바꾸지 않는다). 요청에 없는 조건을 덧붙이지 않는다.
-  여러 단계를 거쳐 이어지는 업무(신청 → 승인, 지시 → 실적, 대여 → 반납 ...)를 만드는 요청이면 단계를 지어내지 말고 flowPatterns 에서 요청에 맞는 모양을 하나 고른다: {"action": "steps", "pattern": "<pattern>", "stages": ["<단계 화면의 title>", ...], "steps": [...]}. stages 는 그 모양의 단계 순서대로 각 단계 화면의 title 이고, steps 에서 그 화면들을 그 역할(is)대로 만든다(먼저 있어야 할 기준 정보 화면이 있으면 그 앞에). 요청에 없는 단계가 생기는 모양(요청에 승인이 없는데 신청-승인)은 고르지 않는다. 맞는 모양이 없으면 pattern 을 적지 않는다. 업무 흐름 등록은 따로 적지 않는다(모양에서 저절로 등록된다).
+  여러 단계를 거쳐 이어지는 업무(신청 → 승인, 지시 → 실적, 대여 → 반납 ...)를 만드는 요청이면 단계를 지어내지 말고 flowPatterns 에서 요청에 맞는 모양을 하나 고른다: {"action": "steps", "pattern": "<pattern>", "stages": ["<단계 화면의 title>", ...], "steps": [...]}. stages 는 그 모양의 단계 순서대로 각 단계 화면의 title 이다. steps 에는 단계 화면보다 먼저 있어야 할 기준 정보 화면(가리킬 자료)에 대한 요청 문장만 적는다(없으면 빈 목록). 단계 화면의 요청 문장은 프레임워크가 그 모양의 says 로 만든다. 요청에 없는 단계가 생기는 모양(요청에 승인이 없는데 신청-승인)은 고르지 않는다. 맞는 모양이 없으면 pattern 을 적지 않는다. 업무 흐름 등록은 따로 적지 않는다(모양에서 저절로 등록된다).
   먼저 있어야 하는 것부터 차례로 적는다(가리킬 자료 → 그것을 쓰는 화면, 집계 화면 → 그것을 담는 현황판, 상태·동작 추가 → 그 동작을 쓰는 자동 처리). 각 문장은 화면 하나에 대한 것이고, 앞뒤 문장 없이도 뜻이 통하게 화면 이름과 할 일을 다 적는다.
 - 현황·합계·통계·차트처럼 이미 있는 자료를 모아서 보는 요청은 새 자료를 만들지 말고 집계 화면(summary)으로 한다. 모을 자료는 이미 있어야 한다.
 - 승인 화면·처리 화면·대기 목록·조회 전용 화면처럼 이미 있는 자료를 다른 화면으로 여는 요청은 새 자료를 만들지 말고 over 로 한다. 권한은 화면 단위이므로 "팀장만 승인"은 승인 화면을 따로 만드는 것으로 푼다(누구에게 그 화면을 줄지는 사람이 정한다). 그 동작을 등록 화면에서는 못 하게 하려면 steps 로: 먼저 그 자료의 등록 화면에서 동작에 separate 를 붙이고(없는 상태·동작이면 추가하고), 다음에 업무 화면을 만든다.
@@ -441,6 +441,19 @@ def _mismatch(request, key, definition, before, record_to, after=None):
     return problem if verdict.get('kind') == '덧붙임' else UNMET + problem
 
 
+REFERENCE = '\n\n(참고 - 사용자의 원래 요청: '        # what follows it in a stage's sentence is for choosing fields, not something to check the stage against
+
+
+def screen_named(step):
+    """The screen a step sentence asks for, by the words before '화면' or '자료' in its first clause ('「증명서 승인」 화면을 만들어줘' -> '증명서 승인')."""
+    first = str(step).split('\n')[0]
+    quoted = re.match(r'\s*「(.+?)」\s*(등록\s*|연계\s*)?(?:화면|자료)', first)        # (a stage's own sentence: 「X」 자료 / 「X」 연계 화면 are two screens)
+    if quoted:
+        return quoted.group(1).strip() + (' ' + quoted.group(2).strip() if quoted.group(2) else '')
+    found = re.match(r'\s*(.+?)\s*(?:기준\s*정보\s*|업무\s*|연계\s*)*(?:화면|자료)', first)
+    return re.sub(r'\s+', ' ', found.group(1)).strip() if found and len(found.group(1)) <= 30 else ''
+
+
 UNMET = '[요청대로 안 됨] '          # a difference that leaves something the request said undone (left out, or made into something else)
 
 
@@ -467,7 +480,7 @@ def _asked_twice(ask, what):
     raise CannotCheck(f'{what} 못해 적용하지 않았다 (모델의 답을 받지 못함: {str(last)[:200]})')
 
 
-def unmet(request, keys, framework, record_to):
+def unmet(request, keys, framework, record_to, given=()):
     """A request done in several steps, read once more as a whole against the person's own words: what it said and none of the
     screens does. Returns '' when it is all there."""
     known = {item['key']: item['definition'] for item in framework.definitions()}
@@ -475,7 +488,8 @@ def unmet(request, keys, framework, record_to):
     if not made:
         return ''
     question = ('사용자의 요청과, 그 요청으로 만들고 고친 화면들이다. 요청이 말한 것 가운데 어느 화면에도 없는 것이 있는지 본다.\n\n요청: ' + request
-                + '\n\n화면들:\n' + made + '''
+                + '\n\n화면들:\n' + made
+                + ('\n\n아래는 프레임워크의 업무 흐름 모양이 정한 것이다 (요청과 어긋남으로 보지 않는다):\n' + '\n'.join('- ' + item for item in given) if given else '') + '''
 
 없는 것으로 보는 것: 요청이 말한 조건·제한·때·대상·숫자가 어느 화면에도 없거나 다른 것으로 바뀌었다 (예: "자리가 다 찼으면 더 받으면 안 돼" 인데 정원을 넘겨도 받아진다).
 없는 것이 아닌 것: 요청이 정해 주지 않은 세부를 알아서 정한 것, 요청에 없는 것을 덧붙인 것(한도, 상태, 입력 방식 같은 세부가 더 있는 것).
@@ -539,7 +553,7 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
                 return {'action': 'needs-part', 'part': str(proposal['part'])[:200], 'why': str(proposal.get('why') or '')[:300]}
             if proposal.get('action') == 'steps':
                 steps = [str(step).strip() for step in proposal.get('steps') or [] if str(step).strip()]
-                if not 1 <= len(steps) <= 6:
+                if not (0 if proposal.get('pattern') and allow_steps else 1) <= len(steps) <= 6:
                     raise ValueError('steps 는 1~6개의 요청 문장이어야 한다')
                 if not allow_steps:
                     itself = re.sub(r'\s+', '', request.split('\n')[0])
@@ -564,15 +578,14 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
                         raise ValueError(f'pattern "{pattern}" 은 flowPatterns 에 없다 (있는 것: {", ".join(name for name, item in known_patterns.items() if item.get("stages"))}). 맞는 모양이 없으면 pattern 을 적지 않는다')
                     if not isinstance(stages, list) or len(stages) != len(shape['stages']) or not all(isinstance(title, str) and title.strip() for title in stages):
                         raise ValueError(f'pattern "{pattern}" 의 stages 는 ' + ' → '.join(stage['role'] for stage in shape['stages']) + ' 순서로 단계 화면의 title 을 하나씩 적는다')
-                    plain = re.sub(r'\s+', '', ' '.join(steps))
-                    unnamed = [title for title in stages if re.sub(r'\s+', '', title) not in plain]
-                    if unnamed:
-                        raise ValueError('stages 의 화면이 steps 에서 만들어지지 않는다: ' + ', '.join(unnamed) + ' - steps 에 그 화면을 만드는 문장을 그 title 그대로 넣는다')
+                    # the stages' own sentences are the framework's: of the model's steps only the screens that come before the stages stay
+                    named = {re.sub(r'\s+', '', title) for title in stages}
+                    steps = [step for step in steps if re.sub(r'\s+', '', screen_named(step)) not in named]
                 if not planned_checked:
                     # the plan read against the request, in the same conversation (what it read is reused): a step may not bring in a
                     # condition, rule, screen or word the person did not say - it goes back once to be split again in their words
                     planned_checked = True
-                    question = ('요청: ' + request + '\n\n이 요청을 나눈 단계 문장:\n' + '\n'.join(f'{index}. {step}' for index, step in enumerate(steps, 1))
+                    question = ('요청: ' + request + '\n\n이 요청을 나눈 단계 문장:\n' + ('\n'.join(f'{index}. {step}' for index, step in enumerate(steps, 1)) or '(없음)')
                                 + (f'\n\n고른 업무 흐름 모양: {pattern} (' + ' → '.join(stages) + ') - 요청에 없는 단계(요청에 승인이 없는데 승인 단계)가 생기면 덧붙인 것이다.' if pattern else '') + '''
 
 단계 문장이 요청에 없는 것을 덧붙였는지 본다: 요청에 없는 조건·숫자·규칙(예: "09:00보다 늦으면 지각"), 요청에 없는 화면, 요청에 없는 새 낱말.
@@ -619,7 +632,7 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
             # Read once against the request; a difference goes back to the model once. If it is still there, the result carries
             # the doubt instead of stopping - the person is told only when there is something to look at.
             taken = accepted(saved, definition)
-            doubt = _mismatch(request, key, taken, stored.get(key) if action == 'change' else None, record_to, messages + [{'role': 'assistant', 'content': answer}])
+            doubt = _mismatch(request.split(REFERENCE)[0], key, taken, stored.get(key) if action == 'change' else None, record_to, messages + [{'role': 'assistant', 'content': answer}])
             undone = doubt.startswith(UNMET)
             if doubt and (compared < (2 if undone and (allow_steps or strict) else 1)):
                 compared += 1

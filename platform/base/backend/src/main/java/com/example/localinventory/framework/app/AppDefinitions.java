@@ -259,20 +259,39 @@ public class AppDefinitions {
      *  = a 연계 screen makes its records); the harness checks them and registers the flow from the stage names. */
     static final List<Map<String, Object>> FLOW_PATTERNS = List.of(
             Map.of("pattern", "지시-실적", "when", "누가 할 일을 지시하고, 그 지시에서 아직 처리하지 않은 것을 선택해 처리 결과를 등록하는 업무",
-                    "stages", List.of(Map.of("role", "지시", "is", "지시를 등록하는 업무 기록 (status 로 진행·마감)", "has", List.of("status")),
-                                      Map.of("role", "실적", "is", "지시에서 연계(take)로 만드는 결과 기록 (follows 로 지시를 가리킴) + 그 연계 화면", "has", List.of("follows", "take-into")))),
+                    "stages", List.of(stage("지시", "지시를 등록하는 업무 기록 (status 로 진행·마감)", List.of("status"),
+                                            "「{title}」 화면을 만들어줘. 지시를 등록하는 업무 기록이고, 진행 상태(status)가 있다."),
+                                      stage("실적", "지시에서 연계(take)로 만드는 결과 기록 (follows 로 지시를 가리킴) + 그 연계 화면", List.of("follows", "take-into"),
+                                            "「{title}」 자료를 만들어줘. 「{prev}」에서 이어 만드는 결과 기록이다: 「{prev}」를 가리키는 항목이 있다(follows).",
+                                            "「{title}」 연계 화면을 만들어줘. 「{prev}」 가운데 아직 처리하지 않은 것을 목록으로 조회해 선택하고 저장하면 「{title}」 자료가 만들어지는 연계 화면(take)이다 - 입력 폼이 아니라 목록에서 골라 저장하는 화면이고, 「{title}」 자료는 이미 있다."))),
             Map.of("pattern", "신청-승인", "when", "누가 신청하고, 다른 사람이 승인하거나 반려하는 업무",
-                    "stages", List.of(Map.of("role", "신청", "is", "신청을 등록하는 업무 기록 (status 에 승인·반려 상태와 버튼)", "has", List.of("status")),
-                                      Map.of("role", "승인", "is", "신청을 여는 업무 화면(over) - 승인·반려 버튼만 있는 화면", "has", List.of("over.actions")))),
+                    "stages", List.of(stage("신청", "신청을 등록하는 업무 기록 (status 에 승인·반려 상태와 버튼)", List.of("status"),
+                                            "「{title}」 화면을 만들어줘. 신청을 등록하는 업무 기록이다: 진행 상태(status)는 접수·승인·반려이고, 승인·반려 동작은 「{next}」 화면에서만 한다(separate)."),
+                                      stage("승인", "신청을 여는 업무 화면(over) - 승인·반려 버튼만 있는 화면", List.of("over.actions"),
+                                            "「{title}」 화면을 만들어줘. 「{prev}」 자료를 여는 업무 화면(over)이다: 접수 상태인 「{prev}」만 보이고, 승인·반려 버튼만 있으며 내용은 고치지 못한다."))),
             Map.of("pattern", "신청-승인-처리", "when", "신청하고 승인받은 뒤, 승인된 것을 처리(발급·지급·배정 ...)한 결과를 등록하는 업무",
-                    "stages", List.of(Map.of("role", "신청", "is", "신청을 등록하는 업무 기록 (status 에 승인·반려 상태와 버튼)", "has", List.of("status")),
-                                      Map.of("role", "승인", "is", "신청을 여는 업무 화면(over) - 승인·반려 버튼만 있는 화면", "has", List.of("over.actions")),
-                                      Map.of("role", "처리", "is", "승인된 신청에서 연계(take)로 만드는 처리 기록 (follows 로 신청을 가리킴) + 그 연계 화면", "has", List.of("follows", "take-into")))),
+                    "stages", List.of(stage("신청", "신청을 등록하는 업무 기록 (status 에 승인·반려 상태와 버튼)", List.of("status"),
+                                            "「{title}」 화면을 만들어줘. 신청을 등록하는 업무 기록이다: 진행 상태(status)는 접수·승인·반려이고, 승인·반려 동작은 「{next}」 화면에서만 한다(separate)."),
+                                      stage("승인", "신청을 여는 업무 화면(over) - 승인·반려 버튼만 있는 화면", List.of("over.actions"),
+                                            "「{title}」 화면을 만들어줘. 「{prev}」 자료를 여는 업무 화면(over)이다: 접수 상태인 「{prev}」만 보이고, 승인·반려 버튼만 있으며 내용은 고치지 못한다."),
+                                      stage("처리", "승인된 신청에서 연계(take)로 만드는 처리 기록 (follows 로 신청을 가리킴) + 그 연계 화면", List.of("follows", "take-into"),
+                                            "「{title}」 자료를 만들어줘. 승인된 「{root}」에서 이어 만드는 처리 기록이다: 「{root}」를 가리키는 항목이 있고(follows), 「{root}」 한 건에 한 번만 이어진다.",
+                                            "「{title}」 연계 화면을 만들어줘. 승인 상태인 「{root}」만 목록으로 조회해 선택하고 저장하면 「{title}」 자료가 만들어지는 연계 화면(take)이다 - 입력 폼이 아니라 목록에서 골라 저장하는 화면이고, 「{title}」 자료는 이미 있다."))),
             Map.of("pattern", "대여-반납", "when", "무언가를 빌려주고(대여), 빌려 간 것 가운데 아직 돌아오지 않은 것을 선택해 반납을 등록하는 업무",
-                    "stages", List.of(Map.of("role", "대여", "is", "대여를 등록하는 업무 기록", "has", List.of()),
-                                      Map.of("role", "반납", "is", "대여에서 연계(take)로 만드는 반납 기록 (follows 로 대여를 가리킴) + 그 연계 화면", "has", List.of("follows", "take-into")))),
+                    "stages", List.of(stage("대여", "대여를 등록하는 업무 기록", List.of(),
+                                            "「{title}」 화면을 만들어줘. 대여를 등록하는 업무 기록이다."),
+                                      stage("반납", "대여에서 연계(take)로 만드는 반납 기록 (follows 로 대여를 가리킴) + 그 연계 화면", List.of("follows", "take-into"),
+                                            "「{title}」 자료를 만들어줘. 「{prev}」에서 이어 만드는 반납 기록이다: 「{prev}」를 가리키는 항목이 있다(follows).",
+                                            "「{title}」 연계 화면을 만들어줘. 「{prev}」 가운데 아직 반납하지 않은 것을 목록으로 조회해 선택하고 저장하면 「{title}」 자료가 만들어지는 연계 화면(take)이다 - 입력 폼이 아니라 목록에서 골라 저장하는 화면이고, 「{title}」 자료는 이미 있다."))),
             Map.of("pattern", "단일 기록", "when", "단계가 이어지지 않는 기록 하나 (흐름 없음) - 이 모양이면 pattern 을 적지 않는다",
                     "stages", List.of()));
+
+    /** One stage of a flow's shape: its role, what its screen is, the parts it must have, and the request sentences the stage is made
+     *  from ({title} = this stage's screen, {prev} / {next} = the stages beside it, {root} = the first stage) - the model names the
+     *  screens, the sentences are the framework's, so a stage asks for no more and no less than its role. */
+    private static Map<String, Object> stage(String role, String is, List<String> has, String... says) {
+        return Map.of("role", role, "is", is, "has", has, "says", List.of(says));
+    }
 
     public Map<String, Object> capabilities() {
         Map<String, Object> out = new LinkedHashMap<>();

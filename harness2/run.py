@@ -122,7 +122,7 @@ def _stuck_step(result):
     last = steps[-1] if steps else None
     if not last or last.get('status') in ('applied', 'checked', 'unchanged'):
         return ''
-    why = last.get('reason') if last.get('status') == 'other' else last.get('unmet') and ('단계 문장대로 되지 않았다: ' + last['unmet']) or last.get('error') or '; '.join(f"{item['description']}: {str(item['detail'])[:150]}" for item in (last.get('failed') or [])[:3])
+    why = last.get('reason') if last.get('status') == 'other' else last.get('unmet') and ('단계 문장대로 되지 않았다: ' + last['unmet']) or last.get('stopped') or last.get('error') or '; '.join(f"{item['description']}: {str(item['detail'])[:150]}" for item in (last.get('failed') or [])[:3])
     return (f"{last.get('step')}단계 \"{last.get('request', '')}\" 에서 멈춰 모두 되돌렸다: {why}"
             + ' - 단계 문장에는 요청에 있는 것만 적고(요청에 없는 조건·전파·자동 처리를 덧붙이지 않는다), 이 이유를 감안해 다시 나눈다') if why else ''
 
@@ -193,21 +193,35 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
             return result
         if proposal['action'] == 'steps':
             # More than one screen: each step is a request of its own, done in order; a later step sees what the earlier ones made.
+            framed = set()
+            if proposal.get('pattern'):
+                # a flow's shape: the stages' request sentences are the framework's (says), with the person's words beside them for the fields
+                stages = proposal['stages']
+                for number, (title, role) in enumerate(zip(stages, proposal.get('roles') or [])):
+                    words = {'{title}': title, '{prev}': stages[number - 1] if number else '', '{next}': stages[number + 1] if number + 1 < len(stages) else '', '{root}': stages[0]}
+                    for say in role.get('says') or []:
+                        for word, value in words.items():
+                            say = say.replace(word, value)
+                        sentence = say + define.REFERENCE + request + ' - 항목은 이 요청과 업무에 맞게 정한다)'
+                        framed.add(sentence)
+                        proposal['steps'].append(sentence)
             (folder / '1-define' / 'steps.json').write_text(json.dumps(proposal['steps'], ensure_ascii=False, indent=1), encoding='utf-8')
             done, plan, index, split = [], list(proposal['steps']), 0, 0
             while index < len(plan):
                 step = plan[index]
                 time.sleep(1.1)                                   # run folders are named by the second
                 # the step is told which screens the other steps make, so it makes its own screen only (not split again into them)
-                others = [_screen_named(other) for number, other in enumerate(plan) if number != index and _screen_named(other)]
-                told = step + ('\n\n(전체 요청의 한 단계다. 이 화면만 만든다. 다른 단계에서 만드는 화면: ' + ', '.join(others) + ' - 여기서 만들지 않는다.)' if others else '')
+                # (only the steps still to come: the ones before are made already and are among the screens the model sees)
+                others = [name for other in plan[index + 1:] for name in [define.screen_named(other)] if name and name != define.screen_named(step)]
+                told = step + ('\n\n(전체 요청의 한 단계다. 이 화면 하나의 정의로 답한다 - pattern 이나 steps 로 답하지 않는다. 가리킬 화면이 위의 이미 있는 자료에 정말 없을 때만 steps 로 그 화면을 먼저 적는다.'
+                               + (' 뒤 단계에서 만드는 화면: ' + ', '.join(others) + ' - 여기서 만들지 않는다.' if others else '') + ')')
                 # a stage of a flow's shape must be what its sentence says (a state or a button left out breaks the stages after it)
-                outcome = run(told, dry=dry, force=force, part_of=request, strict=bool(proposal.get('pattern')))
+                outcome = run(told, dry=dry, force=force, part_of=request, strict=step in framed)
                 if outcome.get('status') == 'split':
                     # parts that are screens the plan makes in another step already are not made twice
-                    later = {_screen_named(other) for number, other in enumerate(plan) if number != index}
-                    outcome['parts'] = [part for part in outcome['parts'] if not _screen_named(part) or _screen_named(part) not in later or _screen_named(part) == _screen_named(step)]
-                    own = _screen_named(step)
+                    later = {define.screen_named(other) for number, other in enumerate(plan) if number != index}
+                    outcome['parts'] = [part for part in outcome['parts'] if not define.screen_named(part) or define.screen_named(part) not in later or define.screen_named(part) == define.screen_named(step)]
+                    own = define.screen_named(step)
                     if own and not any(own in part for part in outcome['parts']):
                         outcome['parts'].append(step)       # split into what has to come first only: the step's own screen still follows them
                 if outcome.get('status') == 'split' and split < 2 and len(plan) - 1 + len(outcome['parts']) <= 8:
@@ -246,7 +260,8 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
                     result['flow'] = registered.get('lines', [])[:2]
                     result['registered_flow'] = ' → '.join(proposal['stages'])      # taken away again when this request is undone
                 live.step('요청 전체를 사용자의 말과 다시 맞춰 봄')
-                missing = define.unmet(request, [item['key'] for item in done if item.get('key')], framework, folder / '1-define')
+                missing = define.unmet(request, [item['key'] for item in done if item.get('key')], framework, folder / '1-define',
+                                       given=[sentence.split(define.REFERENCE)[0] for sentence in framed])
                 if missing:                       # every step passed, but the request as the person said it is not all there
                     live.end_step('refused', missing)
                     if flows_before is not None:
@@ -498,12 +513,6 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
             commit(result, request)
         result['seconds'] = round(time.time() - started, 1)
         (folder / 'result.json').write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding='utf-8')
-
-
-def _screen_named(step):
-    """The screen a step sentence asks for, by the words before '화면' in its first clause ('증명서 승인 업무 화면을 만들어줘' -> '증명서 승인')."""
-    found = re.match(r'\s*(.+?)\s*(?:기준\s*정보\s*|업무\s*|연계\s*|등록\s*)*화면', str(step).split('\n')[0])
-    return re.sub(r'\s+', ' ', found.group(1)).strip() if found and len(found.group(1)) <= 30 else ''
 
 
 def _pattern_problems(proposal, framework):
