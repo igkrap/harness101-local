@@ -2222,7 +2222,7 @@ def screen_checks(title, definition, record_to, app):
     elif rich(definition):
         criteria = document_screen_criteria(definition)
     else:
-        sheet = {'path': '/api/x', 'fields': [{'name': field['name'], 'label': field['label'], 'required': field['required'], 'sample': 'x'} for field in definition['fields']
+        sheet = {'path': '/api/x', 'fields': [{'name': field['name'], 'label': field['label'], 'required': field['required'], 'type': field.get('type'), 'sample': 'x'} for field in definition['fields']
                                               if not field.get('showWhen') or _holds(field['showWhen'], {})]}
         criteria = standard_contract.screen_criteria(sheet)
     if not any(definition.get(part) for part in ('summary', 'dashboard', 'over', 'calendar', 'tree', 'take', 'ledgerView', 'from')):

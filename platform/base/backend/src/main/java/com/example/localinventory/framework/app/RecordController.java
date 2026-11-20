@@ -235,41 +235,50 @@ public class RecordController {
         List<AppDefinitions.Field> lineFields = definition.lines() == null ? List.of() : definition.lines().fields();
         java.util.Set<String> headerLabels = new java.util.HashSet<>();
         for (AppDefinitions.Field field : definition.fields()) headerLabels.add(field.label());
-        int number = 0, stored = 0, first = 0;
+        int stored = 0, first = 0;
         ObjectNode body = null;
         String open = null;
         for (int index = 0; index <= rows.size(); index++) {
             Map<String, Object> row = index < rows.size() ? rows.get(index) : null;
+            // 1. this row read on its own: a value that cannot be read is this row's problem
+            ObjectNode head = null, line = null;
             String key = null;
-            try {
-                if (row != null) {
-                    number = index + 1;
-                    ObjectNode head = mapper.createObjectNode();
+            if (row != null) {
+                try {
+                    head = mapper.createObjectNode();
                     for (AppDefinitions.Field field : definition.fields()) {
                         if (field.computed()) continue;
                         String text = given(row, field.name(), field.label());
                         if (!text.isEmpty()) put(head, field, text, targets, codes, "");
                     }
-                    key = lineFields.isEmpty() ? null : head.toString();
-                    if (body != null && (key == null || !key.equals(open))) { int at = first; ObjectNode done = body; body = null; number = at; insert(definition, done, authentication.getName(), 0); stored++; number = index + 1; }
-                    if (body == null) { body = head; open = key; first = index + 1; if (!lineFields.isEmpty()) body.set("lines", mapper.createArrayNode()); }
                     if (!lineFields.isEmpty()) {
-                        ObjectNode line = mapper.createObjectNode();
+                        line = mapper.createObjectNode();
                         for (AppDefinitions.Field field : lineFields) {
                             if (field.formula() != null) continue;
                             String label = headerLabels.contains(field.label()) ? definition.lines().label() + " " + field.label() : field.label();
                             String text = given(row, "lines." + field.name(), label);
                             if (!text.isEmpty()) put(line, field, text, targets, codes, "lines.");
                         }
-                        if (!line.isEmpty()) ((ArrayNode) body.get("lines")).add(line);
                     }
-                } else if (body != null) { number = first; ObjectNode done = body; body = null; insert(definition, done, authentication.getName(), 0); stored++; }
-            } catch (ResponseStatusException refused) {
-                body = null; open = null;
-                problems.add(Map.of("row", number, "message", refused.getReason() == null ? "저장할 수 없는 줄입니다." : refused.getReason()));
-                // the row that could not be read does not start a record; the next row starts afresh
+                    key = lineFields.isEmpty() ? null : head.toString();
+                } catch (ResponseStatusException refused) {
+                    problems.add(Map.of("row", index + 1, "message", refused.getReason() == null ? "저장할 수 없는 줄입니다." : refused.getReason()));
+                    head = null;
+                }
+            }
+            // 2. the record the rows before made is stored once this row does not continue it; its refusal is its own rows' problem
+            if (body != null && (head == null || key == null || !key.equals(open))) {
+                ObjectNode done = body; body = null;
+                try { insert(definition, done, authentication.getName(), 0); stored++; }
+                catch (ResponseStatusException refused) { problems.add(Map.of("row", first, "message", refused.getReason() == null ? "저장할 수 없는 줄입니다." : refused.getReason())); }
+            }
+            // 3. this row starts a record, or adds its line to the one it continues
+            if (head != null) {
+                if (body == null) { body = head; open = key; first = index + 1; if (!lineFields.isEmpty()) body.set("lines", mapper.createArrayNode()); }
+                if (line != null && !line.isEmpty()) ((ArrayNode) body.get("lines")).add(line);
             }
         }
+        problems.sort(java.util.Comparator.comparingInt(problem -> (Integer) problem.get("row")));      // (a record's refusal is found one row late)
         Map<String, Object> out = new LinkedHashMap<>();
         if (!problems.isEmpty()) org.springframework.transaction.interceptor.TransactionAspectSupport.currentTransactionStatus().setRollbackOnly();
         out.put("stored", problems.isEmpty() ? stored : 0);
@@ -307,7 +316,8 @@ public class RecordController {
     }
 
     private static String date(String text, String label) {
-        String digits = text.replaceAll("[./]", "-").replaceAll("\\s", "");
+        // (a sheet's date cell may carry a time of day: a date field takes the day)
+        String digits = text.trim().replaceFirst("[ T]\\d{1,2}:\\d{2}(:\\d{2}(\\.\\d+)?)?$", "").replaceAll("[./]", "-").replaceAll("\\s", "");
         if (digits.matches("\\d{8}")) digits = digits.substring(0, 4) + "-" + digits.substring(4, 6) + "-" + digits.substring(6);
         if (digits.matches("\\d{4}-\\d{1,2}-\\d{1,2}")) { String[] part = digits.split("-"); digits = part[0] + "-" + (part[1].length() == 1 ? "0" : "") + part[1] + "-" + (part[2].length() == 1 ? "0" : "") + part[2]; }
         try { return java.time.LocalDate.parse(digits).toString(); }

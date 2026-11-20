@@ -189,7 +189,9 @@ def screen_criteria(sheet):
     optional = [field for field in sheet['fields'] if not field['required']]
     if optional:
         steps = [{'action': 'click', 'selector': '[data-ui="tabbed-panel"] >> role=tab[name="추가정보"]'}]
-        steps += [{'action': 'expect_visible', 'selector': f'{EDITOR} >> {by_label(field["label"])}'} for field in optional]
+        # (a tick box draws its own box over a hidden input: its label is what shows)
+        steps += [{'action': 'expect_text', 'selector': EDITOR, 'value': field['label']} if field.get('type') == 'yesno'
+                  else {'action': 'expect_visible', 'selector': f'{EDITOR} >> {by_label(field["label"])}'} for field in optional]
         criteria.append(('선택 항목(' + ', '.join(field['label'] for field in optional) + ')은 편집 패널의 추가정보 탭에 있다', {'op': 'scenario', 'steps': steps}))
     return [{'id': f'C{index + 1}', 'requirement_id': 'R1', 'description': description, 'check': check}
             for index, (description, check) in enumerate(criteria)]

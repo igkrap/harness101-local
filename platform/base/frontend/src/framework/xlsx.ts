@@ -65,7 +65,8 @@ export function readSheet(bytes: Uint8Array): string[][] {
   for (const link of Array.from(links?.getElementsByTagName('Relationship') ?? [])) if (link.getAttribute('Id') === first) { const target = link.getAttribute('Target') ?? ''; path = target.startsWith('/') ? target.slice(1) : `xl/${target}`; }
   const sheet = xml(path);
   if (!sheet) throw new Error('엑셀 파일에서 시트를 찾지 못했습니다.');
-  const shared = Array.from(xml('xl/sharedStrings.xml')?.getElementsByTagName('si') ?? []).map(item => Array.from(item.getElementsByTagName('t')).map(text => text.textContent ?? '').join(''));
+  // (a phonetic reading Excel may keep beside the text, <rPh>, is not part of what the cell says)
+  const shared = Array.from(xml('xl/sharedStrings.xml')?.getElementsByTagName('si') ?? []).map(item => Array.from(item.getElementsByTagName('t')).filter(text => text.parentElement?.tagName !== 'rPh').map(text => text.textContent ?? '').join(''));
   const styles = xml('xl/styles.xml');
   const custom = new Map(Array.from(styles?.getElementsByTagName('numFmt') ?? []).map(format => [Number(format.getAttribute('numFmtId')), format.getAttribute('formatCode') ?? '']));
   const dated = Array.from(styles?.getElementsByTagName('cellXfs')[0]?.getElementsByTagName('xf') ?? []).map(style => { const id = Number(style.getAttribute('numFmtId') ?? 0);
@@ -77,8 +78,10 @@ export function readSheet(bytes: Uint8Array): string[][] {
       const letters = (cell.getAttribute('r') ?? '').replace(/\d/g, ''), at = [...letters].reduce((sum, letter) => sum * 26 + letter.charCodeAt(0) - 64, 0) - 1;
       const kind = cell.getAttribute('t'), raw = cell.getElementsByTagName('v')[0]?.textContent ?? '';
       let value = kind === 's' ? shared[Number(raw)] ?? '' : kind === 'inlineStr' ? Array.from(cell.getElementsByTagName('t')).map(text => text.textContent ?? '').join('') : kind === 'b' ? (raw === '1' ? '예' : '아니오') : raw;
-      if (!kind && raw !== '' && dated[Number(cell.getAttribute('s') ?? 0)] && NUMBER.test(raw)) value = serialDate(Number(raw));
-      else if (!kind && /^-?\d+\.\d{7,}$/.test(raw)) value = String(Number(Number(raw).toFixed(6)));       // 0.1 + 0.2 as the sheet stores it
+      const numeric = !kind || kind === 'n';          // (Excel leaves the type out of a number; other programs write t="n")
+      if (numeric && raw !== '' && dated[Number(cell.getAttribute('s') ?? 0)] && NUMBER.test(raw)) value = serialDate(Number(raw));
+      else if (numeric && /^-?\d+\.\d{7,}$/.test(raw)) value = String(Number(Number(raw).toFixed(6)));       // 0.1 + 0.2 as the sheet stores it
+      else if (kind === 'd') value = raw.replace(/T00:00(:00(\.0+)?)?Z?$/, '').replace('T', ' ').replace(/(\d{2}:\d{2}:\d{2})\.\d+/, '$1');      // an ISO date cell
       cells[at >= 0 ? at : cells.length] = value;
     }
     const filled = Array.from(cells, value => value ?? '');
