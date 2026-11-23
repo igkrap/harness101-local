@@ -17,7 +17,8 @@ import sites
 ROOT = sites.ROOT / 'platform/state/benchmarks'
 SETS = ROOT / 'sets.json'
 RUNS = ROOT / 'runs'
-OUTCOMES = ('첫 시도 통과', '재시도 후 완료', '요청대로 안 됨', '점검 실패', '확인 못 함', '부품 없음', '중지', '오류')
+OUTCOMES = ('첫 시도 통과', '재시도 후 완료', '요청대로 안 됨', '점검에서 떨어짐', '단계에서 멈춤', '정의로 못 함', '확인 못 함', '부품 없음', '중지', '오류',
+            '점검 실패')        # (the last: what runs before 2026/11/24 called both of the check outcomes)
 _lock = threading.Lock()
 _current = {'run': None, 'stop': False}
 
@@ -130,8 +131,12 @@ def _outcome(queue, result, live_state):
         return '확인 못 함'
     if (result or {}).get('unmet'):
         return '요청대로 안 됨'
+    if status == 'other' or (result or {}).get('stopped'):
+        return '정의로 못 함'          # the model said a definition cannot do it (often: what it would point at is not there)
+    if status == 'failed' and (result or {}).get('planned') and not (result or {}).get('failed'):
+        return '단계에서 멈춤'
     if status in ('failed', 'flow'):
-        return '점검 실패'
+        return '점검에서 떨어짐'
     return '오류'
 
 

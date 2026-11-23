@@ -197,14 +197,27 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
             if proposal.get('pattern'):
                 # a flow's shape: the stages' request sentences are the framework's (says), with the person's words beside them for the fields
                 stages = proposal['stages']
+                # a stage whose screen is there already (asked for one screen at a time) is not made again: skipped when it has what its
+                # role needs, otherwise changed to have it - only what is missing becomes a step
+                known = {item['key']: item['definition'] for item in framework.definitions() if not item['key'].startswith(TRIAL)}
                 for number, (title, role) in enumerate(zip(stages, proposal.get('roles') or [])):
                     words = {'{title}': title, '{prev}': stages[number - 1] if number else '', '{next}': stages[number + 1] if number + 1 < len(stages) else '', '{root}': stages[0]}
-                    for say in role.get('says') or []:
+                    record = _stage_screen(title, known)
+                    for part, say in enumerate(role.get('says') or []):
                         for word, value in words.items():
                             say = say.replace(word, value)
+                        if record:
+                            if part == 0 and not _stage_lacks(record, [need for need in role.get('has') or [] if need != 'take-into'], known):
+                                continue              # the stage's own screen is there with what its role needs
+                            if part > 0 and not _stage_lacks(record, ['take-into'], known):
+                                continue              # its 연계 screen is there too
+                            if part == 0:
+                                say = say.replace('화면을 만들어줘.', '화면을 고쳐줘 (이미 있는 화면이다 - 이 역할에 모자란 것만 더한다).').replace('자료를 만들어줘.', '자료를 고쳐줘 (이미 있는 자료다 - 이 역할에 모자란 것만 더한다).')
                         sentence = say + define.REFERENCE + request + ' - 항목은 이 요청과 업무에 맞게 정한다)'
                         framed.add(sentence)
                         proposal['steps'].append(sentence)
+                if not proposal['steps']:
+                    proposal['steps'] = []          # every stage there already: only the flow is registered below
             (folder / '1-define' / 'steps.json').write_text(json.dumps(proposal['steps'], ensure_ascii=False, indent=1), encoding='utf-8')
             done, plan, index, split = [], list(proposal['steps']), 0, 0
             while index < len(plan):
@@ -233,7 +246,8 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
                 if outcome.get('status') not in ('applied', 'checked', 'unchanged'):      # (a step whose screen already was so is done, not stuck)
                     break
             proposal['steps'] = plan
-            finished = len(done) == len(proposal['steps']) and done[-1].get('status') in ('applied', 'checked', 'unchanged') and any(item.get('status') in ('applied', 'checked') for item in done)
+            finished = (len(done) == len(proposal['steps']) and done[-1].get('status') in ('applied', 'checked', 'unchanged') and any(item.get('status') in ('applied', 'checked') for item in done)) \
+                or (not proposal['steps'] and bool(proposal.get('pattern')))          # (every stage there already: the flow is what is new)
             if finished and not dry:          # a change in several steps is judged by the business flows as a whole, at its end
                 passed, flowed, said = flows.judge([item['key'] for item in done if item.get('key')], framework)
                 if not passed:
@@ -513,6 +527,25 @@ def _run(request=None, definition_file=None, dry=False, force=False, part_of=Non
             commit(result, request)
         result['seconds'] = round(time.time() - started, 1)
         (folder / 'result.json').write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding='utf-8')
+
+
+def _stage_screen(title, known):
+    """The key of the record screen a stage names (its title, or its title without 등록/관리/입력), or None."""
+    plain = re.sub(r'\s*(등록|관리|입력)$', '', title.strip())
+    for key, one in known.items():
+        if any(one.get(part) for part in ('summary', 'dashboard', 'calendar', 'tree', 'take', 'ledgerView')):
+            continue
+        if title.strip() in (one.get('title'), re.sub(r'\s*(등록|관리|입력)$', '', one.get('title', ''))) or plain == re.sub(r'\s*(등록|관리|입력)$', '', one.get('title', '')):
+            return key
+    return None
+
+
+def _stage_lacks(key, needs, known):
+    """Of a stage role's needs (status, over.actions, follows, take-into), the ones the screen does not have yet."""
+    one = known.get(key) or {}
+    taken_into = {(item.get('take') or {}).get('entity') for item in known.values() if item.get('take')}
+    have = {'status': bool(one.get('status')), 'over.actions': bool((one.get('over') or {}).get('actions')), 'follows': bool(one.get('follows')), 'take-into': key in taken_into}
+    return [need for need in needs if not have.get(need, True)]
 
 
 def _pattern_problems(proposal, framework):

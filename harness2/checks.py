@@ -383,8 +383,8 @@ def fit(body, definition, framework, made, break_check=None):
             spread(body, definition, span, next(_spans))     # (a sample breaking a comparison of the span keeps its broken times, on a day of its own)
         else:
             spread(dict(), definition, span, next(_spans))
-    if definition.get('limits'):
-        obey()          # a limit may have changed a number a check compares: the checks are made true again
+    if definition.get('limits') or definition.get('noOverlap'):
+        obey()          # a limit, or a span moved to a day of its own, may have changed what a check compares: the checks are made true again
     if (definition.get('ledger') or {}).get('lot'):       # a lot number is only for items kept by lot: a plain sample leaves it empty
         for _, _, _, unit in _ledger_units(body, definition):
             unit[definition['ledger']['lot']] = None
