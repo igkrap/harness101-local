@@ -150,6 +150,10 @@ def start(hub, set_id):
             raise ValueError('그 측정 묶음이 없습니다.')
         if hub.busy() or any(app.queues.active() for app in list(hub.apps.values())):
             raise RuntimeError('실행 중인 요청이 끝난 뒤에 측정할 수 있습니다.')
+        import environment
+        problem = environment.ready()
+        if problem:
+            raise RuntimeError('측정을 시작할 수 없습니다: ' + problem)
         run_id = time.strftime('%Y%m%d-%H%M%S')
         run = {'id': run_id, 'set': chosen['id'], 'name': chosen['name'], 'requests': list(chosen['requests']), 'items': [],
                'started': _now(), 'state': '준비 중', 'versions': {}}
@@ -184,6 +188,12 @@ def _go(hub, run):
                 break
             run['state'] = f"{index}/{len(run['requests'])} 요청 중"
             _write(path, run)
+            import environment
+            problem = environment.ready()
+            if problem:                    # (checked before every request: a disk filling up mid-way stops here, not in a crash)
+                run['error'] = problem
+                stopped = True
+                break
             while hub.busy() or any(one.queues.active() for one in list(hub.apps.values())):      # (a person's request anywhere goes first)
                 time.sleep(3)
             started = time.time()

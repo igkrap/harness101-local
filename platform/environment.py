@@ -138,6 +138,25 @@ def _tool_item(tool, label, why, version_cmd):
     return _item(tool, label, why, False, f'설치돼 있지만 플랫폼이 쓰는 경로에 없습니다: {found}' if found else '찾지 못했습니다', _install(tool), find=True)
 
 
+DISK_LEAST_GB = 8          # a server build, a project's database and the model's swap need room: below this, work that builds or runs stops first
+
+
+def disk_free_gb():
+    return round(shutil.disk_usage(str(sites.ROOT)).free / 2 ** 30, 1)
+
+
+def ready():
+    """What would make building or running fail half way - said before starting, not found out by a crash ('' when nothing).
+    A full disk stopped Docker in the middle of a build once (no space left on device), and everything after it failed."""
+    problems = []
+    free = disk_free_gb()
+    if free < DISK_LEAST_GB:
+        problems.append(f'디스크 여유가 {free}GB 뿐입니다 ({DISK_LEAST_GB}GB 이상 필요). 공간을 비운 뒤 다시 하세요.')
+    if _run(['docker', 'info'], timeout=20)[0] != 0:
+        problems.append('Docker 가 응답하지 않습니다. Docker Desktop 을 다시 켠 뒤 다시 하세요.')
+    return ' '.join(problems)
+
+
 def check(hub=None):
     """Every item, as it stands now."""
     out = []
@@ -161,6 +180,9 @@ def check(hub=None):
         running, exists = state[1] == 'true', state[0] == 0
         out.append(_item('db', f'개발 DB ({sites.DB_CONTAINER})', '모든 프로젝트의 개발 데이터베이스', running, '실행 중' if running else '꺼져 있습니다' if exists else '없습니다',
                          {'label': '켜기' if exists else '만들기', 'command': f'docker start {sites.DB_CONTAINER}' if exists else '네트워크·볼륨·DB 컨테이너를 만든다', 'installs': False}))
+    free = disk_free_gb()
+    out.append(_item('disk', '디스크 여유', '앱 서버 빌드, 개발 DB, 모델이 쓰는 공간', free >= DISK_LEAST_GB, f'{free}GB 남음' + ('' if free >= DISK_LEAST_GB else f' ({DISK_LEAST_GB}GB 이상 필요)'),
+                     {'label': '안내', 'command': '안 쓰는 Docker 이미지·큰 파일을 지워 공간을 비운다', 'installs': False, 'manual': True, 'note': '플랫폼이 지울 것을 정하지 않습니다. 안 쓰는 Docker 이미지(docker image prune), 큰 파일을 직접 정리하세요.'}))
     out.append(_tool_item('node', 'Node.js', '화면 미리보기 서버와 화면 빌드, 화면 검사', ['node', '--version']))
     out.append(_tool_item('git', 'Git', '프로젝트의 형상관리 (기록·되돌리기·작업 공간)', ['git', '--version']))
     try:

@@ -93,6 +93,10 @@ def create(hub, body, log=None):
     """Make the project and everything it needs to be worked on. Returns its record (already registered)."""
     note = log or (lambda *_: None)
     title, slug, kind_id = str(body.get('title') or '').strip(), str(body.get('slug') or '').strip().lower(), body.get('kind') or 'business'
+    import environment
+    problem = environment.ready()
+    if problem:
+        raise RuntimeError('프로젝트를 만들 수 없습니다: ' + problem)
     kind = next((item for item in sites.KINDS if item['id'] == kind_id), None)
     if not kind or not kind.get('enabled'):
         raise ValueError('아직 만들 수 없는 종류입니다. 지금은 업무 사이트만 만들 수 있습니다.')
