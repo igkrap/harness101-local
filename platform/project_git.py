@@ -131,10 +131,13 @@ def status(project):
     branch = _git(project, 'branch', '--show-current')
     branches = [b for b in _git(project, 'branch', '--format=%(refname:short)').splitlines() if b]
     dirty = []
-    for line in _git(project, 'status', '--porcelain', '-uall').splitlines():
-        code, path = line.split(None, 1)          # (the output comes trimmed: the first line may have lost the space its code starts with)
-        path = path.split(' -> ')[-1].strip('"')
-        dirty.append({'path': path, 'status': 'added' if '?' in code or 'A' in code else 'deleted' if 'D' in code else 'modified'})
+    # each line is XY PATH: X what the index (the next record) holds, Y what the working files hold besides - read untrimmed
+    for line in _git(project, 'status', '--porcelain', '-uall', raw=True).splitlines():
+        if len(line) < 4:
+            continue
+        code, path = line[:2], line[3:].split(' -> ')[-1].strip('"')
+        dirty.append({'path': path, 'status': 'added' if '?' in code or 'A' in code else 'deleted' if 'D' in code else 'modified',
+                      'staged': code[0] not in ' ?', 'unstaged': code[1] != ' '})
     remote = _git(project, 'remote', 'get-url', 'origin', check=False)
     ahead = None
     if remote and branch:

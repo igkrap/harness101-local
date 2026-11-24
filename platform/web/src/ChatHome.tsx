@@ -87,7 +87,28 @@ function CommitRow({ commit, first }: { commit: Commit; first: boolean }) {
   </li>;
 }
 
-function GitPanel({ git, busy, onOrder, onOpenHistory }: { git: Git | null; busy: boolean; onOrder: (text: string) => void; onOpenHistory: () => void }) {
+function ConnectRemote({ token, onDone }: { token: string; onDone: () => void }) {
+  const [url, setUrl] = useState(""), [busy, setBusy] = useState(false), [said, setSaid] = useState("");
+  const connect = async () => {
+    setBusy(true); setSaid("");
+    try {
+      const r = await apiFetch("/api/history/remote", { method: "POST", headers: { "Content-Type": "application/json", "X-Platform-Token": token }, body: JSON.stringify({ url: url.trim() }) });
+      const d = await r.json(); if (!r.ok) throw Error(d.error || "연결하지 못했습니다.");
+      setUrl(""); onDone();
+    } catch (e) { setSaid(String(e instanceof Error ? e.message : e)); } finally { setBusy(false); }
+  };
+  return <div className="vc-remote">
+    <span>원격 저장소를 연결하면 기록을 GitHub 같은 곳에 올려 둘 수 있습니다.</span>
+    <div className="vc-remote-row">
+      <input aria-label="원격 저장소 주소" value={url} placeholder="https://github.com/회사/저장소.git" onChange={e => setUrl(e.target.value)}
+        onKeyDown={e => { if (e.key === "Enter" && url.trim()) void connect(); }} />
+      <button type="button" className="ch-btn pri" disabled={busy || !url.trim()} onClick={() => void connect()}>{busy ? "연결하는 중…" : "연결"}</button>
+    </div>
+    {said && <span className="vc-warn">{said}</span>}
+  </div>;
+}
+
+function GitPanel({ git, busy, token, onOrder, onOpenHistory, onChanged }: { git: Git | null; busy: boolean; token: string; onOrder: (text: string) => void; onOpenHistory: () => void; onChanged: () => void }) {
   if (!git) return <p className="ch-dim">형상 관리 상태를 읽는 중…</p>;
   const { status, commits } = git;
   const site = status.unrecorded?.site || [];
@@ -109,10 +130,11 @@ function GitPanel({ git, busy, onOrder, onOpenHistory }: { git: Git | null; busy
       {unstaged.map(file => <div key={"u" + file.path} className="vc-file"><span className={`vc-mark m-${file.status}`}>{word(file)}</span><span title={file.path}>{plainPath(file.path)}</span><span className="vc-where">파일</span></div>)}
       {staged.map(file => <div key={"s" + file.path} className="vc-file"><span className={`vc-mark m-${file.status}`}>{word(file)}</span><span title={file.path}>{plainPath(file.path)}</span><span className="vc-where">기록 준비</span></div>)}
     </div>}
+    {!status.remote && <ConnectRemote token={token} onDone={onChanged} />}
     <div className="ch-actions">
       {pending > 0 && <button type="button" className="ch-btn pri" disabled={busy} onClick={() => onOrder("지금까지 만든 것을 커밋해줘")}>기록하기</button>}
       {status.remote && ahead > 0 && <button type="button" className="ch-btn pri" disabled={busy} onClick={() => onOrder("원격 저장소에 올려줘")}>원격에 올리기</button>}
-      <button type="button" className="ch-btn" onClick={onOpenHistory}>작업 공간 · 원격 설정</button>
+      <button type="button" className="ch-btn" onClick={onOpenHistory}>작업 공간 바꾸기</button>
     </div>
     <h4 className="vc-head">기록</h4>
     <ol className="vc-commits">{commits.slice(0, 20).map((commit, index) => <CommitRow key={commit.sha} commit={commit} first={index === 0} />)}</ol>
@@ -231,7 +253,7 @@ export default function ChatHome(props: {
         {panel === "preview" && <Preview token={props.token} />}
         {panel === "flow" && <FlowMapPage />}
         {panel === "changes" && (panelJob ? <ChangesPanel key={panelJob} jobId={panelJob} embedded autoOpen /> : <p className="ch-dim">대화의 결과 카드에서 「바뀐 내용」을 누르세요.</p>)}
-        {panel === "git" && <GitPanel git={git} busy={props.busy || running} onOrder={order} onOpenHistory={props.onOpenHistory} />}
+        {panel === "git" && <GitPanel git={git} busy={props.busy || running} token={props.token} onOrder={order} onOpenHistory={props.onOpenHistory} onChanged={refresh} />}
         {panel === "deploy" && <Operation refreshKey={`${queue?.id}:${queue?.status}`} busy={props.busy || running} onOrder={order} />}
       </div>
     </aside>}
