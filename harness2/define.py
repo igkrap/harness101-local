@@ -29,7 +29,7 @@ PROMPT = '''업무 시스템의 화면을 "정의"로 만든다. 코드를 쓰�
   여러 단계를 거쳐 이어지는 업무(신청 → 승인, 지시 → 실적, 대여 → 반납 ...)를 만드는 요청이면 단계를 지어내지 말고 flowPatterns 에서 요청에 맞는 모양을 하나 고른다: {"action": "steps", "pattern": "<pattern>", "stages": ["<단계 화면의 title>", ...], "steps": [...]}. stages 는 그 모양의 단계 순서대로 각 단계 화면의 title 이다. steps 에는 단계 화면보다 먼저 있어야 할 기준 정보 화면(가리킬 자료)에 대한 요청 문장만 적는다(없으면 빈 목록). 단계 화면의 요청 문장은 프레임워크가 그 모양의 says 로 만든다. 요청에 없는 단계가 생기는 모양(요청에 승인이 없는데 신청-승인)은 고르지 않는다. 맞는 모양이 없으면 pattern 을 적지 않는다. 업무 흐름 등록은 따로 적지 않는다(모양에서 저절로 등록된다).
   먼저 있어야 하는 것부터 차례로 적는다(가리킬 자료 → 그것을 쓰는 화면, 집계 화면 → 그것을 담는 현황판, 상태·동작 추가 → 그 동작을 쓰는 자동 처리). 각 문장은 화면 하나에 대한 것이고, 앞뒤 문장 없이도 뜻이 통하게 화면 이름과 할 일을 다 적는다.
 - 현황·합계·통계·차트처럼 이미 있는 자료를 모아서 보는 요청은 새 자료를 만들지 말고 집계 화면(summary)으로 한다. 모을 자료는 이미 있어야 한다.
-- 승인 화면·처리 화면·대기 목록·조회 전용 화면처럼 이미 있는 자료를 다른 화면으로 여는 요청은 새 자료를 만들지 말고 over 로 한다. 권한은 화면 단위이므로 "팀장만 승인"은 승인 화면을 따로 만드는 것으로 푼다(누구에게 그 화면을 줄지는 사람이 정한다). 그 동작을 등록 화면에서는 못 하게 하려면 steps 로: 먼저 그 자료의 등록 화면에서 동작에 separate 를 붙이고(없는 상태·동작이면 추가하고), 다음에 업무 화면을 만든다.
+- 승인 화면·처리 화면·대기 목록·조회 전용 화면처럼 이미 있는 자료를 다른 화면으로 여는 요청은 새 자료를 만들지 말고 over 로 한다. 권한은 화면 단위이므로 "팀장만 승인"은 승인 화면을 따로 만드는 것으로 푼다(누구에게 그 화면을 줄지는 사람이 정한다). 업무 화면이 actions 로 맡은 동작은 등록 화면에서 저절로 빠진다(separate 를 적지 않는다). 그 자료에 아직 없는 상태·동작이면 steps 로: 먼저 그 자료에 상태·동작을 추가하고, 다음에 업무 화면을 만든다.
 - 앞 단계 자료를 조회해서 다음 단계를 등록하는 요청("주문을 조회해서 출하 등록", "점검 지시에서 선택해 점검 결과 등록", "~에서 선택해서 한꺼번에 ~ 등록")은 새 등록 화면을 만들지 말고 연계 화면(take)으로 한다. 여러 건을 목록에서 고르고 수량만 고쳐 저장하는 화면이며 입력 폼이 없다. 만들 자료와 앞 단계 자료는 이미 있어야 하고, 만들 자료에 앞 단계를 한도로 하는 limits 가 있어야 한다(없으면 steps 로 그 한도부터 넣는다).
 - 현황판·대시보드처럼 차트만 모아 보는 요청은 dashboard 로 한다. 패널은 이미 있는 집계 화면만 가리킬 수 있으므로, 맞는 집계 화면이 있으면 그것을 쓰고, 없으면 steps 로 필요한 집계 화면들을 먼저 만들고 마지막에 현황판을 만든다.
 - 수량 원장(ledger)으로 들고 나는 것의 남은 수량·현재 수량을 보는 화면은 집계로 빼지 말고 원장 보기(ledgerView)로 하고, thing 에 그 대상 자료 key 를 적는다 (재고 현황 → item, 장비 보관 현황 → equipment).
@@ -577,7 +577,8 @@ def write(request, framework, record_to, trial_prefix='trial_', allow_steps=True
                     if not shape or not shape.get('stages'):
                         raise ValueError(f'pattern "{pattern}" 은 flowPatterns 에 없다 (있는 것: {", ".join(name for name, item in known_patterns.items() if item.get("stages"))}). 맞는 모양이 없으면 pattern 을 적지 않는다')
                     if not isinstance(stages, list) or len(stages) != len(shape['stages']) or not all(isinstance(title, str) and title.strip() for title in stages):
-                        raise ValueError(f'pattern "{pattern}" 의 stages 는 ' + ' → '.join(stage['role'] for stage in shape['stages']) + ' 순서로 단계 화면의 title 을 하나씩 적는다')
+                        raise ValueError(f'pattern "{pattern}" 의 stages 는 ' + ' → '.join(stage['role'] for stage in shape['stages']) + ' 순서로 단계 화면의 title 을 하나씩 모두 적는다 ('
+                                         + str(len(shape['stages'])) + '개). 이미 있는 단계 화면도 그 title 그대로 적는다 (위의 이미 있는 자료 참고) - 있는 화면은 다시 만들지 않는다')
                     # the stages' own sentences are the framework's: of the model's steps only the screens that come before the stages stay
                     named = {re.sub(r'\s+', '', title) for title in stages}
                     steps = [step for step in steps if re.sub(r'\s+', '', screen_named(step)) not in named]

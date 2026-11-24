@@ -237,6 +237,10 @@ public class AppDefinitions {
         public Definition withKind(String said) {
             return new Definition(key, type, title, keywords, fields, lines, status, rules, summary, print, dashboard, checks, limits, effects, over, period, calendar, tree, moreLines, take, ledger, uniqueBy, noCycle, ledgerView, effective, follows, dataOnly, lookups, lock, codeGroups, noOverlap, from, said);
         }
+        /** The same definition with its status changed (actions a work screen takes over, marked separate). */
+        public Definition withStatus(Status withStatus) {
+            return new Definition(key, type, title, keywords, fields, lines, withStatus, rules, summary, print, dashboard, checks, limits, effects, over, period, calendar, tree, moreLines, take, ledger, uniqueBy, noCycle, ledgerView, effective, follows, dataOnly, lookups, lock, codeGroups, noOverlap, from, kind);
+        }
         public Definition(String key, String type, String title, List<String> keywords, List<Field> fields, Lines lines, Status status, List<Rule> rules, Summary summary, Print print, Dashboard dashboard,
                           List<Check> checks, List<Limit> limits, List<Effect> effects, Over over, String period, Calendar calendar, Tree tree) {
             this(key, type, title, keywords, fields, lines, status, rules, summary, print, dashboard, checks, limits, effects, over, period, calendar, tree, List.of(), null, null, List.of(), null, null, null, null, false, List.of(), null, List.of(), List.of(), null);
@@ -266,12 +270,12 @@ public class AppDefinitions {
                                             "「{title}」 연계 화면을 만들어줘. 「{prev}」 가운데 아직 처리하지 않은 것을 목록으로 조회해 선택하고 저장하면 「{title}」 자료가 만들어지는 연계 화면(take)이다 - 입력 폼이 아니라 목록에서 골라 저장하는 화면이고, 「{title}」 자료는 이미 있다."))),
             Map.of("pattern", "신청-승인", "when", "누가 신청하고, 다른 사람이 승인하거나 반려하는 업무",
                     "stages", List.of(stage("신청", "신청을 등록하는 업무 기록 (status 에 승인·반려 상태와 버튼)", List.of("status"),
-                                            "「{title}」 화면을 만들어줘. 신청을 등록하는 업무 기록이다: 진행 상태(status)는 접수·승인·반려이고, 승인·반려 동작은 「{next}」 화면에서만 한다(separate)."),
+                                            "「{title}」 화면을 만들어줘. 신청을 등록하는 업무 기록이다: 진행 상태(status)는 접수·승인·반려이고, 승인·반려 동작이 있다 (누르는 곳은 「{next}」 화면이다)."),
                                       stage("승인", "신청을 여는 업무 화면(over) - 승인·반려 버튼만 있는 화면", List.of("over.actions"),
                                             "「{title}」 화면을 만들어줘. 「{prev}」 자료를 여는 업무 화면(over)이다: 접수 상태인 「{prev}」만 보이고, 승인·반려 버튼만 있으며 내용은 고치지 못한다."))),
             Map.of("pattern", "신청-승인-처리", "when", "신청하고 승인받은 뒤, 승인된 것을 처리(발급·지급·배정 ...)한 결과를 등록하는 업무",
                     "stages", List.of(stage("신청", "신청을 등록하는 업무 기록 (status 에 승인·반려 상태와 버튼)", List.of("status"),
-                                            "「{title}」 화면을 만들어줘. 신청을 등록하는 업무 기록이다: 진행 상태(status)는 접수·승인·반려이고, 승인·반려 동작은 「{next}」 화면에서만 한다(separate)."),
+                                            "「{title}」 화면을 만들어줘. 신청을 등록하는 업무 기록이다: 진행 상태(status)는 접수·승인·반려이고, 승인·반려 동작이 있다 (누르는 곳은 「{next}」 화면이다)."),
                                       stage("승인", "신청을 여는 업무 화면(over) - 승인·반려 버튼만 있는 화면", List.of("over.actions"),
                                             "「{title}」 화면을 만들어줘. 「{prev}」 자료를 여는 업무 화면(over)이다: 접수 상태인 「{prev}」만 보이고, 승인·반려 버튼만 있으며 내용은 고치지 못한다."),
                                       stage("처리", "승인된 신청에서 연계(take)로 만드는 처리 기록 (follows 로 신청을 가리킴) + 그 연계 화면", List.of("follows", "take-into"),
@@ -527,7 +531,7 @@ public class AppDefinitions {
               statuses 를 적으면 그 상태의 건만 보인다 (승인 대기 = 아직 승인 전 상태). 안 적으면 전부 보인다. actions 의 동작만 버튼으로 나온다. edit false(기본)면 내용은 못 고친다. create 가 없으면 새로 등록할 수 없고, 지우는 것은 언제나 안 된다.
               create true 면 이 화면에서 새로 등록할 수 있다 (등록만 하는 화면: statuses·actions 를 비우고 edit false, create true - 고치기·취소·마감은 그 자료의 관리 화면에서).
               권한은 화면 단위다: 누가 승인하는지는 이 화면을 어느 역할에 주느냐로 정해진다 (사람이 권한 화면에서 준다).
-              등록 화면에서는 못 하고 업무 화면에서만 하게 하려면, 그 자료의 등록 화면 정의에서 그 동작에 "separate": true 를 붙인다: {"name": "approve", ..., "separate": true}.
+              업무 화면의 actions 에 적은 동작은 그 자료의 등록 화면에서는 저절로 빠진다 (그 업무 화면에서만 한다 - separate 를 따로 적지 않는다).
             현황판(대시보드)의 모양 - 차트 패널만 있다. fields 없이 dashboard 만 적는다:
             {"title": "<화면 이름>", "keywords": [...],
              "dashboard": {"panels": [{"summary": "<이미 있는 집계 화면 key>", "chart": "bar|line|pie|figures", "value": "<그 집계 화면의 values label>", "title": "<패널 제목>", "width": 1|2|3}]}}
@@ -559,6 +563,7 @@ public class AppDefinitions {
                     org.slf4j.LoggerFactory.getLogger(AppDefinitions.class).warn("definition {} does not read: {}", key, broken.getMessage());
                 }
             }
+            separateTakenOver(read);
             heldDefinitions = java.util.Collections.unmodifiableMap(read);
             heldStamp = stamp;
             return heldDefinitions;
@@ -567,6 +572,26 @@ public class AppDefinitions {
     }
 
     private final ThreadLocal<Boolean> filling = ThreadLocal.withInitial(() -> false);
+
+    /** An action a work screen (over) lists is that screen's to take: the entity's own screen does not offer it - the definition need
+     *  not say so (separate) itself. Who may take it is then a matter of who has the work screen. */
+    private static void separateTakenOver(Map<String, Stored> read) {
+        Map<String, Set<String>> taken = new LinkedHashMap<>();
+        for (Stored one : read.values()) {
+            Over over = one.definition().over();
+            if (over != null && over.actions() != null && !"DRAFT".equals(one.status())) taken.computeIfAbsent(over.entity(), ignored -> new java.util.HashSet<>()).addAll(over.actions());
+        }
+        for (Map.Entry<String, Set<String>> entry : taken.entrySet()) {
+            Stored one = read.get(entry.getKey());
+            if (one == null || one.definition().status() == null) continue;
+            Status status = one.definition().status();
+            if (status.actions().stream().noneMatch(action -> entry.getValue().contains(action.name()) && !action.separate())) continue;
+            List<Action> actions = status.actions().stream().map(action -> entry.getValue().contains(action.name()) && !action.separate()
+                    ? new Action(action.name(), action.label(), action.from(), action.to(), true) : action).toList();
+            read.put(entry.getKey(), new Stored(one.definition().withStatus(new Status(status.initial(), status.values(), actions, status.locked(), status.closed())),
+                    one.programCode(), one.status(), one.revision()));
+        }
+    }
 
     /** One definition straight from the table (what reading a definition looks up while the kept ones are being filled). */
     private Stored readOne(String key) {
@@ -593,6 +618,17 @@ public class AppDefinitions {
         declared.get().clear();
         for (CodeGroup group : codeGroups(node.get("codeGroups"))) declared.get().put(group.code(), group.values().stream().map(CodeValue::code).toList());
         if (node.hasNonNull("from")) node = withFrom(key, node.deepCopy(), checkTargets);
+        if (node.hasNonNull("follows") && node.path("fields").isArray()) {
+            // the field pointing at the stage before is never required (a 기타 screen registers without one; a take-over always fills it):
+            // said required, it is simply taken as not - nothing for the model to get wrong here
+            String follows = node.get("follows").asString();
+            for (JsonNode field : node.path("fields"))
+                if (follows.equals(field.path("name").asString()) && field.path("required").asBoolean(false)) {
+                    node = node.deepCopy();
+                    for (JsonNode own : node.path("fields")) if (follows.equals(own.path("name").asString())) ((tools.jackson.databind.node.ObjectNode) own).put("required", false);
+                    break;
+                }
+        }
         // what the screen is to the work - master data or work - as the model judged it: kept as said, never guessed here
         String kind = null;
         if (node.hasNonNull("kind")) {
@@ -1517,7 +1553,8 @@ public class AppDefinitions {
             String type = text(item, "type"), action = text(item, "action"), entity = text(item, "entity"), field = text(item, "field"), message = text(item, "message");
             if (!type.equals("blockWhenReferenced")) throw bad("rules 의 type 은 blockWhenReferenced 입니다.");
             boolean known = action.equals("delete") || action.equals("update") || (status != null && status.actions().stream().anyMatch(candidate -> candidate.name().equals(action)));
-            if (!known) throw bad("rule 의 action 은 delete, update 또는 status.actions 의 name 이어야 합니다 (" + action + ").");
+            if (!known) throw bad("rule 의 action 은 delete, update 또는 status.actions 의 name 이어야 합니다 (" + action + ")."
+                    + (action.equals("create") ? " 등록 자체를 막는 것은 rules 가 아니다: 한 건에 한 번만이면 limits, 겹치면 안 되는 항목 조합이면 uniqueBy, 한 건 안의 두 값 비교면 checks 로 적는다." : ""));
             if (!entity.matches(KEY) || !field.matches(NAME) || message.isEmpty()) throw bad("rule 에는 entity, field, message 가 필요합니다.");
             if (checkTargets) {
                 Stored other = find(entity);
