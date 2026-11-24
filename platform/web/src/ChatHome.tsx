@@ -157,7 +157,7 @@ export default function ChatHome(props: {
           return <div key={q.id} className="ch-turn">
             <div className="ch-me"><p>{q.goal}</p><span>{stamp(q.created_at)}</span></div>
             <div className={`ch-card t-${tone}`}>
-              <header><span className={`ch-pill t-${tone}`}>{label}</span>
+              <header><span className={`ch-pill t-${tone}`}>{({ ok: "✓ ", bad: "✕ ", live: "● ", wait: "! ", muted: "" } as Record<string, string>)[tone] || ""}{label}</span>
                 <span className="ch-dim">{took(q.created_at, isLive ? null : q.finished_at)}{r?.checks ? ` · 점검 ${r.checks}개` : ""}{r?.title && !isLive ? ` · ${r.title}` : ""}</span></header>
               {isLive && (mine ? <LiveSteps live={mine} /> : <p className="ch-dim">{q.status === "planning" ? "요청을 읽고 계획하는 중…" : "진행 중…"}</p>)}
               {!isLive && why && <p className={tone === "bad" ? "ch-why" : "ch-said"}>{why}</p>}
@@ -178,7 +178,7 @@ export default function ChatHome(props: {
           </div>;
         })}
         {loose > 0 && !running && <div className="ch-card t-wait ch-notice">
-          <header><span className="ch-pill t-wait">기록 안 됨</span><span>아직 기록하지 않은 변경이 {loose}개 있습니다</span></header>
+          <header><span className="ch-pill t-wait">! 기록 안 됨</span><span>아직 기록하지 않은 변경이 {loose}개 있습니다</span></header>
           <div className="ch-actions"><button type="button" className="ch-btn pri" disabled={props.busy} onClick={() => order("지금까지 만든 것을 커밋해줘")}>기록하기</button>
             <button type="button" className="ch-btn" onClick={() => open("git")}>무엇이 바뀌었나</button></div></div>}
       </div>
