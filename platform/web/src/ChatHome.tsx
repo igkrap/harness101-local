@@ -183,12 +183,15 @@ export default function ChatHome(props: {
             <button type="button" className="ch-btn" onClick={() => open("git")}>무엇이 바뀌었나</button></div></div>}
       </div>
       <div className="ch-compose">
-        {props.blockedReason ? <p className="ch-blocked">{props.blockedReason}</p>
+        {props.blockedReason && !running ? <p className="ch-blocked">{props.blockedReason}</p>
           : <div className="ch-sug">{suggestions.map(([label, act]) => <button key={label} type="button" onClick={act}>{label}</button>)}</div>}
         <div className="ch-box">
           <textarea ref={area} aria-label="요청 내용" value={props.goal} maxLength={16000} placeholder="무엇을 만들까요?"
             onChange={e => props.setGoal(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); } }} />
-          <button type="button" className="ch-send" disabled={!props.canStart} onClick={send} aria-label="보내기">보내기 <kbd>⌘↵</kbd></button>
+          {running && queue
+            ? <button type="button" className="ch-send is-stop" disabled={props.busy || queue.status === "stopping"} onClick={() => props.onStopQueue(queue.id)} aria-label="중지">
+                <span className="ch-stop-mark" aria-hidden />{queue.status === "stopping" ? "멈추는 중…" : "중지"}</button>
+            : <button type="button" className="ch-send" disabled={!props.canStart} onClick={send} aria-label="보내기">보내기 <kbd>⌘↵</kbd></button>}
         </div>
       </div>
     </div>

@@ -6,11 +6,11 @@
 .ch-empty b { font-size: 20px; color: var(--color-text-primary); }
 
 .ch-turn { display: flex; flex-direction: column; gap: 8px; }
-.ch-me { align-self: flex-end; max-width: 72%; background: rgba(127, 127, 127, .14); color: var(--color-text-primary); border-radius: 12px; padding: 8px 12px; }
+.ch-me { align-self: flex-end; max-width: 72%; background: rgba(127, 127, 127, .16); color: var(--color-text-primary); border-radius: 12px 12px 4px 12px; padding: 8px 12px; }
 .ch-me p { margin: 0; white-space: pre-wrap; line-height: 1.55; }
 .ch-me span { display: block; text-align: right; font-size: 11px; color: var(--color-text-secondary); margin-top: 2px; }
 
-.ch-card { align-self: flex-start; width: min(100%, 860px); display: flex; flex-direction: column; gap: 4px; padding: 0 2px; }
+.ch-card { align-self: flex-start; width: fit-content; max-width: min(88%, 860px); display: flex; flex-direction: column; gap: 4px; padding: 9px 13px; border-radius: 12px 12px 12px 4px; background: rgba(127, 127, 127, .07); }
 .ch-card header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ch-pill { font-size: 12.5px; font-weight: 600; color: var(--color-text-secondary); }
 .ch-pill.t-ok { color: var(--color-text-success, #2f9e44); }
@@ -37,7 +37,7 @@
 .ch-btn:disabled { color: var(--color-text-secondary); opacity: .6; cursor: default; }
 .ch-link { font: inherit; font-size: 12.5px; background: none; border: 0; padding: 0; color: var(--color-text-secondary); cursor: pointer; }
 .ch-btn:hover, .ch-link:hover { text-decoration: underline; }
-.ch-notice { padding-top: 4px; border-top: 1px dashed var(--color-border); }
+.ch-notice { }
 
 .ch-compose { border-top: 1px solid var(--color-border); padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
 .ch-sug { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -81,3 +81,5 @@
 .ps-chip.warn { color: var(--color-text-warning, #c2410c); }
 
 .nav-toggle { all: unset; cursor: pointer; font-size: 11px; color: var(--color-text-secondary); padding: 0 4px; }
+.ch-send.is-stop { background: var(--color-text-primary); color: var(--color-background-surface); }
+.ch-stop-mark { width: 9px; height: 9px; border-radius: 2px; background: currentColor; display: inline-block; }
