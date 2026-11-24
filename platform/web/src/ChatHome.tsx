@@ -62,34 +62,60 @@ function LiveSteps({ live }: { live: Live }) {
   </div>;
 }
 
+const AREA: [RegExp, string][] = [[/^release\/definitions\/(.+)\.json$/, "화면 정의 · $1"], [/^release\/menus\.json$/, "메뉴 편성"], [/^release\/codes\.json$/, "공통 코드"],
+  [/^release\/flows\.json$/, "업무 흐름"], [/^release\/settings\.json$/, "시스템 설정"], [/^principles\.md$/, "업무 원칙"]];
+const plainPath = (path: string) => { for (const [rule, name] of AREA) if (rule.test(path)) return path.replace(rule, name); return path; };
+const ago = (iso: string) => {
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  return s < 60 ? "방금" : s < 3600 ? `${Math.floor(s / 60)}분 전` : s < 86400 ? `${Math.floor(s / 3600)}시간 전` : s < 7 * 86400 ? `${Math.floor(s / 86400)}일 전` : stamp(iso).slice(0, 10);
+};
+type CommitFile = { path: string; status: string; added: number; removed: number };
+
+function CommitRow({ commit, first }: { commit: Commit; first: boolean }) {
+  const [open, setOpen] = useState(false), [files, setFiles] = useState<CommitFile[] | null>(null);
+  const toggle = () => { setOpen(!open); if (!files) apiFetch(`/api/history/${commit.sha}`).then(r => r.json()).then(d => setFiles(d.files || [])).catch(() => setFiles([])); };
+  const who = commit.kind === "model" ? "로컬 모델" : commit.kind === "person" ? "사람" : "플랫폼";
+  return <li className={`vc-commit${first ? " is-head" : ""}`}>
+    <span className="vc-dot" aria-hidden />
+    <button type="button" className="vc-commit-line" aria-expanded={open} onClick={toggle} title={stamp(commit.date)}>
+      <span className="vc-subject">{commit.subject}</span>
+      <span className="vc-meta">{who} · {ago(commit.date)}{first ? " · 지금 여기" : ""}</span>
+    </button>
+    {open && <ul className="vc-files">{files === null ? <li className="ch-dim">읽는 중…</li> : !files.length ? <li className="ch-dim">바뀐 파일 없음</li>
+      : files.map(file => <li key={file.path}><span className={`vc-mark m-${file.status}`}>{file.status === "added" ? "+" : file.status === "deleted" ? "−" : "~"}</span>
+          <span className="vc-path" title={file.path}>{plainPath(file.path)}</span><span className="vc-num">{file.added ? `+${file.added}` : ""} {file.removed ? `−${file.removed}` : ""}</span></li>)}</ul>}
+  </li>;
+}
+
 function GitPanel({ git, busy, onOrder, onOpenHistory }: { git: Git | null; busy: boolean; onOrder: (text: string) => void; onOpenHistory: () => void }) {
   if (!git) return <p className="ch-dim">형상 관리 상태를 읽는 중…</p>;
   const { status, commits } = git;
   const site = status.unrecorded?.site || [];
-  const staged = status.dirty.filter(file => file.staged), unstaged = status.dirty.filter(file => file.staged === undefined || file.unstaged);
-  const word = (file: Dirty) => file.status === "added" ? "새 파일" : file.status === "deleted" ? "지움" : "고침";
-  const nothing = !site.length && !status.dirty.length;
-  return <div className="ch-git">
-    <div className="ch-git-head">
-      <div><span className="ch-dim">작업 공간</span><b>{status.branch || "-"}</b></div>
-      <div><span className="ch-dim">원격</span><b>{status.remote ? (status.ahead ? `올리지 않은 기록 ${status.ahead}` : "맞춰져 있음") : "연결 안 됨"}</b></div>
-      <div><span className="ch-dim">마지막 기록</span><b>{commits[0] ? `${commits[0].subject.slice(0, 22)}` : "-"}</b></div>
-    </div>
-    <section><h4>1. 개발 사이트에만 있음 <span className="ch-count">{site.length}</span></h4>
-      {site.length ? <ul>{site.map(name => <li key={name}>{name}</li>)}</ul> : <p className="ch-dim">없음</p>}</section>
-    <section><h4>2. 파일 변경 · 기록 준비 전 <span className="ch-count">{unstaged.length}</span></h4>
-      {unstaged.length ? <ul>{unstaged.map(file => <li key={file.path}><span className={`ch-file f-${file.status}`}>{word(file)}</span>{file.path}</li>)}</ul> : <p className="ch-dim">없음</p>}</section>
-    {status.dirty.some(file => file.staged !== undefined) && <section><h4>3. 기록 준비됨 (스테이징) <span className="ch-count">{staged.length}</span></h4>
-      {staged.length ? <ul>{staged.map(file => <li key={file.path}><span className={`ch-file f-${file.status}`}>{word(file)}</span>{file.path}</li>)}</ul> : <p className="ch-dim">없음</p>}</section>}
+  const knowsStaging = status.dirty.some(file => file.staged !== undefined);
+  const staged = status.dirty.filter(file => file.staged), unstaged = status.dirty.filter(file => !knowsStaging || file.unstaged);
+  const pending = site.length + status.dirty.length, ahead = status.ahead || 0;
+  // where changes travel: made on the development site, written to files, made ready (staged), recorded, sent to the remote
+  const stages: [string, number, string][] = [["개발 사이트", site.length, "화면·메뉴·코드를 바꿨지만 아직 파일로 나가지 않음"], ["파일", unstaged.length, "파일이 바뀌었지만 기록 준비 전"],
+    ...(knowsStaging ? [["기록 준비", staged.length, "다음 기록에 들어갈 변경 (스테이징)"] as [string, number, string]] : []),
+    ["기록", commits.length ? 1 : 0, "깃에 기록됨"], ["원격", status.remote ? ahead : 0, status.remote ? "원격 저장소에 아직 올리지 않은 기록" : "원격 저장소가 연결되어 있지 않음"]];
+  const word = (file: Dirty) => file.status === "added" ? "+" : file.status === "deleted" ? "−" : "~";
+  return <div className="vc">
+    <p className="vc-summary"><b>{status.branch || "-"}</b> 작업 공간 · {pending ? <span className="vc-warn">기록 안 된 변경 {pending}개</span> : "모두 기록됨"} · {status.remote ? (ahead ? <span className="vc-warn">원격에 안 올린 기록 {ahead}개</span> : "원격과 같음") : "원격 연결 안 됨"}</p>
+    <ol className="vc-flow" aria-label="변경이 가는 길">{stages.map(([name, count, why], index) => {
+      const here = index < stages.length - 2 ? count > 0 : index === stages.length - 1 ? count > 0 : !pending;
+      return <li key={name} className={here ? "is-here" : ""} title={why}><span>{name}</span>{index < stages.length - 2 || index === stages.length - 1 ? <em>{count}</em> : null}</li>; })}</ol>
+    {pending > 0 && <div className="vc-pending">
+      {site.map(name => <div key={name} className="vc-file"><span className="vc-mark m-modified">~</span><span>{name}</span><span className="vc-where">개발 사이트</span></div>)}
+      {unstaged.map(file => <div key={"u" + file.path} className="vc-file"><span className={`vc-mark m-${file.status}`}>{word(file)}</span><span title={file.path}>{plainPath(file.path)}</span><span className="vc-where">파일</span></div>)}
+      {staged.map(file => <div key={"s" + file.path} className="vc-file"><span className={`vc-mark m-${file.status}`}>{word(file)}</span><span title={file.path}>{plainPath(file.path)}</span><span className="vc-where">기록 준비</span></div>)}
+    </div>}
     <div className="ch-actions">
-      <button type="button" className="ch-btn pri" disabled={busy || nothing} onClick={() => onOrder("지금까지 만든 것을 커밋해줘")}>기록하기</button>
-      {status.remote && !!status.ahead && <button type="button" className="ch-btn" disabled={busy} onClick={() => onOrder("원격 저장소에 올려줘")}>원격에 올리기</button>}
-      <button type="button" className="ch-btn" onClick={onOpenHistory}>변경 이력 전체</button>
+      {pending > 0 && <button type="button" className="ch-btn pri" disabled={busy} onClick={() => onOrder("지금까지 만든 것을 커밋해줘")}>기록하기</button>}
+      {status.remote && ahead > 0 && <button type="button" className="ch-btn pri" disabled={busy} onClick={() => onOrder("원격 저장소에 올려줘")}>원격에 올리기</button>}
+      <button type="button" className="ch-btn" onClick={onOpenHistory}>작업 공간 · 원격 설정</button>
     </div>
-    <section><h4>최근 기록</h4>
-      <ul className="ch-commits">{commits.slice(0, 12).map(commit => <li key={commit.sha}>
-        <span className={`ch-who k-${commit.kind}`}>{commit.kind === "model" ? "모델" : commit.kind === "person" ? "사람" : "플랫폼"}</span>
-        <span className="ch-subject" title={commit.subject}>{commit.subject}</span><span className="ch-date">{stamp(commit.date)}</span></li>)}</ul></section>
+    <h4 className="vc-head">기록</h4>
+    <ol className="vc-commits">{commits.slice(0, 20).map((commit, index) => <CommitRow key={commit.sha} commit={commit} first={index === 0} />)}</ol>
   </div>;
 }
 
