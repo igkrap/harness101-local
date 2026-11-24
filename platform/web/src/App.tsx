@@ -14,16 +14,18 @@ import MonitorPage from "./MonitorPage";
 import HomePage from "./HomePage";
 import DevTools from "./DevTools";
 import PartRequestsPage from "./PartRequestsPage";
+import ChatHome from "./ChatHome";
+import ProjectStatus from "./ProjectStatus";
 import BenchmarksPage from "./BenchmarksPage";
 import { Selector } from "./Select";
-import ProjectManager, { ProjectPicker, EnvironmentCheck } from "./ProjectManager";
+import ProjectManager, { ProjectPicker, EnvironmentCheck, switchProject } from "./ProjectManager";
 import ModelManager, {type ModelConfig} from "./ModelManager";
 import ChatPanel from "./ChatPanel";
 import { QueuePanel, type TaskQueue } from "./QueuePanel";
 import { RunComposer } from "./RunComposer";
 import { OverviewStats } from "./OverviewStats";
 import { ChangesPanel } from "./ChangesPanel";
-import { apiFetch, projectId } from "./api";
+import { apiFetch, projectId, forgetProject } from "./api";
 import { useEffect, useRef, useState, lazy, Suspense, type ReactNode } from "react";
 import { VStack, HStack } from "@astryxdesign/core/Layout";
 import { Text, Heading } from "@astryxdesign/core/Text";
@@ -376,7 +378,8 @@ export default function App() {
     [page, setPage] = useState("home"),
     [focusKey, setFocusKey] = useState(0),
     [collapsed, setCollapsed] = useState(()=>window.matchMedia('(max-width: 1000px)').matches),
-    [tabs, setTabs] = useState(["overview"]);
+    [tabs, setTabs] = useState(["overview"]),
+    [devOpen, setDevOpen] = useState(() => !!localStorage.getItem("nav:dev"));
   const [composerOpen,setComposerOpen]=useState(true),[runTab,setRunTab]=useState("logs");
   const composerRef=useRef<HTMLDivElement>(null);
   useEffect(()=>{
@@ -420,6 +423,14 @@ export default function App() {
         if (next.no_projects) setFirstRun(next.token); else { setFirstRun(null); setData(next); }
         setOffline("");
       } catch (e) {
+        if (!controller.signal.aborted && String(e).includes("등록된 프로젝트가 아닙니다")) {
+          // the project this window remembers is gone (or none was chosen yet): open one that is there - a measurement's own last
+          if (projectId !== "default") { forgetProject(); return; }
+          const list = await read<{ projects: { id: string; available?: boolean; site?: { slug?: string } }[] }>("/api/projects").catch(() => ({ projects: [] }));
+          const there = list.projects.filter(p => p.available !== false);
+          const pick = there.find(p => !(p.site?.slug || "").startsWith("bench-")) || there[0];
+          if (pick) { switchProject(pick.id); return; }
+        }
         if (!controller.signal.aborted) setOffline(String(e));
       }
       if (!controller.signal.aborted) timer = setTimeout(poll, 1500);
@@ -525,9 +536,9 @@ export default function App() {
   const stop = () =>
     data?.active && post(`/api/jobs/${data.active.id}/stop`, {});
   const navGroups: [string, string[][]][] = [
-    ["업무", [["home", "만들기"], ["monitor", "실시간 보기"], ["preview", "앱 보기"], ["guide", "업무 안내서"], ["flowmap", "업무 흐름도"], ["history", "변경 이력"]]],
+    ["업무", [["home", "대화"], ["monitor", "실시간 보기"], ["preview", "앱 보기"], ["guide", "업무 안내서"], ["flowmap", "업무 흐름도"], ["history", "변경 이력"]]],
     ["설정", [["projects", "프로젝트"], ["environment", "개발 환경"], ["models", "AI 모델"]]],
-    ["개발자 도구", [["tools", "화면 정의·자료·서버"], ["run", "실행 기록"], ["overview", "통계"], ["parts", "부품 요청"], ["bench", "측정"], ["source", "프로젝트 소스"], ["chat", "채팅"]]],
+    ["개발자 도구", [["bench", "측정"], ["run", "실행 기록"], ["parts", "부품 요청"], ["tools", "화면 정의·자료·서버"], ["overview", "통계"], ["source", "프로젝트 소스"], ["chat", "채팅"]]],
   ];
   const navigation = navGroups.flatMap(([, items]) => items);
   const disabled =
@@ -569,7 +580,7 @@ export default function App() {
           />
         }
         className={collapsed ? "nav-collapsed" : undefined}
-        topContent={collapsed ? undefined : <ProjectPicker/>}
+        topContent={collapsed ? undefined : <div><ProjectPicker/><ProjectStatus onOpen={() => navigate("history")}/></div>}
         footer={<span title={`AI ${data?.model.online ? "준비됨" : "연결 확인 중"}`}><Text size="sm" style={{color: data?.model.online ? "var(--color-text-success)" : "var(--color-text-warning)"}}>●{collapsed ? "" : ` AI ${data?.model.online ? "준비됨" : "연결 확인 중"}`}</Text></span>}
         collapsible={{
           isCollapsed: collapsed,
@@ -578,8 +589,9 @@ export default function App() {
         }}
       >
         {navGroups.map(([title, items]) => (
-          <SideNavSection key={title || "main"} title={title || "업무"}>
-            {items.map(([key, label]) => (
+          <SideNavSection key={title || "main"} title={title || "업무"}
+            endContent={title === "개발자 도구" ? <button type="button" className="nav-toggle" aria-expanded={devOpen} onClick={() => { setDevOpen(!devOpen); localStorage.setItem("nav:dev", devOpen ? "" : "1"); }}>{devOpen ? "접기" : "펼치기"}</button> : undefined}>
+            {(title !== "개발자 도구" || devOpen || items.some(([key]) => key === page) ? items : []).map(([key, label]) => (
               <SideNavItem key={key} label={label} icon={<Mark kind={key} />} isSelected={page === key} onClick={() => navigate(key)} />
             ))}
           </SideNavSection>
@@ -613,7 +625,15 @@ export default function App() {
               </HStack>
             </Card>
           )}
-          {page === "home" && <HomePage token={data?.token||""} goal={goal} setGoal={setGoal} busy={busy}
+          {page === "home" && <ChatHome token={data?.token||""} goal={goal} setGoal={setGoal} busy={busy}
+            canStart={!disabled&&!!goal.trim()&&!!data?.model.online&&!!effectiveModel} blockedReason={blockedReason} onStart={start}
+            queue={data?.queue} onStopQueue={id=>void post(`/api/queues/${id}/stop`, {})} onResumeQueue={id=>void post(`/api/queues/${id}/resume`, {})}
+            onUndo={async id => { const r = await apiFetch(`/api/queues/${id}/undo`, { method: "POST", headers: { "Content-Type": "application/json", "X-Platform-Token": data?.token || "" }, body: "{}" });
+              const d = await r.json(); if (!r.ok) throw Error(d.error || `HTTP ${r.status}`); if (d.undone === false) throw Error(String(d.undo_note || "원복하지 못했습니다.")); }}
+            onOrder={async order => { await post("/api/queues", { goal: order, rounds, thinking, model: effectiveModel }); }}
+            onDetail={id=>{setSelected(id);setSelectedRecord(null);setRunTab("logs");navigate("run");}} onOpenMonitor={()=>navigate("monitor")}
+            onOpenHistory={()=>navigate("history")} onOpenParts={()=>navigate("parts")}/>}
+          {page === "classic" && <HomePage token={data?.token||""} goal={goal} setGoal={setGoal} busy={busy}
             onUndo={async id => { const r = await apiFetch(`/api/queues/${id}/undo`, { method: "POST", headers: { "Content-Type": "application/json", "X-Platform-Token": data?.token || "" }, body: "{}" });
               const d = await r.json(); if (!r.ok) throw Error(d.error || `HTTP ${r.status}`); if (d.undone === false) throw Error(String(d.undo_note || "되돌리지 못했습니다.")); }}
             canStart={!disabled&&!!goal.trim()&&(useQueue||!!checks.length)&&!!data?.model.online&&!!effectiveModel} blockedReason={blockedReason} onStart={start}

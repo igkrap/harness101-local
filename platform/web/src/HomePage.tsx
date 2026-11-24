@@ -49,7 +49,7 @@ function PackLinks({ pack }: { pack: Pack }) {
  * Deployment in one line. "현재 버전 배포 다운로드" hands over the setup packs of what the project holds right now (making them
  * first when the pack is behind). Only the current version's packs are kept.
  */
-function Operation({ refreshKey, busy, onOrder }: { refreshKey: string; busy: boolean; onOrder: (goal: string) => void }) {
+export function Operation({ refreshKey, busy, onOrder }: { refreshKey: string; busy: boolean; onOrder: (goal: string) => void }) {
   const [status, setStatus] = useState<ReleaseStatus | null>(null);
   const [open, setOpen] = useState(false), [wanted, setWanted] = useState(false);
   useEffect(() => {

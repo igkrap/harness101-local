@@ -16,7 +16,9 @@ export function ProjectPicker(){
   const [projects,setProjects]=useState<Project[]>([]);
   useEffect(()=>{const c=new AbortController();apiFetch('/api/projects',{signal:c.signal}).then(async r=>{if(r.ok)return r.json();if(projectId!=='default')forgetProject();return {};}).then(d=>{if(c.signal.aborted)return;const list:Project[]=d.projects||[];
     if(list.length&&projectId!=='default'&&!list.some(p=>p.id===projectId)){forgetProject();return;}setProjects(list);}).catch(()=>{});return()=>c.abort();},[]);
-  return <Selector label="프로젝트" size="sm" isLabelHidden placement="below" value={projectId} options={projects.map(p=>({value:p.id,label:titleOf(p),disabled:!p.available}))} onChange={switchProject}/>;
+  // measurement makes and removes projects of its own (bench-…): they are not ones to work in, so they are not offered here
+  const shown=projects.filter(p=>!((p as {site?:{slug?:string}}).site?.slug||'').startsWith('bench-')||p.id===projectId);
+  return <Selector label="프로젝트" size="sm" isLabelHidden placement="below" value={projectId} options={shown.map(p=>({value:p.id,label:titleOf(p)+(((p as {site?:{slug?:string}}).site?.slug||'').startsWith('bench-')?' (측정 중)':''),disabled:!p.available}))} onChange={switchProject}/>;
 }
 type EnvWay={way:string;label:string;command:string};
 type EnvItem={id:string;label:string;why:string;state:'ok'|'missing'|'off';detail:string;find:boolean;fix:{label:string;command:string;installs:boolean;manual?:boolean;note?:string;ways?:EnvWay[]}|null};
