@@ -279,7 +279,7 @@ public class AppDefinitions {
                                       stage("승인", "신청을 여는 업무 화면(over) - 승인·반려 버튼만 있는 화면", List.of("over.actions"),
                                             "「{title}」 화면을 만들어줘. 「{prev}」 자료를 여는 업무 화면(over)이다: 접수 상태인 「{prev}」만 보이고, 승인·반려 버튼만 있으며 내용은 고치지 못한다."),
                                       stage("처리", "승인된 신청에서 연계(take)로 만드는 처리 기록 (follows 로 신청을 가리킴) + 그 연계 화면", List.of("follows", "take-into"),
-                                            "「{title}」 자료를 만들어줘. 승인된 「{root}」에서 이어 만드는 처리 기록이다: 「{root}」를 가리키는 항목이 있고(follows), 「{root}」 한 건에 한 번만 이어진다.",
+                                            "「{title}」 자료를 만들어줘. 승인된 「{root}」에서 이어 만드는 처리 기록이다: 「{root}」를 가리키는 항목이 있다(follows).",
                                             "「{title}」 연계 화면을 만들어줘. 승인 상태인 「{root}」만 목록으로 조회해 선택하고 저장하면 「{title}」 자료가 만들어지는 연계 화면(take)이다 - 입력 폼이 아니라 목록에서 골라 저장하는 화면이고, 「{title}」 자료는 이미 있다."))),
             Map.of("pattern", "대여-반납", "when", "무언가를 빌려주고(대여), 빌려 간 것 가운데 아직 돌아오지 않은 것을 선택해 반납을 등록하는 업무",
                     "stages", List.of(stage("대여", "대여를 등록하는 업무 기록", List.of(),
@@ -628,6 +628,25 @@ public class AppDefinitions {
                     for (JsonNode own : node.path("fields")) if (follows.equals(own.path("name").asString())) ((tools.jackson.databind.node.ObjectNode) own).put("required", false);
                     break;
                 }
+        }
+        if (node.hasNonNull("follows") && node.path("fields").isArray()) {
+            // a later stage is limited by the stage before it: with no limit said against that stage, one record follows each earlier one
+            // (process records hold one item each) - what a 연계 screen counts to know what is still open; a quantity limit said in the
+            // definition (shipped <= ordered) is kept as it is
+            String follows = node.get("follows").asString();
+            JsonNode pointer = null;
+            for (JsonNode field : node.path("fields")) if (follows.equals(field.path("name").asString())) pointer = field;
+            String earlier = pointer == null ? "" : pointer.path("ref").path("entity").asString("");
+            boolean limited = false;
+            for (JsonNode limit : node.path("limits")) if (earlier.equals(limit.path("entity").asString(""))) limited = true;
+            if (!earlier.isEmpty() && !limited) {
+                node = node.deepCopy();
+                tools.jackson.databind.node.ObjectNode limit = ((tools.jackson.databind.node.ObjectNode) node).withArray("limits").addObject();
+                limit.putArray("by").add(follows);
+                limit.put("entity", earlier);
+                limit.putArray("entityBy").add("id");
+                limit.put("message", "이미 이어진 " + pointer.path("label").asString("앞 단계") + "입니다.");
+            }
         }
         // what the screen is to the work - master data or work - as the model judged it: kept as said, never guessed here
         String kind = null;
